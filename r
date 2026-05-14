@@ -1,0 +1,1 @@
+python3 top_down_generator.py --config configs/default.json --out out/generated_map.txt --include-debug-layers  --verbose --profile-performance
