@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from topdown_shooter.config.runtime_config import RuntimeConfig
+from topdown_shooter.config.runtime_config import KeyChordConfig, RuntimeConfig
+from topdown_shooter.debug.overlay import DebugOverlay
+from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.rendering.camera import CameraRig
 from topdown_shooter.rendering.map_renderer import MapRenderer
 from topdown_shooter.world.runtime_map import RuntimeMap
@@ -41,18 +43,33 @@ def import_raylib() -> Any:
 class RaylibWindow:
     """Run a minimal raylib map window."""
 
-    def __init__(self, runtime_map: RuntimeMap, config: RuntimeConfig) -> None:
+    def __init__(
+        self,
+        runtime_map: RuntimeMap,
+        package: GeneratedMapPackage,
+        config: RuntimeConfig,
+    ) -> None:
         """Initialize the runtime window.
 
         Args:
             runtime_map: Runtime map to display.
+            package: Loaded generated map package.
             config: Runtime configuration.
         """
         self._runtime_map = runtime_map
+        self._package = package
         self._config = config
         self._raylib = import_raylib()
         self._quit_key = self._resolve_key(config.controls.quit)
+        self._debug_overlay_chord = self._resolve_key_chord(config.controls.debug_overlay)
+        self._debug_overlay_enabled = config.debug_overlay.enabled_by_default
         self._renderer = MapRenderer(self._raylib)
+        self._debug_overlay = DebugOverlay(
+            raylib=self._raylib,
+            runtime_map=runtime_map,
+            package=package,
+            config=config,
+        )
         self._camera_rig = CameraRig(
             runtime_map=runtime_map,
             window_config=config.window,
@@ -72,11 +89,19 @@ class RaylibWindow:
             while not raylib.window_should_close():
                 if raylib.is_key_pressed(self._quit_key):
                     break
+                if self._is_key_chord_pressed(self._debug_overlay_chord):
+                    self._debug_overlay_enabled = not self._debug_overlay_enabled
+
                 raylib.begin_drawing()
                 raylib.clear_background(raylib.BLACK)
                 raylib.begin_mode_2d(camera)
                 self._renderer.draw(self._runtime_map)
                 raylib.end_mode_2d()
+                if self._debug_overlay_enabled:
+                    self._debug_overlay.draw(
+                        camera=self._camera_rig.state,
+                        raylib_camera=camera,
+                    )
                 raylib.end_drawing()
         finally:
             raylib.close_window()
@@ -106,3 +131,33 @@ class RaylibWindow:
                 f"Unknown raylib key binding in runtime config: {key_name}",
             )
         return key_value
+
+    def _resolve_key_chord(self, chord: KeyChordConfig) -> tuple[int, tuple[int, ...]]:
+        """Resolve a configured key chord to raylib key constants.
+
+        Args:
+            chord: Configured key chord.
+
+        Returns:
+            Main key and modifier keys.
+        """
+        return (
+            self._resolve_key(chord.key),
+            tuple(self._resolve_key(modifier) for modifier in chord.modifiers),
+        )
+
+    def _is_key_chord_pressed(self, chord: tuple[int, tuple[int, ...]]) -> bool:
+        """Return whether a configured key chord was pressed this frame.
+
+        Args:
+            chord: Main key and modifier keys.
+
+        Returns:
+            True if the chord was pressed.
+        """
+        key, modifiers = chord
+        if not self._raylib.is_key_pressed(key):
+            return False
+        if not modifiers:
+            return True
+        return any(self._raylib.is_key_down(modifier) for modifier in modifiers)

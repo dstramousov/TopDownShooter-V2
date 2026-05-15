@@ -11,7 +11,19 @@
     "smooth_time": 0.0,
     "lookahead_tiles": 0.0
   },
+  "debug_overlay": {
+    "enabled_by_default": false,
+    "panel_width": 420,
+    "padding": 12,
+    "font_size": 14,
+    "line_spacing": 2,
+    "background_alpha": 190
+  },
   "controls": {
-    "quit": "KEY_ESCAPE"
+    "quit": "KEY_ESCAPE",
+    "debug_overlay": {
+      "key": "KEY_D",
+      "modifiers": ["KEY_LEFT_CONTROL", "KEY_RIGHT_CONTROL"]
+    }
   }
 }

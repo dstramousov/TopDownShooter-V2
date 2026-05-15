@@ -17,4 +17,4 @@ def run_game(package_dir: Path) -> None:
     package = MapPackageLoader().load(package_dir)
     runtime_map = RuntimeMapBuilder().build(package)
     runtime_config = RuntimeConfigLoader().load_default()
-    RaylibWindow(runtime_map=runtime_map, config=runtime_config).run()
+    RaylibWindow(runtime_map=runtime_map, package=package, config=runtime_config).run()

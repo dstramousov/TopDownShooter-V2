@@ -47,14 +47,50 @@ class CameraConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class DebugOverlayConfig:
+    """Debug overlay display settings.
+
+    Attributes:
+        enabled_by_default: Whether the overlay starts enabled.
+        panel_width: Overlay panel width in pixels.
+        padding: Inner panel padding in pixels.
+        font_size: Text font size in pixels.
+        line_spacing: Extra spacing between text lines in pixels.
+        background_alpha: Panel background alpha value in the 0..255 range.
+    """
+
+    enabled_by_default: bool
+    panel_width: int
+    padding: int
+    font_size: int
+    line_spacing: int
+    background_alpha: int
+
+
+@dataclass(frozen=True, slots=True)
+class KeyChordConfig:
+    """A configurable key chord.
+
+    Attributes:
+        key: Main raylib key constant name.
+        modifiers: Modifier raylib key constant names. Any pressed modifier matches.
+    """
+
+    key: str
+    modifiers: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class ControlsConfig:
     """Input binding names for the runtime.
 
     Attributes:
         quit: Key name used to close the runtime window.
+        debug_overlay: Key chord used to toggle debug overlay visibility.
     """
 
     quit: str
+    debug_overlay: KeyChordConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,11 +100,13 @@ class RuntimeConfig:
     Attributes:
         window: Window settings.
         camera: Camera settings.
+        debug_overlay: Debug overlay display settings.
         controls: Control bindings.
     """
 
     window: WindowConfig
     camera: CameraConfig
+    debug_overlay: DebugOverlayConfig
     controls: ControlsConfig
 
 
@@ -101,6 +139,7 @@ class RuntimeConfigLoader:
         """
         window = self._require_dict(raw_config, "window")
         camera = self._require_dict(raw_config, "camera")
+        debug_overlay = self._require_dict(raw_config, "debug_overlay")
         controls = self._require_dict(raw_config, "controls")
         return RuntimeConfig(
             window=WindowConfig(
@@ -115,8 +154,17 @@ class RuntimeConfigLoader:
                 smooth_time=self._require_non_negative_float(camera, "smooth_time"),
                 lookahead_tiles=self._require_non_negative_float(camera, "lookahead_tiles"),
             ),
+            debug_overlay=DebugOverlayConfig(
+                enabled_by_default=self._require_bool(debug_overlay, "enabled_by_default"),
+                panel_width=self._require_positive_int(debug_overlay, "panel_width"),
+                padding=self._require_non_negative_int(debug_overlay, "padding"),
+                font_size=self._require_positive_int(debug_overlay, "font_size"),
+                line_spacing=self._require_non_negative_int(debug_overlay, "line_spacing"),
+                background_alpha=self._require_alpha(debug_overlay, "background_alpha"),
+            ),
             controls=ControlsConfig(
                 quit=self._require_str(controls, "quit"),
+                debug_overlay=self._require_key_chord(controls, "debug_overlay"),
             ),
         )
 
@@ -165,6 +213,36 @@ class RuntimeConfigLoader:
             raise RuntimeConfigError(f"Runtime config integer is missing or invalid: {key}")
         return value
 
+    def _require_non_negative_int(self, data: dict[str, Any], key: str) -> int:
+        """Return a required non-negative integer value.
+
+        Args:
+            data: Source dictionary.
+            key: Required key.
+
+        Returns:
+            Non-negative integer value.
+        """
+        value = data.get(key)
+        if not isinstance(value, int) or value < 0:
+            raise RuntimeConfigError(f"Runtime config integer is missing or invalid: {key}")
+        return value
+
+    def _require_alpha(self, data: dict[str, Any], key: str) -> int:
+        """Return a required alpha value.
+
+        Args:
+            data: Source dictionary.
+            key: Required key.
+
+        Returns:
+            Alpha value in the 0..255 range.
+        """
+        value = self._require_non_negative_int(data, key)
+        if value > 255:
+            raise RuntimeConfigError(f"Runtime config alpha is out of range: {key}")
+        return value
+
     def _require_bool(self, data: dict[str, Any], key: str) -> bool:
         """Return a required boolean value.
 
@@ -209,3 +287,24 @@ class RuntimeConfigLoader:
         if not isinstance(value, int | float) or value < 0:
             raise RuntimeConfigError(f"Runtime config number is missing or invalid: {key}")
         return float(value)
+
+    def _require_key_chord(self, data: dict[str, Any], key: str) -> KeyChordConfig:
+        """Return a required key chord value.
+
+        Args:
+            data: Source dictionary.
+            key: Required key.
+
+        Returns:
+            Key chord configuration.
+        """
+        raw_chord = self._require_dict(data, key)
+        raw_modifiers = raw_chord.get("modifiers", [])
+        if not isinstance(raw_modifiers, list) or not all(
+            isinstance(modifier, str) and modifier.strip() for modifier in raw_modifiers
+        ):
+            raise RuntimeConfigError(f"Runtime config key chord modifiers are invalid: {key}")
+        return KeyChordConfig(
+            key=self._require_str(raw_chord, "key"),
+            modifiers=tuple(raw_modifiers),
+        )

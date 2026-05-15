@@ -31,3 +31,11 @@
 - Added camera clamping against map bounds.
 - Extended runtime config with camera clamp and reserved inertia/lookahead settings.
 - Reduced raylib INFO log noise before window initialization.
+
+
+## v0.0.4 -> v0.0.5
+
+- Added a configurable runtime debug overlay toggled with `Ctrl+D`.
+- Added overlay diagnostics for FPS, window, map package metadata, camera, mouse, tactical counts, validation status, and controls.
+- Added configurable debug overlay panel settings and key chord bindings.
+- Kept debug overlay separate from map rendering and camera logic.
