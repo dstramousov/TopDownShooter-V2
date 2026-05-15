@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any
 
-
-def build_tile_palette(raylib: Any) -> dict[str, Any]:
+def build_tile_palette(raylib: object) -> dict[str, object]:
     """Build the tile color palette.
 
     Args:

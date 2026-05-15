@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from topdown_shooter.config.runtime_config import KeyChordConfig, RuntimeConfig
 from topdown_shooter.debug.overlay import DebugOverlay
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
@@ -24,7 +22,7 @@ class InvalidControlBindingError(RuntimeError):
     """Raised when a configured input binding is not known to raylib."""
 
 
-def import_raylib() -> Any:
+def import_raylib() -> object:
     """Import pyray lazily.
 
     Returns:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from topdown_shooter import __version__
 from topdown_shooter.config.runtime_config import DebugOverlayConfig, RuntimeConfig
@@ -65,7 +64,7 @@ class DebugOverlay:
 
     def __init__(
         self,
-        raylib: Any,
+        raylib: object,
         runtime_map: RuntimeMap,
         package: GeneratedMapPackage,
         config: RuntimeConfig,
@@ -83,7 +82,7 @@ class DebugOverlay:
         self._package = package
         self._config = config
 
-    def draw(self, camera: RuntimeCamera, raylib_camera: Any, player: PlayerState) -> None:
+    def draw(self, camera: RuntimeCamera, raylib_camera: object, player: PlayerState) -> None:
         """Draw the overlay for the current frame.
 
         Args:
@@ -261,7 +260,7 @@ class DebugOverlay:
         )
         return left_column, right_column
 
-    def _read_mouse(self, raylib_camera: Any) -> MouseDebugInfo:
+    def _read_mouse(self, raylib_camera: object) -> MouseDebugInfo:
         """Read mouse data and convert it to map coordinates.
 
         Args:

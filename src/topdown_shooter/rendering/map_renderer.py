@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from topdown_shooter.rendering.colors import build_tile_palette
 from topdown_shooter.world.runtime_map import RuntimeMap
 
@@ -11,7 +9,7 @@ from topdown_shooter.world.runtime_map import RuntimeMap
 class MapRenderer:
     """Draw runtime maps with raylib primitives."""
 
-    def __init__(self, raylib: Any) -> None:
+    def __init__(self, raylib: object) -> None:
         """Initialize the renderer.
 
         Args:

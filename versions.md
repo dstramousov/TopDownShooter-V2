@@ -98,3 +98,11 @@
 - Added configurable camera max speed, movement lookahead, and dead-zone radius.
 - Added camera diagnostics for desired target, velocity, lookahead offset, and dead-zone size.
 - Kept mouse aim, shooting, enemies, tactical overlays, and cinematic camera out of scope.
+
+
+## v0.0.12 -> v0.0.13
+
+- Removed the obsolete `ANN101` Ruff ignore rule from project configuration.
+- Replaced `typing.Any` annotations at the raylib rendering/debug boundary with explicit `object` annotations.
+- Replaced the quoted `PlayerState` return annotation with `Self`.
+- Kept gameplay, camera behavior, rendering behavior, and map loading unchanged.

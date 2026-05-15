@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from topdown_shooter.world.player import PlayerState
 
 
 class PlayerRenderer:
     """Draw the current player marker with raylib primitives."""
 
-    def __init__(self, raylib: Any, marker_radius_px: int) -> None:
+    def __init__(self, raylib: object, marker_radius_px: int) -> None:
         """Initialize the renderer.
 
         Args:

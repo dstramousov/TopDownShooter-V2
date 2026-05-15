@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any
 
 from topdown_shooter.config.runtime_config import CameraConfig, WindowConfig
 from topdown_shooter.world.coordinates import WorldCoord, tile_to_world_center
@@ -124,7 +123,7 @@ class CameraRig:
         """Return the current camera state."""
         return self._state
 
-    def build_raylib_camera(self, raylib: Any) -> Any:
+    def build_raylib_camera(self, raylib: object) -> object:
         """Build a raylib Camera2D from the current state.
 
         Args:

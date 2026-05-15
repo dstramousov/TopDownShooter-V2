@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Self
 
 from topdown_shooter.world.coordinates import TileCoord, WorldCoord, tile_to_world_center
 from topdown_shooter.world.runtime_map import RuntimeMap
@@ -21,7 +22,7 @@ class PlayerState:
     world_position: WorldCoord
 
     @classmethod
-    def spawn_at_map_start(cls, runtime_map: RuntimeMap) -> "PlayerState":
+    def spawn_at_map_start(cls, runtime_map: RuntimeMap) -> Self:
         """Create a player state at the map start tile center.
 
         Args:
