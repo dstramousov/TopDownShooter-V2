@@ -53,6 +53,19 @@ class CameraVelocity:
     y: float
 
 
+@dataclass(frozen=True, slots=True)
+class CameraAimOffset:
+    """Computed aim-direction camera offset.
+
+    Attributes:
+        x: Horizontal aim offset in world pixels.
+        y: Vertical aim offset in world pixels.
+    """
+
+    x: float
+    y: float
+
+
 @dataclass(slots=True)
 class RuntimeCamera:
     """State owned by the runtime camera.
@@ -64,6 +77,7 @@ class RuntimeCamera:
         follow_player: Whether the camera currently follows the player.
         velocity: Current camera velocity estimate.
         lookahead_offset: Current movement lookahead offset.
+        aim_offset: Current aim-direction camera offset.
         dead_zone_radius_px: Dead-zone radius in world pixels.
     """
 
@@ -73,6 +87,7 @@ class RuntimeCamera:
     follow_player: bool
     velocity: CameraVelocity
     lookahead_offset: CameraLookahead
+    aim_offset: CameraAimOffset
     dead_zone_radius_px: float
 
 
@@ -115,6 +130,7 @@ class CameraRig:
             follow_player=camera_config.follow_player_by_default,
             velocity=CameraVelocity(x=0.0, y=0.0),
             lookahead_offset=CameraLookahead(x=0.0, y=0.0),
+            aim_offset=CameraAimOffset(x=0.0, y=0.0),
             dead_zone_radius_px=dead_zone_radius,
         )
 
@@ -142,25 +158,35 @@ class CameraRig:
             self._state.zoom,
         )
 
-    def update_follow_target(self, player_position: WorldCoord, frame_time: float) -> None:
+    def update_follow_target(
+        self,
+        player_position: WorldCoord,
+        frame_time: float,
+        aim_direction_x: float = 0.0,
+        aim_direction_y: float = 0.0,
+    ) -> None:
         """Update camera target from the player position in follow mode.
 
         Args:
             player_position: Current player world position.
             frame_time: Current frame duration in seconds.
+            aim_direction_x: Normalized horizontal aim direction.
+            aim_direction_y: Normalized vertical aim direction.
         """
         if not self._state.follow_player:
             self._last_player_position = player_position
             return
 
         lookahead = self._calculate_lookahead(player_position, frame_time)
+        aim_offset = self._calculate_aim_offset(aim_direction_x, aim_direction_y)
         desired_target = self._clamp_target(
             WorldCoord(
-                x=player_position.x + lookahead.x,
-                y=player_position.y + lookahead.y,
+                x=player_position.x + lookahead.x + aim_offset.x,
+                y=player_position.y + lookahead.y + aim_offset.y,
             ),
         )
         self._state.lookahead_offset = lookahead
+        self._state.aim_offset = aim_offset
         self._state.desired_target = desired_target
         self._last_player_position = player_position
 
@@ -272,6 +298,29 @@ class CameraRig:
         return CameraLookahead(
             x=dx / distance * lookahead_distance,
             y=dy / distance * lookahead_distance,
+        )
+
+    def _calculate_aim_offset(self, direction_x: float, direction_y: float) -> CameraAimOffset:
+        """Calculate aim-direction camera offset.
+
+        Args:
+            direction_x: Normalized horizontal aim direction.
+            direction_y: Normalized vertical aim direction.
+
+        Returns:
+            Aim-direction camera offset in world pixels.
+        """
+        if not self._camera_config.aim_lookahead_enabled:
+            return CameraAimOffset(x=0.0, y=0.0)
+        aim_distance = self._camera_config.aim_lookahead_tiles * self._runtime_map.tile_size_px
+        if aim_distance <= 0.0:
+            return CameraAimOffset(x=0.0, y=0.0)
+        direction_length = math.hypot(direction_x, direction_y)
+        if direction_length <= 0.0:
+            return CameraAimOffset(x=0.0, y=0.0)
+        return CameraAimOffset(
+            x=direction_x / direction_length * aim_distance,
+            y=direction_y / direction_length * aim_distance,
         )
 
     def _is_inside_dead_zone(self, desired_target: WorldCoord) -> bool:

@@ -16,7 +16,9 @@
     "move_speed_px_per_second": 720.0,
     "follow_player_by_default": true,
     "max_speed_px_per_second": 1800.0,
-    "dead_zone_tiles": 1.25
+    "dead_zone_tiles": 1.25,
+    "aim_lookahead_enabled": true,
+    "aim_lookahead_tiles": 2.0
   },
   "player": {
     "marker_radius_px": 6,
@@ -73,12 +75,23 @@
     "player_right": [
       "KEY_D"
     ],
-    "camera_toggle_follow": "KEY_F"
+    "camera_toggle_follow": "KEY_F",
+    "fire_primary": "MOUSE_BUTTON_LEFT"
   },
   "aim_debug": {
     "enabled": true,
-    "line_length_px": 40.0,
+    "line_length_px": 140.0,
     "marker_radius_px": 4.0,
     "line_thickness_px": 2.0
+  },
+  "fps_counter": {
+    "enabled": true,
+    "position": "top_right",
+    "margin_x": 12,
+    "margin_y": 12,
+    "font_size": 14
+  },
+  "weapons": {
+    "database_path": "res/config/weapons.json"
   }
 }

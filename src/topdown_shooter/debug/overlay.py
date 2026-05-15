@@ -6,9 +6,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from topdown_shooter import __version__
+from topdown_shooter.combat.projectiles import ProjectileStats
+from topdown_shooter.combat.weapons import WeaponStats
 from topdown_shooter.config.runtime_config import DebugOverlayConfig, RuntimeConfig
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.rendering.camera import RuntimeCamera
+from topdown_shooter.rendering.map_renderer import RenderStats
 from topdown_shooter.world.coordinates import ScreenCoord, TileCoord, WorldCoord, world_to_tile
 from topdown_shooter.world.player import PlayerState
 from topdown_shooter.world.runtime_map import RuntimeMap
@@ -85,13 +88,24 @@ class DebugOverlay:
         self._custom_font: object | None = None
         self._custom_font_checked = False
 
-    def draw(self, camera: RuntimeCamera, raylib_camera: object, player: PlayerState) -> None:
+    def draw(
+        self,
+        camera: RuntimeCamera,
+        raylib_camera: object,
+        player: PlayerState,
+        render_stats: RenderStats,
+        projectile_stats: ProjectileStats,
+        weapon_stats: WeaponStats,
+    ) -> None:
         """Draw the overlay for the current frame.
 
         Args:
             camera: Current runtime camera state.
             raylib_camera: Current raylib Camera2D object.
             player: Current player state.
+            render_stats: Current map render statistics.
+            projectile_stats: Current projectile system statistics.
+            weapon_stats: Current weapon diagnostics.
         """
         overlay_config = self._config.debug_overlay
         columns = self._build_columns(
@@ -99,11 +113,13 @@ class DebugOverlay:
             camera=camera,
             mouse=self._read_mouse(raylib_camera),
             player=player,
+            render_stats=render_stats,
+            projectile_stats=projectile_stats,
+            weapon_stats=weapon_stats,
         )
         panel_height = self._calculate_panel_height(overlay_config, columns)
         self._draw_panel(overlay_config, panel_height)
         self._draw_columns(overlay_config, columns)
-
 
     def unload(self) -> None:
         """Unload optional raylib resources owned by the overlay."""
@@ -194,6 +210,9 @@ class DebugOverlay:
         camera: RuntimeCamera,
         mouse: MouseDebugInfo,
         player: PlayerState,
+        render_stats: RenderStats,
+        projectile_stats: ProjectileStats,
+        weapon_stats: WeaponStats,
     ) -> tuple[tuple[DebugOverlaySection, ...], tuple[DebugOverlaySection, ...]]:
         """Build two balanced debug overlay columns.
 
@@ -202,6 +221,9 @@ class DebugOverlay:
             camera: Current runtime camera state.
             mouse: Current mouse debug information.
             player: Current player state.
+            render_stats: Current map render statistics.
+            projectile_stats: Current projectile system statistics.
+            weapon_stats: Current weapon diagnostics.
 
         Returns:
             Two columns with debug sections.
@@ -224,7 +246,8 @@ class DebugOverlay:
             DebugOverlaySection(
                 title="Window",
                 rows=(
-                    DebugOverlayRow("FPS", f"{fps}/{window.target_fps}"),
+                    DebugOverlayRow("FPS", str(fps)),
+                    DebugOverlayRow("Target FPS", str(window.target_fps)),
                     DebugOverlayRow("Size", f"{window.width}x{window.height}"),
                     DebugOverlayRow("Zoom", f"{camera.zoom:.2f}"),
                     DebugOverlayRow(
@@ -247,8 +270,12 @@ class DebugOverlay:
                         f"{camera.velocity.x:.1f}, {camera.velocity.y:.1f}",
                     ),
                     DebugOverlayRow(
-                        "Lookahead",
+                        "Move look",
                         f"{camera.lookahead_offset.x:.1f}, {camera.lookahead_offset.y:.1f}",
+                    ),
+                    DebugOverlayRow(
+                        "Aim look",
+                        f"{camera.aim_offset.x:.1f}, {camera.aim_offset.y:.1f}",
                     ),
                     DebugOverlayRow("Dead zone", f"{camera.dead_zone_radius_px:.1f}px"),
                 ),
@@ -293,12 +320,50 @@ class DebugOverlay:
                         "Target",
                         f"{player.aim.target_world.x:.1f}, {player.aim.target_world.y:.1f}",
                     ),
+                    DebugOverlayRow(
+                        "Camera offset",
+                        f"{camera.aim_offset.x:.1f}, {camera.aim_offset.y:.1f}",
+                    ),
                     DebugOverlayRow("Debug line", str(self._config.aim_debug.enabled)),
                 ),
             ),
         )
 
+        weapon_section = DebugOverlaySection(
+            title="Weapon",
+            rows=(
+                DebugOverlayRow("Current", weapon_stats.display_name),
+                DebugOverlayRow("Weapon id", weapon_stats.weapon_id),
+                DebugOverlayRow("Fire rate", f"{weapon_stats.fire_rate_rpm:.1f}rpm"),
+                DebugOverlayRow("Interval", f"{weapon_stats.fire_interval_seconds:.3f}s"),
+                DebugOverlayRow("Cooldown", f"{weapon_stats.cooldown_remaining_seconds:.3f}s"),
+                DebugOverlayRow("Spread", f"{weapon_stats.spread_degrees:.2f}deg"),
+                DebugOverlayRow("Shots/fire", str(weapon_stats.shots_per_fire)),
+                DebugOverlayRow("Fire", self._config.controls.fire_primary),
+            ),
+        )
+        projectile_section = DebugOverlaySection(
+            title="Projectiles",
+            rows=(
+                DebugOverlayRow("Active", str(projectile_stats.active_projectiles)),
+                DebugOverlayRow("Shots fired", str(projectile_stats.shots_fired)),
+                DebugOverlayRow("Speed", f"{weapon_stats.projectile_speed_px_per_second:.1f}px/s"),
+                DebugOverlayRow("Range", f"{weapon_stats.projectile_range_px:.1f}px"),
+                DebugOverlayRow("Lifetime", f"{weapon_stats.projectile_lifetime_seconds:.2f}s"),
+                DebugOverlayRow("Radius", f"{weapon_stats.projectile_radius_px:.1f}px"),
+            ),
+        )
+        left_column = (*left_column, weapon_section, projectile_section)
+
         right_column = (
+            DebugOverlaySection(
+                title="Render",
+                rows=(
+                    DebugOverlayRow("Visible tiles", str(render_stats.visible_tiles)),
+                    DebugOverlayRow("Drawn tiles", str(render_stats.drawn_tiles)),
+                    DebugOverlayRow("Total tiles", str(render_stats.total_tiles)),
+                ),
+            ),
             DebugOverlaySection(
                 title="Map",
                 rows=(

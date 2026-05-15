@@ -32,6 +32,8 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.camera.max_speed_px_per_second == 1800.0
     assert config.camera.lookahead_tiles == 3.0
     assert config.camera.dead_zone_tiles == 1.25
+    assert config.camera.aim_lookahead_enabled is True
+    assert config.camera.aim_lookahead_tiles == 2.0
     assert config.camera.follow_player_by_default is True
     assert config.player.marker_radius_px == 6
     assert config.player.movement_speed_px_per_second == 160.0
@@ -44,13 +46,20 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.controls.player_down == ("KEY_S",)
     assert config.controls.player_left == ("KEY_A",)
     assert config.controls.player_right == ("KEY_D",)
+    assert config.controls.fire_primary == "MOUSE_BUTTON_LEFT"
+    assert config.weapons.database_path == "res/config/weapons.json"
     assert config.debug_overlay.enabled_by_default is False
-    assert config.debug_overlay.panel_width == 920
-    assert config.debug_overlay.font_path == "res/fonts/IBMPlexMono-Regular.ttf"
-    assert config.debug_overlay.font_size == 15
+    assert config.debug_overlay.panel_width == 1200
+    assert config.debug_overlay.font_path == "res/fonts/PressStart2P-Regular.ttf"
+    assert config.debug_overlay.font_size == 8
     assert config.debug_overlay.font_spacing == 0.0
-    assert config.debug_overlay.line_spacing == 3
-    assert config.debug_overlay.section_spacing == 9
+    assert config.debug_overlay.line_spacing == 6
+    assert config.debug_overlay.section_spacing == 12
     assert config.debug_overlay.column_gap == 32
     assert config.debug_overlay.label_width == 128
-    assert config.debug_overlay.background_alpha == 210
+    assert config.debug_overlay.background_alpha == 120
+    assert config.fps_counter.enabled is True
+    assert config.fps_counter.position == "top_right"
+    assert config.fps_counter.margin_x == 12
+    assert config.fps_counter.margin_y == 12
+    assert config.fps_counter.font_size == 14

@@ -1,0 +1,17 @@
+{
+  "schema_version": "weapons-v1",
+  "default_weapon_id": "pistol",
+  "weapons": [
+    {
+      "id": "pistol",
+      "display_name": "Pistol",
+      "fire_rate_rpm": 300.0,
+      "projectile_speed_px_per_second": 1520.0,
+      "projectile_range_px": 720.0,
+      "projectile_lifetime_seconds": 1.5,
+      "projectile_radius_px": 3.0,
+      "spread_degrees": 0.0,
+      "shots_per_fire": 1
+    }
+  ]
+}

@@ -66,6 +66,8 @@ def test_camera_rig_clamps_start_target_to_map_bounds() -> None:
             max_speed_px_per_second=0.0,
             lookahead_tiles=0.0,
             dead_zone_tiles=0.0,
+            aim_lookahead_enabled=False,
+            aim_lookahead_tiles=0.0,
             follow_player_by_default=True,
         ),
     )
@@ -96,6 +98,8 @@ def test_camera_rig_pans_zooms_and_resets_to_start() -> None:
             max_speed_px_per_second=0.0,
             lookahead_tiles=0.0,
             dead_zone_tiles=0.0,
+            aim_lookahead_enabled=False,
+            aim_lookahead_tiles=0.0,
             follow_player_by_default=True,
         ),
     )
@@ -137,6 +141,8 @@ def test_camera_rig_follows_player_when_enabled() -> None:
             max_speed_px_per_second=0.0,
             lookahead_tiles=0.0,
             dead_zone_tiles=0.0,
+            aim_lookahead_enabled=False,
+            aim_lookahead_tiles=0.0,
             follow_player_by_default=True,
         ),
     )
@@ -169,6 +175,8 @@ def test_camera_manual_pan_switches_to_map_viewer_mode() -> None:
             max_speed_px_per_second=0.0,
             lookahead_tiles=0.0,
             dead_zone_tiles=0.0,
+            aim_lookahead_enabled=False,
+            aim_lookahead_tiles=0.0,
             follow_player_by_default=True,
         ),
     )
@@ -208,6 +216,8 @@ def test_camera_follow_uses_smoothing() -> None:
             max_speed_px_per_second=0.0,
             lookahead_tiles=0.0,
             dead_zone_tiles=0.0,
+            aim_lookahead_enabled=False,
+            aim_lookahead_tiles=0.0,
             follow_player_by_default=True,
         ),
     )
@@ -244,6 +254,8 @@ def test_camera_follow_respects_dead_zone() -> None:
             max_speed_px_per_second=0.0,
             lookahead_tiles=0.0,
             dead_zone_tiles=2.0,
+            aim_lookahead_enabled=False,
+            aim_lookahead_tiles=0.0,
             follow_player_by_default=True,
         ),
     )
@@ -277,6 +289,8 @@ def test_camera_follow_adds_movement_lookahead() -> None:
             max_speed_px_per_second=0.0,
             lookahead_tiles=2.0,
             dead_zone_tiles=0.0,
+            aim_lookahead_enabled=False,
+            aim_lookahead_tiles=0.0,
             follow_player_by_default=True,
         ),
     )
@@ -289,3 +303,44 @@ def test_camera_follow_adds_movement_lookahead() -> None:
     assert camera.state.lookahead_offset.x == 32.0
     assert camera.state.lookahead_offset.y == 0.0
     assert camera.state.desired_target == WorldCoord(1048.0, 800.0)
+
+
+def test_camera_follow_adds_aim_lookahead() -> None:
+    """Camera follow should offset the desired target toward player aim."""
+    runtime_map = _build_runtime_map(width=160, height=96, start=TileCoord(80, 48))
+    camera = CameraRig(
+        runtime_map=runtime_map,
+        window_config=WindowConfig(
+            title="Test",
+            width=1280,
+            height=720,
+            target_fps=60,
+        ),
+        camera_config=CameraConfig(
+            zoom=1.0,
+            min_zoom=0.5,
+            max_zoom=3.0,
+            zoom_step=0.1,
+            move_speed_px_per_second=720.0,
+            clamp_to_map=True,
+            smooth_time=0.0,
+            max_speed_px_per_second=0.0,
+            lookahead_tiles=0.0,
+            dead_zone_tiles=0.0,
+            aim_lookahead_enabled=True,
+            aim_lookahead_tiles=2.0,
+            follow_player_by_default=True,
+        ),
+    )
+
+    player_position = WorldCoord(1000.0, 800.0)
+    camera.update_follow_target(
+        player_position=player_position,
+        frame_time=1.0,
+        aim_direction_x=0.0,
+        aim_direction_y=-1.0,
+    )
+
+    assert camera.state.aim_offset.x == 0.0
+    assert camera.state.aim_offset.y == -32.0
+    assert camera.state.desired_target == WorldCoord(1000.0, 768.0)

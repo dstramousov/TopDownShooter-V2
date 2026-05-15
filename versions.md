@@ -129,3 +129,35 @@
 - Added configurable debug overlay font path and glyph spacing settings.
 - Made the debug overlay load a custom TTF font when available and fall back to the default raylib font otherwise.
 - Documented `res/fonts/IBMPlexMono-Regular.ttf` as the expected overlay font path without changing gameplay behavior.
+
+## v0.0.16 -> v0.0.17
+
+- Added configurable aim-direction camera lookahead to player-follow camera mode.
+- Added aim camera offset diagnostics to the debug overlay.
+- Split current FPS and target FPS into separate debug overlay rows.
+- Updated font resource documentation to match `res/fonts/PressStart2P-Regular.ttf`.
+- Kept shooting, projectiles, enemies, tactical overlays, and cinematic camera out of scope.
+
+## v0.0.17 -> v0.0.18
+
+- Added a standalone FPS counter that remains visible when the debug overlay is disabled.
+- Added visible-tile culling to the map renderer so only camera-visible tiles are drawn each frame.
+- Added render diagnostics for visible, drawn, and total tile counts to the debug overlay.
+- Added runtime config settings for the standalone FPS counter.
+- Kept gameplay, camera behavior, shooting, enemies, and tactical overlays unchanged.
+
+## v0.0.18 -> v0.0.19
+
+- Added a minimal projectile shooting foundation using the existing mouse aim direction.
+- Added configurable projectile speed, range, lifetime, radius, and primary fire mouse binding.
+- Added projectile update, map collision removal, rendering, and debug overlay projectile statistics.
+- Kept enemies, damage, fire rate, recoil, particles, sound, and tactical overlays out of scope.
+
+
+## v0.0.19 -> v0.0.20
+
+- Added a data-driven weapon database at `res/config/weapons.json`.
+- Added default `pistol` weapon settings for fire rate, spread, shots per fire, and projectile parameters.
+- Added continuous primary fire while LMB is held, limited by current weapon fire rate.
+- Moved projectile spawn parameters from runtime projectile config to current weapon definitions.
+- Added weapon diagnostics to the debug overlay while keeping enemies, damage, recoil, ammo, reloads, and sound out of scope.

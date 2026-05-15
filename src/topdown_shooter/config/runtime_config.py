@@ -44,6 +44,8 @@ class CameraConfig:
         max_speed_px_per_second: Maximum inertial camera speed in world pixels per second.
         lookahead_tiles: Movement-direction lookahead distance in tiles.
         dead_zone_tiles: Follow dead-zone radius in tiles.
+        aim_lookahead_enabled: Whether aim-direction camera offset is enabled.
+        aim_lookahead_tiles: Aim-direction camera offset distance in tiles.
         follow_player_by_default: Whether the camera starts in player-follow mode.
     """
 
@@ -57,6 +59,8 @@ class CameraConfig:
     max_speed_px_per_second: float
     lookahead_tiles: float
     dead_zone_tiles: float
+    aim_lookahead_enabled: bool
+    aim_lookahead_tiles: float
     follow_player_by_default: bool
 
 
@@ -93,6 +97,17 @@ class AimDebugConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class WeaponsConfig:
+    """Weapon database settings for the runtime.
+
+    Attributes:
+        database_path: Relative or absolute path to the weapon database JSON file.
+    """
+
+    database_path: str
+
+
+@dataclass(frozen=True, slots=True)
 class DebugOverlayConfig:
     """Debug overlay display settings.
 
@@ -121,6 +136,26 @@ class DebugOverlayConfig:
     column_gap: int
     label_width: int
     background_alpha: int
+
+
+@dataclass(frozen=True, slots=True)
+class FpsCounterConfig:
+    """Standalone FPS counter settings.
+
+    Attributes:
+        enabled: Whether the standalone FPS counter is drawn.
+        margin_x: Horizontal distance from the selected corner.
+        margin_y: Vertical distance from the selected corner.
+        font_size: Counter text font size in pixels.
+        position: Counter anchor position. Supported values are ``top_left``,
+            ``top_right``, ``bottom_left``, and ``bottom_right``.
+    """
+
+    enabled: bool
+    margin_x: int
+    margin_y: int
+    font_size: int
+    position: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,6 +191,7 @@ class ControlsConfig:
         player_down: Key names used to move the player down.
         player_left: Key names used to move the player left.
         player_right: Key names used to move the player right.
+        fire_primary: Mouse button name used to fire the current weapon.
     """
 
     quit: str
@@ -173,6 +209,7 @@ class ControlsConfig:
     player_down: tuple[str, ...]
     player_left: tuple[str, ...]
     player_right: tuple[str, ...]
+    fire_primary: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,7 +221,9 @@ class RuntimeConfig:
         camera: Camera settings.
         player: Player display settings.
         aim_debug: Aim debug display settings.
+        weapons: Weapon database settings.
         debug_overlay: Debug overlay display settings.
+        fps_counter: Standalone FPS counter display settings.
         controls: Control bindings.
     """
 
@@ -192,7 +231,9 @@ class RuntimeConfig:
     camera: CameraConfig
     player: PlayerConfig
     aim_debug: AimDebugConfig
+    weapons: WeaponsConfig
     debug_overlay: DebugOverlayConfig
+    fps_counter: FpsCounterConfig
     controls: ControlsConfig
 
 
@@ -227,7 +268,9 @@ class RuntimeConfigLoader:
         camera = self._require_dict(raw_config, "camera")
         player = self._require_dict(raw_config, "player")
         aim_debug = self._require_dict(raw_config, "aim_debug")
+        weapons = self._require_dict(raw_config, "weapons")
         debug_overlay = self._require_dict(raw_config, "debug_overlay")
+        fps_counter = self._require_dict(raw_config, "fps_counter")
         controls = self._require_dict(raw_config, "controls")
         return RuntimeConfig(
             window=WindowConfig(
@@ -257,6 +300,9 @@ class RuntimeConfigLoader:
                     "line_thickness_px",
                 ),
             ),
+            weapons=WeaponsConfig(
+                database_path=self._require_str(weapons, "database_path"),
+            ),
             debug_overlay=DebugOverlayConfig(
                 enabled_by_default=self._require_bool(debug_overlay, "enabled_by_default"),
                 panel_width=self._require_positive_int(debug_overlay, "panel_width"),
@@ -272,6 +318,13 @@ class RuntimeConfigLoader:
                 column_gap=self._require_non_negative_int(debug_overlay, "column_gap"),
                 label_width=self._require_positive_int(debug_overlay, "label_width"),
                 background_alpha=self._require_alpha(debug_overlay, "background_alpha"),
+            ),
+            fps_counter=FpsCounterConfig(
+                enabled=self._require_bool(fps_counter, "enabled"),
+                margin_x=self._require_non_negative_int(fps_counter, "margin_x"),
+                margin_y=self._require_non_negative_int(fps_counter, "margin_y"),
+                font_size=self._require_positive_int(fps_counter, "font_size"),
+                position=self._require_str(fps_counter, "position"),
             ),
             controls=ControlsConfig(
                 quit=self._require_str(controls, "quit"),
@@ -292,6 +345,7 @@ class RuntimeConfigLoader:
                 player_down=self._require_key_names(controls, "player_down"),
                 player_left=self._require_key_names(controls, "player_left"),
                 player_right=self._require_key_names(controls, "player_right"),
+                fire_primary=self._require_str(controls, "fire_primary"),
             ),
         )
 
@@ -328,6 +382,8 @@ class RuntimeConfigLoader:
             ),
             lookahead_tiles=self._require_non_negative_float(camera, "lookahead_tiles"),
             dead_zone_tiles=self._require_non_negative_float(camera, "dead_zone_tiles"),
+            aim_lookahead_enabled=self._require_bool(camera, "aim_lookahead_enabled"),
+            aim_lookahead_tiles=self._require_non_negative_float(camera, "aim_lookahead_tiles"),
             follow_player_by_default=self._require_bool(camera, "follow_player_by_default"),
         )
 

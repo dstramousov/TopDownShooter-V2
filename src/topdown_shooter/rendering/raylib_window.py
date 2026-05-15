@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from topdown_shooter.combat.projectiles import ProjectileSystem
+from topdown_shooter.combat.weapons import WeaponConfigLoader, WeaponController, WeaponState
 from topdown_shooter.config.runtime_config import KeyChordConfig, RuntimeConfig
 from topdown_shooter.debug.overlay import DebugOverlay
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.rendering.camera import CameraRig
+from topdown_shooter.rendering.fps_counter import FpsCounter
 from topdown_shooter.rendering.map_renderer import MapRenderer
 from topdown_shooter.rendering.player_renderer import PlayerRenderer
+from topdown_shooter.rendering.projectile_renderer import ProjectileRenderer
 from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.coordinates import WorldCoord
 from topdown_shooter.world.player import PlayerState
@@ -81,19 +85,33 @@ class RaylibWindow:
         self._player_down_keys = self._resolve_keys(config.controls.player_down)
         self._player_left_keys = self._resolve_keys(config.controls.player_left)
         self._player_right_keys = self._resolve_keys(config.controls.player_right)
+        self._fire_primary_button = self._resolve_mouse_button(config.controls.fire_primary)
         self._debug_overlay_enabled = config.debug_overlay.enabled_by_default
         self._renderer = MapRenderer(self._raylib)
+        self._fps_counter = FpsCounter(
+            raylib=self._raylib,
+            config=config.fps_counter,
+            window=config.window,
+        )
         self._player = PlayerState.spawn_at_map_start(runtime_map)
+        collision_service = TileCollisionService(runtime_map)
         self._player_controller = PlayerController(
-            collision_service=TileCollisionService(runtime_map),
+            collision_service=collision_service,
             tile_size_px=runtime_map.tile_size_px,
             collision_radius_px=config.player.collision_radius_px,
+        )
+        self._projectile_system = ProjectileSystem(collision_service=collision_service)
+        weapon_database = WeaponConfigLoader().load(config.weapons.database_path)
+        self._weapon_controller = WeaponController(
+            projectile_system=self._projectile_system,
+            state=WeaponState.from_database(weapon_database),
         )
         self._player_renderer = PlayerRenderer(
             raylib=self._raylib,
             marker_radius_px=config.player.marker_radius_px,
             aim_debug=config.aim_debug,
         )
+        self._projectile_renderer = ProjectileRenderer(raylib=self._raylib)
         self._debug_overlay = DebugOverlay(
             raylib=self._raylib,
             runtime_map=runtime_map,
@@ -123,14 +141,27 @@ class RaylibWindow:
                 frame_time = raylib.get_frame_time()
                 self._update_player_controls(frame_time)
                 self._update_camera_controls(frame_time)
-                self._camera_rig.update_follow_target(self._player.world_position, frame_time)
+                input_camera = self._camera_rig.build_raylib_camera(raylib)
+                self._update_player_aim(input_camera)
+                self._update_combat_controls(frame_time)
+                self._projectile_system.update(frame_time)
+                self._camera_rig.update_follow_target(
+                    player_position=self._player.world_position,
+                    frame_time=frame_time,
+                    aim_direction_x=self._player.aim.direction_x,
+                    aim_direction_y=self._player.aim.direction_y,
+                )
                 camera = self._camera_rig.build_raylib_camera(raylib)
-                self._update_player_aim(camera)
 
                 raylib.begin_drawing()
                 raylib.clear_background(raylib.BLACK)
                 raylib.begin_mode_2d(camera)
-                self._renderer.draw(self._runtime_map)
+                render_stats = self._renderer.draw(
+                    runtime_map=self._runtime_map,
+                    camera=self._camera_rig.state,
+                    window_config=self._config.window,
+                )
+                self._projectile_renderer.draw(self._projectile_system.projectiles)
                 self._player_renderer.draw(self._player)
                 raylib.end_mode_2d()
                 if self._debug_overlay_enabled:
@@ -138,7 +169,11 @@ class RaylibWindow:
                         camera=self._camera_rig.state,
                         raylib_camera=camera,
                         player=self._player,
+                        render_stats=render_stats,
+                        projectile_stats=self._projectile_system.stats,
+                        weapon_stats=self._weapon_controller.stats,
                     )
+                self._fps_counter.draw()
                 raylib.end_drawing()
         finally:
             self._debug_overlay.unload()
@@ -155,6 +190,20 @@ class RaylibWindow:
         self._player.aim = PlayerAimState.from_positions(
             origin=self._player.world_position,
             target=WorldCoord(x=float(mouse_world.x), y=float(mouse_world.y)),
+        )
+
+    def _update_combat_controls(self, frame_time: float) -> None:
+        """Apply configured combat input for the current frame.
+
+        Args:
+            frame_time: Current frame duration in seconds.
+        """
+        self._weapon_controller.update(
+            fire_held=self._raylib.is_mouse_button_down(self._fire_primary_button),
+            frame_time=frame_time,
+            origin=self._player.world_position,
+            direction_x=self._player.aim.direction_x,
+            direction_y=self._player.aim.direction_y,
         )
 
     def _update_player_controls(self, frame_time: float) -> None:
@@ -239,6 +288,25 @@ class RaylibWindow:
                 f"Unknown raylib key binding in runtime config: {key_name}",
             )
         return key_value
+
+    def _resolve_mouse_button(self, button_name: str) -> int:
+        """Resolve a configured mouse button name to a raylib constant.
+
+        Args:
+            button_name: Raylib mouse button constant name.
+
+        Returns:
+            Raylib mouse button constant value.
+
+        Raises:
+            InvalidControlBindingError: If the mouse button is not available.
+        """
+        button_value = getattr(self._raylib, button_name, None)
+        if not isinstance(button_value, int):
+            raise InvalidControlBindingError(
+                f"Unknown raylib mouse binding in runtime config: {button_name}",
+            )
+        return button_value
 
     def _resolve_keys(self, key_names: tuple[str, ...]) -> tuple[int, ...]:
         """Resolve configured key names to raylib key constants.

@@ -4,7 +4,7 @@ Initial runtime foundation for loading a generated TopDownMapGen map package.
 
 ## Current scope
 
-Version `0.0.16` supports map package inspection, a minimal render window, camera foundation, a runtime debug overlay, map-viewer camera controls, an initial player marker, and basic WASD player movement:
+Version `0.0.20` supports map package inspection, a minimal render window, camera foundation, a runtime debug overlay, map-viewer camera controls, an initial player marker, and basic WASD player movement:
 
 - reads `_manifest.json`;
 - reads `validation_report.json`;
@@ -19,9 +19,12 @@ Version `0.0.16` supports map package inspection, a minimal render window, camer
 - spawns a simple player marker at the generated start tile;
 - moves the player with configurable WASD controls and basic tile collision;
 - follows the moving player with a configurable camera mode;
-- applies smooth camera follow, movement lookahead, and a dead zone;
+- applies smooth camera follow, movement lookahead, aim lookahead, and a dead zone;
 - calculates mouse aim direction from the player to the world-space cursor;
-- draws a short configurable aim debug marker above the player.
+- draws a short configurable aim debug marker above the player;
+- draws only camera-visible map tiles each frame;
+- shows a standalone FPS counter even when the debug overlay is disabled;
+- fires the default pistol continuously while the primary mouse button is held, using weapon data from `res/config/weapons.json`.
 
 The shooter runtime does not import or call TopDownMapGen. The map generator remains a separate project.
 
@@ -46,7 +49,7 @@ The minimal renderer opens a raylib window and draws the loaded map package:
 PYTHONPATH=src python3 -m topdown_shooter --map ../TopDownMapGen/out --run
 ```
 
-Window settings, player marker settings, aim debug settings, debug overlay settings, and control bindings are stored in the packaged runtime config:
+Window settings, player marker settings, aim debug settings, weapon database path, FPS counter settings, debug overlay settings, and control bindings are stored in the packaged runtime config:
 
 ```text
 src/topdown_shooter/config/default_runtime_config.json
@@ -63,21 +66,40 @@ Q / E: zoom out / zoom in
 Home: reset camera to map start and switch to map-viewer mode
 F: toggle player-follow camera
 WASD: move player
+LMB: hold to fire current weapon
 ```
 
 ## Camera foundation
 
-The renderer uses a small camera rig that centers on the generated start tile and clamps the camera target to map bounds. Runtime starts in player-follow mode by default, so the camera target tracks the moving player with smoothing, movement-direction lookahead, a small dead zone, and a configurable max camera speed. Pressing the configured follow toggle switches between player-follow and manual map-viewer modes. Manual panning uses arrow keys while WASD controls player movement. Zoom is available through the mouse wheel and Q/E fallback keys in both modes. Window size, zoom limits, camera movement speed, follow mode default, smooth time, max follow speed, lookahead, dead zone, camera flags, mouse wheel zoom, and control bindings are stored in the packaged runtime config instead of being hardcoded in rendering systems.
+The renderer uses a small camera rig that centers on the generated start tile and clamps the camera target to map bounds. Runtime starts in player-follow mode by default, so the camera target tracks the moving player with smoothing, movement-direction lookahead, aim-direction lookahead, a small dead zone, and a configurable max camera speed. Pressing the configured follow toggle switches between player-follow and manual map-viewer modes. Manual panning uses arrow keys while WASD controls player movement. Zoom is available through the mouse wheel and Q/E fallback keys in both modes. Window size, zoom limits, camera movement speed, follow mode default, smooth time, max follow speed, movement lookahead, aim lookahead, dead zone, camera flags, mouse wheel zoom, and control bindings are stored in the packaged runtime config instead of being hardcoded in rendering systems.
 
 ## Debug overlay
 
-The debug overlay is a translucent runtime panel drawn above the map. It is disabled by default and can be toggled with the configured debug key chord. The overlay uses two aligned columns: labels are drawn in white and values in orange for readability. It shows FPS, window parameters, map package metadata, map dimensions, camera mode and target, player position, mouse screen/world/tile coordinates, tile data under the cursor, tactical entity counts, validation status, warning codes, active controls, and the configured overlay font. Overlay font size is configured through `debug_overlay.font_size` in `default_runtime_config.json`. Overlay custom font path is configured through `debug_overlay.font_path`; the default expected path is `res/fonts/IBMPlexMono-Regular.ttf`. If that font file is missing or cannot be loaded, the runtime falls back to the default raylib font. Overlay background dimming is configured through `debug_overlay.background_alpha`, and the panel width is configured through `debug_overlay.panel_width`.
+A small standalone FPS counter is drawn independently from the debug overlay and remains visible when the large panel is hidden. Its enabled flag, screen position, margins, and font size are configured through the `fps_counter` section in `default_runtime_config.json`.
+
+The debug overlay is a translucent runtime panel drawn above the map. It is disabled by default and can be toggled with the configured debug key chord. The overlay uses two aligned columns: labels are drawn in white and values in orange for readability. It shows current FPS, target FPS, window parameters, render tile counts, projectile statistics, map package metadata, map dimensions, camera mode and target, player position, mouse screen/world/tile coordinates, tile data under the cursor, tactical entity counts, validation status, warning codes, active controls, and the configured overlay font. Overlay font size is configured through `debug_overlay.font_size` in `default_runtime_config.json`. Overlay custom font path is configured through `debug_overlay.font_path`; the default expected path is `res/fonts/PressStart2P-Regular.ttf`. If that font file is missing or cannot be loaded, the runtime falls back to the default raylib font. Overlay background dimming is configured through `debug_overlay.background_alpha`, and the panel width is configured through `debug_overlay.panel_width`.
 
 ## Resources
 
-Runtime assets live under `res/`. Fonts live under `res/fonts/`. The debug overlay is configured to use `res/fonts/IBMPlexMono-Regular.ttf` when that file exists.
+Runtime assets live under `res/`. Fonts live under `res/fonts/`. The debug overlay is configured to use `res/fonts/PressStart2P-Regular.ttf` when that file exists.
 
+
+## Weapons
+
+Weapon definitions live in `res/config/weapons.json`. The current schema is `weapons-v1` and the default weapon is `pistol`. The pistol is the current baseline weapon and uses the existing projectile behavior through data-driven fields:
+
+```text
+fire_rate_rpm
+projectile_speed_px_per_second
+projectile_range_px
+projectile_lifetime_seconds
+projectile_radius_px
+spread_degrees
+shots_per_fire
+```
+
+Holding the configured primary fire button fires continuously according to the current weapon fire rate. The fire interval is calculated as `60 / fire_rate_rpm`. More weapons can be added to the database later without changing projectile runtime code.
 
 ## Player marker
 
-The runtime creates an initial player state at the center of the generated `S` tile and draws it as a simple marker above the map. The player can move with configurable WASD controls. Movement is delta-time based and uses basic tile collision with separate X/Y axis resolution so the marker can slide along blocking tiles. The runtime also calculates a mouse aim direction from the player to the world-space cursor and draws a short configurable aim debug marker. Weapons, shooting, and advanced physics are intentionally out of scope for this version. Player speed, collision radius, marker radius, and aim debug marker settings are configured in `default_runtime_config.json`.
+The runtime creates an initial player state at the center of the generated `S` tile and draws it as a simple marker above the map. The player can move with configurable WASD controls. Movement is delta-time based and uses basic tile collision with separate X/Y axis resolution so the marker can slide along blocking tiles. The runtime also calculates a mouse aim direction from the player to the world-space cursor and draws a short configurable aim debug marker. The player holds the default pistol and fires continuously while LMB is held. Projectiles use the current weapon definition, move in the current aim direction, and disappear when they exceed lifetime/range, leave the map, or hit a blocked tile. Enemies, damage, recoil, particles, and sound are intentionally out of scope for this version. Player speed, collision radius, marker radius, aim debug marker settings, weapon database path, and fire binding are configured in `default_runtime_config.json`.
