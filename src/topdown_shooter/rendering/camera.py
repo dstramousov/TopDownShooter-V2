@@ -1,0 +1,141 @@
+"""Runtime camera foundation for the raylib renderer."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from topdown_shooter.config.runtime_config import CameraConfig, WindowConfig
+from topdown_shooter.world.coordinates import WorldCoord, tile_to_world_center
+from topdown_shooter.world.runtime_map import RuntimeMap
+
+
+@dataclass(frozen=True, slots=True)
+class CameraBounds:
+    """Camera movement bounds in world space.
+
+    Attributes:
+        min_x: Minimum camera target X coordinate.
+        min_y: Minimum camera target Y coordinate.
+        max_x: Maximum camera target X coordinate.
+        max_y: Maximum camera target Y coordinate.
+    """
+
+    min_x: float
+    min_y: float
+    max_x: float
+    max_y: float
+
+
+@dataclass(slots=True)
+class RuntimeCamera:
+    """State owned by the runtime camera.
+
+    Attributes:
+        target: Current camera target in world space.
+        zoom: Current camera zoom.
+    """
+
+    target: WorldCoord
+    zoom: float
+
+
+class CameraRig:
+    """Build and update the runtime camera.
+
+    The rig currently uses a static target centered on the map start tile. The
+    structure deliberately keeps target and config data separate so future
+    inertia, lookahead, and director-camera behavior can be added without
+    changing rendering code.
+    """
+
+    def __init__(
+        self,
+        runtime_map: RuntimeMap,
+        window_config: WindowConfig,
+        camera_config: CameraConfig,
+    ) -> None:
+        """Initialize the camera rig.
+
+        Args:
+            runtime_map: Runtime map used for bounds and initial target.
+            window_config: Window configuration.
+            camera_config: Camera configuration.
+        """
+        self._runtime_map = runtime_map
+        self._window_config = window_config
+        self._camera_config = camera_config
+        initial_target = tile_to_world_center(
+            runtime_map.start_tile,
+            runtime_map.tile_size_px,
+        )
+        self._state = RuntimeCamera(
+            target=self._clamp_target(initial_target),
+            zoom=camera_config.zoom,
+        )
+
+    @property
+    def state(self) -> RuntimeCamera:
+        """Return the current camera state."""
+        return self._state
+
+    def build_raylib_camera(self, raylib: Any) -> Any:
+        """Build a raylib Camera2D from the current state.
+
+        Args:
+            raylib: Imported pyray module.
+
+        Returns:
+            Raylib Camera2D instance.
+        """
+        return raylib.Camera2D(
+            raylib.Vector2(
+                self._window_config.width / 2,
+                self._window_config.height / 2,
+            ),
+            raylib.Vector2(self._state.target.x, self._state.target.y),
+            0.0,
+            self._state.zoom,
+        )
+
+    def calculate_bounds(self) -> CameraBounds:
+        """Calculate camera target bounds for the current map and window.
+
+        Returns:
+            Camera target bounds in world space.
+        """
+        map_width_px = self._runtime_map.width_tiles * self._runtime_map.tile_size_px
+        map_height_px = self._runtime_map.height_tiles * self._runtime_map.tile_size_px
+        half_view_width = self._window_config.width / (2 * self._camera_config.zoom)
+        half_view_height = self._window_config.height / (2 * self._camera_config.zoom)
+
+        if map_width_px <= half_view_width * 2:
+            min_x = max_x = map_width_px / 2
+        else:
+            min_x = half_view_width
+            max_x = map_width_px - half_view_width
+
+        if map_height_px <= half_view_height * 2:
+            min_y = max_y = map_height_px / 2
+        else:
+            min_y = half_view_height
+            max_y = map_height_px - half_view_height
+
+        return CameraBounds(min_x=min_x, min_y=min_y, max_x=max_x, max_y=max_y)
+
+    def _clamp_target(self, target: WorldCoord) -> WorldCoord:
+        """Clamp a camera target to map bounds.
+
+        Args:
+            target: Requested camera target.
+
+        Returns:
+            Clamped camera target.
+        """
+        if not self._camera_config.clamp_to_map:
+            return target
+        bounds = self.calculate_bounds()
+        return WorldCoord(
+            x=min(max(target.x, bounds.min_x), bounds.max_x),
+            y=min(max(target.y, bounds.min_y), bounds.max_y),
+        )

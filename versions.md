@@ -22,3 +22,12 @@
 - Added packaged runtime configuration for window settings and control bindings.
 - Rendered generated maps from `RuntimeMap` with simple tile colors.
 - Centered the initial camera on the map start tile.
+
+
+## v0.0.3 -> v0.0.4
+
+- Added a camera foundation with `CameraRig` and typed camera state.
+- Centered the runtime camera on the generated start tile through coordinate helpers.
+- Added camera clamping against map bounds.
+- Extended runtime config with camera clamp and reserved inertia/lookahead settings.
+- Reduced raylib INFO log noise before window initialization.

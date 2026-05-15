@@ -35,9 +35,15 @@ class CameraConfig:
 
     Attributes:
         zoom: Initial camera zoom.
+        clamp_to_map: Whether the camera target is clamped to map bounds.
+        smooth_time: Reserved smoothing time for future inertial follow.
+        lookahead_tiles: Reserved lookahead distance for future player follow.
     """
 
     zoom: float
+    clamp_to_map: bool
+    smooth_time: float
+    lookahead_tiles: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +111,9 @@ class RuntimeConfigLoader:
             ),
             camera=CameraConfig(
                 zoom=self._require_positive_float(camera, "zoom"),
+                clamp_to_map=self._require_bool(camera, "clamp_to_map"),
+                smooth_time=self._require_non_negative_float(camera, "smooth_time"),
+                lookahead_tiles=self._require_non_negative_float(camera, "lookahead_tiles"),
             ),
             controls=ControlsConfig(
                 quit=self._require_str(controls, "quit"),
@@ -156,6 +165,21 @@ class RuntimeConfigLoader:
             raise RuntimeConfigError(f"Runtime config integer is missing or invalid: {key}")
         return value
 
+    def _require_bool(self, data: dict[str, Any], key: str) -> bool:
+        """Return a required boolean value.
+
+        Args:
+            data: Source dictionary.
+            key: Required key.
+
+        Returns:
+            Boolean value.
+        """
+        value = data.get(key)
+        if not isinstance(value, bool):
+            raise RuntimeConfigError(f"Runtime config boolean is missing or invalid: {key}")
+        return value
+
     def _require_positive_float(self, data: dict[str, Any], key: str) -> float:
         """Return a required positive float value.
 
@@ -168,5 +192,20 @@ class RuntimeConfigLoader:
         """
         value = data.get(key)
         if not isinstance(value, int | float) or value <= 0:
+            raise RuntimeConfigError(f"Runtime config number is missing or invalid: {key}")
+        return float(value)
+
+    def _require_non_negative_float(self, data: dict[str, Any], key: str) -> float:
+        """Return a required non-negative float value.
+
+        Args:
+            data: Source dictionary.
+            key: Required key.
+
+        Returns:
+            Non-negative float value.
+        """
+        value = data.get(key)
+        if not isinstance(value, int | float) or value < 0:
             raise RuntimeConfigError(f"Runtime config number is missing or invalid: {key}")
         return float(value)
