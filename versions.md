@@ -81,3 +81,12 @@
 - Added player movement and collision diagnostics to the debug overlay.
 - Kept camera follow, shooting, enemies, and tactical overlays out of scope.
 
+
+
+## v0.0.10 -> v0.0.11
+
+- Added player-follow camera mode enabled by default at runtime.
+- Added configurable follow toggle binding to switch between follow and map-viewer camera modes.
+- Kept manual pan as a map-viewer action while zoom remains available in both modes.
+- Surfaced camera mode and debug overlay font size in the debug overlay diagnostics.
+- Documented debug overlay font size as a runtime config setting.

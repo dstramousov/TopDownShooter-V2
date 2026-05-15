@@ -132,6 +132,7 @@ class DebugOverlay:
                 rows=(
                     DebugOverlayRow("Version", __version__),
                     DebugOverlayRow("Overlay", "on"),
+                    DebugOverlayRow("Font", f"{self._config.debug_overlay.font_size}px"),
                 ),
             ),
             DebugOverlaySection(
@@ -149,6 +150,7 @@ class DebugOverlay:
             DebugOverlaySection(
                 title="Camera",
                 rows=(
+                    DebugOverlayRow("Mode", "follow" if camera.follow_player else "map_viewer"),
                     DebugOverlayRow("Target", f"{camera.target.x:.1f}, {camera.target.y:.1f}"),
                 ),
             ),
@@ -160,7 +162,10 @@ class DebugOverlay:
                         "World",
                         f"{player.world_position.x:.1f}, {player.world_position.y:.1f}",
                     ),
-                    DebugOverlayRow("Move speed", f"{self._config.player.movement_speed_px_per_second:.1f}"),
+                    DebugOverlayRow(
+                        "Move speed",
+                        f"{self._config.player.movement_speed_px_per_second:.1f}",
+                    ),
                     DebugOverlayRow("Collision", f"{self._config.player.collision_radius_px}px"),
                     DebugOverlayRow("Marker radius", f"{self._config.player.marker_radius_px}px"),
                 ),
@@ -236,6 +241,7 @@ class DebugOverlay:
                     DebugOverlayRow("Pan", self._format_pan_bindings()),
                     DebugOverlayRow("Zoom", self._format_zoom_bindings()),
                     DebugOverlayRow("Reset", self._config.controls.camera_reset),
+                    DebugOverlayRow("Follow", self._config.controls.camera_toggle_follow),
                     DebugOverlayRow("Move", self._format_player_bindings()),
                 ),
             ),

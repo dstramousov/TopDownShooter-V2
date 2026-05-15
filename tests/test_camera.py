@@ -64,6 +64,7 @@ def test_camera_rig_clamps_start_target_to_map_bounds() -> None:
             clamp_to_map=True,
             smooth_time=0.0,
             lookahead_tiles=0.0,
+            follow_player_by_default=True,
         ),
     )
 
@@ -91,6 +92,7 @@ def test_camera_rig_pans_zooms_and_resets_to_start() -> None:
             clamp_to_map=True,
             smooth_time=0.0,
             lookahead_tiles=0.0,
+            follow_player_by_default=True,
         ),
     )
 
@@ -107,3 +109,70 @@ def test_camera_rig_pans_zooms_and_resets_to_start() -> None:
     camera.reset_to_start()
     assert camera.state.zoom == 1.0
     assert camera.state.target == start_target
+
+
+def test_camera_rig_follows_player_when_enabled() -> None:
+    """Camera rig should track the player in follow mode."""
+    runtime_map = _build_runtime_map(width=160, height=96, start=TileCoord(80, 48))
+    camera = CameraRig(
+        runtime_map=runtime_map,
+        window_config=WindowConfig(
+            title="Test",
+            width=1280,
+            height=720,
+            target_fps=60,
+        ),
+        camera_config=CameraConfig(
+            zoom=1.0,
+            min_zoom=0.5,
+            max_zoom=3.0,
+            zoom_step=0.1,
+            move_speed_px_per_second=720.0,
+            clamp_to_map=True,
+            smooth_time=0.0,
+            lookahead_tiles=0.0,
+            follow_player_by_default=True,
+        ),
+    )
+
+    camera.update_follow_target(WorldCoord(1400.0, 900.0))
+
+    assert camera.state.follow_player is True
+    assert camera.state.target == WorldCoord(1400.0, 900.0)
+
+
+def test_camera_manual_pan_switches_to_map_viewer_mode() -> None:
+    """Manual camera panning should disable player-follow mode."""
+    runtime_map = _build_runtime_map(width=160, height=96, start=TileCoord(80, 48))
+    camera = CameraRig(
+        runtime_map=runtime_map,
+        window_config=WindowConfig(
+            title="Test",
+            width=1280,
+            height=720,
+            target_fps=60,
+        ),
+        camera_config=CameraConfig(
+            zoom=1.0,
+            min_zoom=0.5,
+            max_zoom=3.0,
+            zoom_step=0.1,
+            move_speed_px_per_second=720.0,
+            clamp_to_map=True,
+            smooth_time=0.0,
+            lookahead_tiles=0.0,
+            follow_player_by_default=True,
+        ),
+    )
+
+    camera.pan(16.0, 0.0)
+    camera.update_follow_target(WorldCoord(1400.0, 900.0))
+
+    assert camera.state.follow_player is False
+    assert camera.state.target != WorldCoord(1400.0, 900.0)
+
+    camera.toggle_follow_player()
+    camera.update_follow_target(WorldCoord(1400.0, 900.0))
+
+    assert camera.state.follow_player is True
+    assert camera.state.target == WorldCoord(1400.0, 900.0)

@@ -13,7 +13,8 @@
     "min_zoom": 0.5,
     "max_zoom": 3.0,
     "zoom_step": 0.1,
-    "move_speed_px_per_second": 720.0
+    "move_speed_px_per_second": 720.0,
+    "follow_player_by_default": true
   },
   "player": {
     "marker_radius_px": 6,
@@ -67,6 +68,7 @@
     ],
     "player_right": [
       "KEY_D"
-    ]
+    ],
+    "camera_toggle_follow": "KEY_F"
   }
 }

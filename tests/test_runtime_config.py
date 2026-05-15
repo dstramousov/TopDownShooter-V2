@@ -21,6 +21,7 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.controls.camera_zoom_out == "KEY_Q"
     assert config.controls.camera_zoom_mouse_wheel is True
     assert config.controls.camera_reset == "KEY_HOME"
+    assert config.controls.camera_toggle_follow == "KEY_F"
     assert config.camera.zoom == 1.0
     assert config.camera.min_zoom == 0.5
     assert config.camera.max_zoom == 3.0
@@ -29,6 +30,7 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.camera.clamp_to_map is True
     assert config.camera.smooth_time == 0.0
     assert config.camera.lookahead_tiles == 0.0
+    assert config.camera.follow_player_by_default is True
     assert config.player.marker_radius_px == 6
     assert config.player.movement_speed_px_per_second == 160.0
     assert config.player.collision_radius_px == 5

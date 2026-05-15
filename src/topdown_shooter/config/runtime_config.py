@@ -42,6 +42,7 @@ class CameraConfig:
         clamp_to_map: Whether the camera target is clamped to map bounds.
         smooth_time: Reserved smoothing time for future inertial follow.
         lookahead_tiles: Reserved lookahead distance for future player follow.
+        follow_player_by_default: Whether the camera starts in player-follow mode.
     """
 
     zoom: float
@@ -52,6 +53,7 @@ class CameraConfig:
     clamp_to_map: bool
     smooth_time: float
     lookahead_tiles: float
+    follow_player_by_default: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +126,7 @@ class ControlsConfig:
         camera_zoom_out: Key name used to zoom the camera out.
         camera_zoom_mouse_wheel: Whether mouse wheel zoom is enabled.
         camera_reset: Key name used to reset the camera to the map start tile.
+        camera_toggle_follow: Key name used to toggle player-follow camera mode.
         player_up: Key names used to move the player up.
         player_down: Key names used to move the player down.
         player_left: Key names used to move the player left.
@@ -140,6 +143,7 @@ class ControlsConfig:
     camera_zoom_out: str
     camera_zoom_mouse_wheel: bool
     camera_reset: str
+    camera_toggle_follow: str
     player_up: tuple[str, ...]
     player_down: tuple[str, ...]
     player_left: tuple[str, ...]
@@ -244,6 +248,7 @@ class RuntimeConfigLoader:
                     "camera_zoom_mouse_wheel",
                 ),
                 camera_reset=self._require_str(controls, "camera_reset"),
+                camera_toggle_follow=self._require_str(controls, "camera_toggle_follow"),
                 player_up=self._require_key_names(controls, "player_up"),
                 player_down=self._require_key_names(controls, "player_down"),
                 player_left=self._require_key_names(controls, "player_left"),
@@ -279,6 +284,7 @@ class RuntimeConfigLoader:
             clamp_to_map=self._require_bool(camera, "clamp_to_map"),
             smooth_time=self._require_non_negative_float(camera, "smooth_time"),
             lookahead_tiles=self._require_non_negative_float(camera, "lookahead_tiles"),
+            follow_player_by_default=self._require_bool(camera, "follow_player_by_default"),
         )
 
     def _require_dict(self, data: dict[str, Any], key: str) -> dict[str, Any]:

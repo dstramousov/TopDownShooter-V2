@@ -34,16 +34,19 @@ class RuntimeCamera:
     Attributes:
         target: Current camera target in world space.
         zoom: Current camera zoom.
+        follow_player: Whether the camera currently follows the player.
     """
 
     target: WorldCoord
     zoom: float
+    follow_player: bool
 
 
 class CameraRig:
     """Build and update the runtime camera.
 
-    The rig owns interactive map-viewer camera state. It supports panning,
+    The rig owns shared camera state used by both gameplay follow mode and the
+    manual map-viewer mode. It supports player-follow targeting, panning,
     zooming, reset-to-start, and clamping to map bounds while keeping room for
     future inertia, lookahead, and director-camera behavior.
     """
@@ -71,6 +74,7 @@ class CameraRig:
         self._state = RuntimeCamera(
             target=self._start_target,
             zoom=camera_config.zoom,
+            follow_player=camera_config.follow_player_by_default,
         )
         self._state.target = self._clamp_target(self._state.target)
 
@@ -98,13 +102,31 @@ class CameraRig:
             self._state.zoom,
         )
 
+    def update_follow_target(self, player_position: WorldCoord) -> None:
+        """Update camera target from the player position in follow mode.
+
+        Args:
+            player_position: Current player world position.
+        """
+        if not self._state.follow_player:
+            return
+        self._state.target = self._clamp_target(player_position)
+
+    def toggle_follow_player(self) -> None:
+        """Toggle player-follow camera mode."""
+        self._state.follow_player = not self._state.follow_player
+
     def pan(self, dx: float, dy: float) -> None:
         """Move the camera target by a world-space delta.
+
+        Manual panning switches the camera to map-viewer mode so the next frame
+        does not snap back to the player.
 
         Args:
             dx: Horizontal movement in world pixels.
             dy: Vertical movement in world pixels.
         """
+        self._state.follow_player = False
         self._state.target = self._clamp_target(
             WorldCoord(
                 x=self._state.target.x + dx,
@@ -127,6 +149,7 @@ class CameraRig:
 
     def reset_to_start(self) -> None:
         """Reset camera target and zoom to configured start values."""
+        self._state.follow_player = False
         self._state.zoom = self._camera_config.zoom
         self._state.target = self._clamp_target(self._start_target)
 

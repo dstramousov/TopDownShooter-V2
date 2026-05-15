@@ -74,6 +74,9 @@ class RaylibWindow:
         self._camera_zoom_out_key = self._resolve_key(config.controls.camera_zoom_out)
         self._camera_zoom_mouse_wheel_enabled = config.controls.camera_zoom_mouse_wheel
         self._camera_reset_key = self._resolve_key(config.controls.camera_reset)
+        self._camera_toggle_follow_key = self._resolve_key(
+            config.controls.camera_toggle_follow,
+        )
         self._player_up_keys = self._resolve_keys(config.controls.player_up)
         self._player_down_keys = self._resolve_keys(config.controls.player_down)
         self._player_left_keys = self._resolve_keys(config.controls.player_left)
@@ -119,6 +122,7 @@ class RaylibWindow:
                 frame_time = raylib.get_frame_time()
                 self._update_player_controls(frame_time)
                 self._update_camera_controls(frame_time)
+                self._camera_rig.update_follow_target(self._player.world_position)
                 camera = self._camera_rig.build_raylib_camera(raylib)
 
                 raylib.begin_drawing()
@@ -192,6 +196,8 @@ class RaylibWindow:
                 self._camera_rig.zoom_by(wheel_delta * self._config.camera.zoom_step)
         if self._raylib.is_key_pressed(self._camera_reset_key):
             self._camera_rig.reset_to_start()
+        if self._raylib.is_key_pressed(self._camera_toggle_follow_key):
+            self._camera_rig.toggle_follow_player()
 
     def _configure_raylib_logging(self) -> None:
         """Reduce raylib logging noise before opening the window."""
