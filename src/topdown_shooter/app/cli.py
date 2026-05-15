@@ -49,12 +49,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if not args.inspect_map:
-        parser.error("Only --inspect-map is supported in version 0.0.1.")
+        parser.error("Only --inspect-map is supported in version 0.0.2.")
 
     try:
         summary = inspect_map_package(args.map_package_dir)
     except MapPackageError as exc:
-        LOGGER.error("Map package inspection failed: %s", exc)
+        sys.stderr.write(f"ERROR: Map package inspection failed:\n{exc}\n")
         return 1
 
     sys.stdout.write(f"{summary}\n")

@@ -7,3 +7,10 @@
 - Added map package loading for `_manifest.json`, `validation_report.json`, and `tactical_map.json`.
 - Added minimal runtime validation and `RuntimeMap` construction.
 - Added inspection summary output.
+
+
+## v0.0.1 -> v0.0.2
+
+- Improved human-readable CLI diagnostics for invalid map package paths.
+- Added clear recovery hints when required map package files are missing.
+- Added validation for missing `--map` paths and file paths passed instead of directories.

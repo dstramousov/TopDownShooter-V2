@@ -59,3 +59,52 @@ def test_cli_inspect_map_prints_summary(
     assert exit_code == 0
     assert "Map package loaded" in captured.out
     assert "generator: 0.0.10" in captured.out
+
+
+def test_cli_missing_map_path_prints_recovery_hint(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """CLI should explain how to recover from a missing map path."""
+    missing_dir = tmp_path / "missing-package"
+
+    exit_code = main(["--map", str(missing_dir), "--inspect-map"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Map package is not valid or not generated yet." in captured.err
+    assert "The --map path does not exist." in captured.err
+    assert "Expected a TopDownMapGen output directory:" in captured.err
+
+
+def test_cli_missing_manifest_prints_missing_file_hint(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """CLI should name a missing required map package file."""
+    package_dir = tmp_path / "package"
+    package_dir.mkdir()
+
+    exit_code = main(["--map", str(package_dir), "--inspect-map"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Missing required file:" in captured.err
+    assert "_manifest.json" in captured.err
+    assert "--map points to the generated output directory" in captured.err
+
+
+def test_cli_file_path_prints_directory_hint(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """CLI should reject a file path passed as --map."""
+    map_file = tmp_path / "tactical_map.json"
+    map_file.write_text("{}", encoding="utf-8")
+
+    exit_code = main(["--map", str(map_file), "--inspect-map"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "The --map path must be a directory, not a file." in captured.err
+    assert "--map does not point to a single JSON file" in captured.err

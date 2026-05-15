@@ -10,6 +10,7 @@ from typing import Any
 from topdown_shooter.map_loading.errors import (
     InvalidMapPackageError,
     MissingMapPackageFileError,
+    build_invalid_package_message,
 )
 from topdown_shooter.map_loading.manifest import GenerationManifest
 from topdown_shooter.map_loading.validation_report import ValidationReport
@@ -53,8 +54,7 @@ class MapPackageLoader:
             InvalidMapPackageError: If package JSON cannot be decoded.
         """
         resolved_dir = package_dir.expanduser().resolve()
-        if not resolved_dir.exists() or not resolved_dir.is_dir():
-            raise MissingMapPackageFileError(f"Map package directory does not exist: {resolved_dir}")
+        self._validate_package_dir(resolved_dir)
 
         manifest = GenerationManifest.from_dict(
             self._read_json(resolved_dir / self.MANIFEST_FILE),
@@ -71,6 +71,31 @@ class MapPackageLoader:
             tactical_map=tactical_map,
         )
 
+    def _validate_package_dir(self, package_dir: Path) -> None:
+        """Validate that the package path can contain map artifacts.
+
+        Args:
+            package_dir: Candidate package directory.
+
+        Raises:
+            MissingMapPackageFileError: If the path does not exist.
+            InvalidMapPackageError: If the path is not a directory.
+        """
+        if not package_dir.exists():
+            raise MissingMapPackageFileError(
+                build_invalid_package_message(
+                    package_dir,
+                    "The --map path does not exist.",
+                ),
+            )
+        if not package_dir.is_dir():
+            raise InvalidMapPackageError(
+                build_invalid_package_message(
+                    package_dir,
+                    "The --map path must be a directory, not a file.",
+                ),
+            )
+
     def _read_json(self, path: Path) -> dict[str, Any]:
         """Read a JSON object from disk.
 
@@ -85,7 +110,13 @@ class MapPackageLoader:
             InvalidMapPackageError: If the file is not a JSON object.
         """
         if not path.exists() or not path.is_file():
-            raise MissingMapPackageFileError(f"Required map package file is missing: {path}")
+            raise MissingMapPackageFileError(
+                build_invalid_package_message(
+                    path.parent,
+                    "A required map package file is missing.",
+                    missing_file=path.name,
+                ),
+            )
 
         try:
             with path.open("r", encoding="utf-8") as file_obj:
