@@ -35,6 +35,7 @@ class WeaponDefinition:
         shots_per_fire: Number of projectiles spawned per fire event.
         magazine_size: Number of fire events available before reload.
         initial_reserve_ammo: Initial reserve ammo, or None for infinite reserve.
+        reload_time_seconds: Time required to reload this weapon.
     """
 
     weapon_id: str
@@ -49,6 +50,7 @@ class WeaponDefinition:
     shots_per_fire: int
     magazine_size: int
     initial_reserve_ammo: int | None
+    reload_time_seconds: float
 
     @property
     def fire_interval_seconds(self) -> float:
@@ -146,6 +148,8 @@ class WeaponStats:
         ammo_in_magazine: Current ammo available in the magazine.
         magazine_size: Current weapon magazine size.
         reserve_ammo: Current finite reserve ammo, or None for infinite reserve.
+        reload_time_seconds: Current weapon reload duration.
+        reload_remaining_seconds: Current reload countdown.
         available_slots: Available weapon slot numbers.
     """
 
@@ -164,7 +168,14 @@ class WeaponStats:
     ammo_in_magazine: int
     magazine_size: int
     reserve_ammo: int | None
+    reload_time_seconds: float
+    reload_remaining_seconds: float
     available_slots: tuple[int, ...]
+
+    @property
+    def is_reloading(self) -> bool:
+        """Return whether the current weapon is reloading."""
+        return self.reload_remaining_seconds > 0.0
 
     @property
     def reserve_display(self) -> str:
@@ -266,6 +277,7 @@ class WeaponConfigLoader:
             shots_per_fire=self._require_positive_int(raw_weapon, "shots_per_fire"),
             magazine_size=self._require_positive_int(raw_weapon, "magazine_size"),
             initial_reserve_ammo=self._require_reserve_ammo(raw_weapon, "initial_reserve_ammo"),
+            reload_time_seconds=self._require_positive_float(raw_weapon, "reload_time_seconds"),
         )
 
     def _require_str(self, data: dict[str, object], key: str) -> str:
@@ -368,12 +380,14 @@ class WeaponState:
         current_weapon_id: Currently equipped weapon identifier.
         ammo_by_weapon_id: Runtime ammo counters keyed by weapon id.
         cooldown_remaining_seconds: Time until the next fire event is allowed.
+        reload_remaining_seconds: Time until the current reload completes.
     """
 
     database: WeaponDatabase
     current_weapon_id: str
     ammo_by_weapon_id: dict[str, WeaponAmmoState]
     cooldown_remaining_seconds: float = 0.0
+    reload_remaining_seconds: float = 0.0
 
     @classmethod
     def from_database(cls, database: WeaponDatabase) -> Self:
@@ -450,6 +464,8 @@ class WeaponController:
             ammo_in_magazine=ammo.ammo_in_magazine,
             magazine_size=weapon.magazine_size,
             reserve_ammo=ammo.reserve_ammo,
+            reload_time_seconds=weapon.reload_time_seconds,
+            reload_remaining_seconds=self._state.reload_remaining_seconds,
             available_slots=tuple(sorted(self._state.database.weapon_ids_by_slot)),
         )
 
@@ -469,28 +485,41 @@ class WeaponController:
             return True
         self._state.current_weapon_id = weapon_id
         self._state.cooldown_remaining_seconds = 0.0
+        self._state.reload_remaining_seconds = 0.0
         return True
 
     def reload_current(self) -> bool:
-        """Reload the currently equipped weapon from reserve ammo.
+        """Start reloading the currently equipped weapon from reserve ammo.
 
         Returns:
-            True if the magazine ammo changed.
+            True if a reload was started.
         """
+        weapon = self._state.current_weapon
+        ammo = self._state.current_ammo
+        if self._state.reload_remaining_seconds > 0.0:
+            return False
+        if weapon.magazine_size - ammo.ammo_in_magazine <= 0:
+            return False
+        if ammo.reserve_ammo == 0:
+            return False
+        self._state.reload_remaining_seconds = weapon.reload_time_seconds
+        return True
+
+    def _finish_reload(self) -> None:
+        """Complete the pending reload for the currently equipped weapon."""
         weapon = self._state.current_weapon
         ammo = self._state.current_ammo
         missing_ammo = weapon.magazine_size - ammo.ammo_in_magazine
         if missing_ammo <= 0:
-            return False
+            return
         if ammo.reserve_ammo is None:
             ammo.ammo_in_magazine = weapon.magazine_size
-            return True
+            return
         if ammo.reserve_ammo <= 0:
-            return False
+            return
         loaded = min(missing_ammo, ammo.reserve_ammo)
         ammo.ammo_in_magazine += loaded
         ammo.reserve_ammo -= loaded
-        return loaded > 0
 
     def update(
         self,
@@ -514,6 +543,15 @@ class WeaponController:
                 0.0,
                 self._state.cooldown_remaining_seconds - frame_time,
             )
+            if self._state.reload_remaining_seconds > 0.0:
+                self._state.reload_remaining_seconds = max(
+                    0.0,
+                    self._state.reload_remaining_seconds - frame_time,
+                )
+                if self._state.reload_remaining_seconds <= 0.0:
+                    self._finish_reload()
+        if self._state.reload_remaining_seconds > 0.0:
+            return
         if not fire_held:
             return
         if direction_x == 0.0 and direction_y == 0.0:

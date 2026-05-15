@@ -66,5 +66,6 @@ def test_runtime_map_builder_loads_minimal_package(tmp_path: Path) -> None:
     assert runtime_map.start_tile.y == 0
     assert runtime_map.goal_tile.x == 2
     assert runtime_map.goal_tile.y == 0
+    assert runtime_map.tiles[0][1].movement_speed_multiplier == 1.0
     assert runtime_map.walkable_tile_count == 4
     assert runtime_map.blocked_tile_count == 2

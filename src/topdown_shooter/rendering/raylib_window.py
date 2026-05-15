@@ -138,6 +138,8 @@ class RaylibWindow:
             raylib=self._raylib,
             config=config.hud,
             window=config.window,
+            font_path=config.debug_overlay.font_path,
+            font_spacing=config.debug_overlay.font_spacing,
         )
         self._debug_overlay = DebugOverlay(
             raylib=self._raylib,
@@ -209,6 +211,7 @@ class RaylibWindow:
                 self._fps_counter.draw()
                 raylib.end_drawing()
         finally:
+            self._player_hud.unload()
             self._debug_overlay.unload()
             raylib.close_window()
 

@@ -57,6 +57,7 @@ def _write_weapon_database(path: Path) -> None:
                         "shots_per_fire": 1,
                         "magazine_size": 8,
                         "initial_reserve_ammo": "infinite",
+                        "reload_time_seconds": 0.9,
                     }
                 ],
             },
@@ -78,6 +79,7 @@ def test_weapon_config_loader_loads_default_weapon(tmp_path: Path) -> None:
     assert database.default_weapon.slot == 1
     assert database.default_weapon.magazine_size == 8
     assert database.default_weapon.initial_reserve_ammo is None
+    assert database.default_weapon.reload_time_seconds == 0.9
 
 
 def test_weapon_controller_continuously_fires_while_button_is_held(tmp_path: Path) -> None:
@@ -143,6 +145,7 @@ def _write_two_weapon_database(path: Path) -> None:
                         "shots_per_fire": 1,
                         "magazine_size": 8,
                         "initial_reserve_ammo": "infinite",
+                        "reload_time_seconds": 0.9,
                     },
                     {
                         "id": "ak47",
@@ -157,6 +160,7 @@ def _write_two_weapon_database(path: Path) -> None:
                         "shots_per_fire": 1,
                         "magazine_size": 30,
                         "initial_reserve_ammo": 90,
+                        "reload_time_seconds": 1.7,
                     },
                 ],
             },
@@ -181,6 +185,7 @@ def test_weapon_controller_switches_weapon_slots(tmp_path: Path) -> None:
     assert controller.stats.slot == 2
     assert controller.stats.ammo_in_magazine == 30
     assert controller.stats.reserve_ammo == 90
+    assert controller.stats.reload_time_seconds == 1.7
 
 
 def test_weapon_controller_reloads_from_infinite_reserve(tmp_path: Path) -> None:
@@ -203,8 +208,21 @@ def test_weapon_controller_reloads_from_infinite_reserve(tmp_path: Path) -> None
     reloaded = controller.reload_current()
 
     assert reloaded is True
+    assert controller.stats.ammo_in_magazine == 0
+    assert controller.stats.reserve_ammo is None
+    assert controller.stats.is_reloading is True
+
+    controller.update(
+        fire_held=False,
+        frame_time=0.9,
+        origin=WorldCoord(8.0, 24.0),
+        direction_x=1.0,
+        direction_y=0.0,
+    )
+
     assert controller.stats.ammo_in_magazine == 8
     assert controller.stats.reserve_ammo is None
+    assert controller.stats.is_reloading is False
 
 
 def test_weapon_controller_stops_when_magazine_is_empty(tmp_path: Path) -> None:
@@ -227,3 +245,32 @@ def test_weapon_controller_stops_when_magazine_is_empty(tmp_path: Path) -> None:
 
     assert projectile_system.stats.shots_fired == 8
     assert controller.stats.ammo_in_magazine == 0
+
+
+def test_weapon_controller_blocks_fire_during_reload(tmp_path: Path) -> None:
+    """Weapon controller should not fire while reload is in progress."""
+    database_path = tmp_path / "weapons.json"
+    _write_weapon_database(database_path)
+    runtime_map = _build_runtime_map()
+    projectile_system = ProjectileSystem(TileCollisionService(runtime_map))
+    weapon_state = WeaponState.from_database(WeaponConfigLoader().load(database_path))
+    controller = WeaponController(projectile_system=projectile_system, state=weapon_state)
+
+    controller.update(
+        fire_held=True,
+        frame_time=0.0,
+        origin=WorldCoord(8.0, 24.0),
+        direction_x=1.0,
+        direction_y=0.0,
+    )
+    assert controller.reload_current() is True
+    controller.update(
+        fire_held=True,
+        frame_time=0.2,
+        origin=WorldCoord(8.0, 24.0),
+        direction_x=1.0,
+        direction_y=0.0,
+    )
+
+    assert projectile_system.stats.shots_fired == 1
+    assert controller.stats.is_reloading is True

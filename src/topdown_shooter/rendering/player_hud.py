@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from topdown_shooter.combat.weapons import WeaponStats
 from topdown_shooter.config.runtime_config import HudConfig, WindowConfig
+from topdown_shooter.rendering.text import RaylibTextRenderer
 from topdown_shooter.world.player import PlayerState
 
 
@@ -22,17 +23,35 @@ class HudLayout:
 class PlayerHud:
     """Draw a compact player status HUD."""
 
-    def __init__(self, raylib: object, config: HudConfig, window: WindowConfig) -> None:
+    def __init__(
+        self,
+        raylib: object,
+        config: HudConfig,
+        window: WindowConfig,
+        font_path: str,
+        font_spacing: float,
+    ) -> None:
         """Initialize the HUD renderer.
 
         Args:
             raylib: Imported pyray module.
             config: Player HUD display configuration.
             window: Runtime window configuration.
+            font_path: Shared HUD/debug overlay font path.
+            font_spacing: Shared HUD/debug overlay font glyph spacing.
         """
         self._raylib = raylib
         self._config = config
         self._window = window
+        self._text = RaylibTextRenderer(
+            raylib=raylib,
+            font_path=font_path,
+            font_spacing=font_spacing,
+        )
+
+    def unload(self) -> None:
+        """Unload optional raylib resources owned by the HUD."""
+        self._text.unload()
 
     def draw(self, player: PlayerState, weapon: WeaponStats) -> None:
         """Draw player status information.
@@ -75,7 +94,7 @@ class PlayerHud:
         Returns:
             Calculated layout.
         """
-        text_width = max(self._raylib.measure_text(line, self._config.font_size) for line in lines)
+        text_width = max(self._text.measure_text(line, self._config.font_size) for line in lines)
         line_height = self._config.font_size + 4
         width = text_width + self._config.padding * 2
         height = line_height * len(lines) + self._config.padding * 2
@@ -106,5 +125,5 @@ class PlayerHud:
         y = layout.y + self._config.padding
         line_height = self._config.font_size + 4
         for line in lines:
-            self._raylib.draw_text(line, x, y, self._config.font_size, self._raylib.RAYWHITE)
+            self._text.draw_text(line, x, y, self._config.font_size, self._raylib.RAYWHITE)
             y += line_height

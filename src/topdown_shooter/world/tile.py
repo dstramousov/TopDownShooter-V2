@@ -16,3 +16,14 @@ class RuntimeTile:
     symbol: str
     movement_cost: int | None
     walkable: bool
+
+    @property
+    def movement_speed_multiplier(self) -> float:
+        """Return movement speed multiplier for this tile.
+
+        Returns:
+            Movement speed multiplier derived from the movement cost.
+        """
+        if not self.walkable or self.movement_cost is None:
+            return 0.0
+        return 1.0 / max(1, self.movement_cost)

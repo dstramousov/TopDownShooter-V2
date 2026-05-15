@@ -193,3 +193,11 @@
 - Added configurable enemy marker radius through `enemies.marker_radius_px`.
 - Added enemy diagnostics to the debug overlay.
 - Kept enemy AI, movement, damage, health, and projectile hits out of scope.
+
+
+## v0.0.24 -> v0.0.25
+
+- Added movement speed modifiers based on walkable tile movement costs.
+- Updated the player HUD to use the same configured custom font as the debug overlay.
+- Added per-weapon reload durations to `res/config/weapons.json` and runtime reload timing.
+- Kept enemy hits, enemy AI, player damage, pickups, recoil, sound, and tactical overlays out of scope.

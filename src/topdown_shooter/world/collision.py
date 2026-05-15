@@ -17,6 +17,24 @@ class TileCollisionService:
         """
         self._runtime_map = runtime_map
 
+    def movement_speed_multiplier_at(self, point: WorldCoord) -> float:
+        """Return movement speed multiplier at a world position.
+
+        Args:
+            point: World-space point.
+
+        Returns:
+            Tile movement speed multiplier, or 0.0 outside the map.
+        """
+        tile = world_to_tile(point, self._runtime_map.tile_size_px)
+        if tile.x < 0 or tile.y < 0:
+            return 0.0
+        if tile.x >= self._runtime_map.width_tiles:
+            return 0.0
+        if tile.y >= self._runtime_map.height_tiles:
+            return 0.0
+        return self._runtime_map.tiles[tile.y][tile.x].movement_speed_multiplier
+
     def is_circle_walkable(self, center: WorldCoord, radius_px: float) -> bool:
         """Return whether a circle can stand at the world position.
 
@@ -43,7 +61,6 @@ class TileCollisionService:
             WorldCoord(center.x + diagonal, center.y + diagonal),
         )
         return all(self.is_point_walkable(point) for point in sample_points)
-
 
     def is_point_inside_map(self, point: WorldCoord) -> bool:
         """Return whether a world point is inside runtime map bounds.

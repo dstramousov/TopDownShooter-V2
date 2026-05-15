@@ -13,6 +13,7 @@ from topdown_shooter.config.runtime_config import DebugOverlayConfig, RuntimeCon
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.rendering.camera import RuntimeCamera
 from topdown_shooter.rendering.map_renderer import RenderStats
+from topdown_shooter.rendering.text import RaylibTextRenderer
 from topdown_shooter.world.coordinates import ScreenCoord, TileCoord, WorldCoord, world_to_tile
 from topdown_shooter.world.player import PlayerState
 from topdown_shooter.world.runtime_map import RuntimeMap
@@ -86,8 +87,11 @@ class DebugOverlay:
         self._runtime_map = runtime_map
         self._package = package
         self._config = config
-        self._custom_font: object | None = None
-        self._custom_font_checked = False
+        self._text = RaylibTextRenderer(
+            raylib=raylib,
+            font_path=config.debug_overlay.font_path,
+            font_spacing=config.debug_overlay.font_spacing,
+        )
 
     def draw(
         self,
@@ -127,13 +131,7 @@ class DebugOverlay:
 
     def unload(self) -> None:
         """Unload optional raylib resources owned by the overlay."""
-        if self._custom_font is None:
-            return
-        unload_font = getattr(self._raylib, "unload_font", None)
-        if callable(unload_font):
-            unload_font(self._custom_font)
-        self._custom_font = None
-        self._custom_font_checked = False
+        self._text.unload()
 
     def _draw_text(self, text: str, x: int, y: int, font_size: int, color: object) -> None:
         """Draw overlay text with the configured custom font when available.
@@ -145,57 +143,7 @@ class DebugOverlay:
             font_size: Text size in pixels.
             color: Raylib color object.
         """
-        font = self._get_custom_font()
-        if font is None:
-            self._raylib.draw_text(text, x, y, font_size, color)
-            return
-
-        vector = self._raylib.Vector2(float(x), float(y))
-        self._raylib.draw_text_ex(
-            font,
-            text,
-            vector,
-            float(font_size),
-            self._config.debug_overlay.font_spacing,
-            color,
-        )
-
-    def _get_custom_font(self) -> object | None:
-        """Return loaded custom overlay font or None when unavailable.
-
-        Returns:
-            Loaded raylib font object or None.
-        """
-        if self._custom_font_checked:
-            return self._custom_font
-        self._custom_font_checked = True
-
-        font_path = self._resolve_font_path()
-        if font_path is None:
-            return None
-
-        load_font = getattr(self._raylib, "load_font", None)
-        if not callable(load_font):
-            return None
-
-        self._custom_font = load_font(str(font_path))
-        return self._custom_font
-
-    def _resolve_font_path(self) -> Path | None:
-        """Resolve configured overlay font path.
-
-        Returns:
-            Existing font path, or None when no usable path exists.
-        """
-        configured_path = Path(self._config.debug_overlay.font_path)
-        candidates = (
-            configured_path,
-            Path.cwd() / configured_path,
-        )
-        for candidate in candidates:
-            if candidate.is_file():
-                return candidate
-        return None
+        self._text.draw_text(text, x, y, font_size, color)
 
     def _format_font_info(self) -> str:
         """Format configured overlay font diagnostics.
@@ -204,7 +152,7 @@ class DebugOverlay:
             Human-readable font diagnostics.
         """
         font_name = Path(self._config.debug_overlay.font_path).name
-        if self._resolve_font_path() is None:
+        if self._text.resolve_font_path() is None:
             font_name = "raylib default"
         return f"{font_name} {self._config.debug_overlay.font_size}px"
 
@@ -348,6 +296,8 @@ class DebugOverlay:
                 DebugOverlayRow("Fire rate", f"{weapon_stats.fire_rate_rpm:.1f}rpm"),
                 DebugOverlayRow("Interval", f"{weapon_stats.fire_interval_seconds:.3f}s"),
                 DebugOverlayRow("Cooldown", f"{weapon_stats.cooldown_remaining_seconds:.3f}s"),
+                DebugOverlayRow("Reload time", f"{weapon_stats.reload_time_seconds:.3f}s"),
+                DebugOverlayRow("Reload left", f"{weapon_stats.reload_remaining_seconds:.3f}s"),
                 DebugOverlayRow("Spread", f"{weapon_stats.spread_degrees:.2f}deg"),
                 DebugOverlayRow("Shots/fire", str(weapon_stats.shots_per_fire)),
                 DebugOverlayRow("Fire", self._config.controls.fire_primary),

@@ -62,7 +62,13 @@ class PlayerController:
         if direction_length <= 0.0 or frame_time <= 0.0:
             return
 
-        distance = speed_px_per_second * frame_time
+        movement_multiplier = self._collision_service.movement_speed_multiplier_at(
+            player.world_position,
+        )
+        if movement_multiplier <= 0.0:
+            return
+
+        distance = speed_px_per_second * movement_multiplier * frame_time
         dx = intent.x / direction_length * distance
         dy = intent.y / direction_length * distance
 

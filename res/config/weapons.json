@@ -14,7 +14,8 @@
       "spread_degrees": 0.0,
       "shots_per_fire": 1,
       "magazine_size": 8,
-      "initial_reserve_ammo": "infinite"
+      "initial_reserve_ammo": "infinite",
+      "reload_time_seconds": 0.9
     },
     {
       "id": "ak47",
@@ -28,7 +29,8 @@
       "spread_degrees": 4.0,
       "shots_per_fire": 1,
       "magazine_size": 30,
-      "initial_reserve_ammo": 90
+      "initial_reserve_ammo": 90,
+      "reload_time_seconds": 1.7
     }
   ]
 }

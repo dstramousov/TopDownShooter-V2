@@ -109,6 +109,46 @@ def test_player_controller_blocks_non_walkable_tiles() -> None:
     assert player.tile == TileCoord(1, 1)
 
 
+def test_player_controller_slows_down_on_high_movement_cost_tile() -> None:
+    """Player controller should apply movement speed modifiers from the current tile."""
+    tiles = tuple(
+        tuple(RuntimeTile(symbol="~", walkable=True, movement_cost=2) for _x in range(4))
+        for _y in range(4)
+    )
+    runtime_map = RuntimeMap(
+        width_tiles=4,
+        height_tiles=4,
+        tile_size_px=16,
+        tiles=tiles,
+        start_tile=TileCoord(1, 1),
+        goal_tile=TileCoord(3, 3),
+        tactical_summary=TacticalRuntimeSummary(
+            combat_zones=0,
+            cover_points=0,
+            choke_points=0,
+            flank_routes=0,
+            enemy_spawn_zones=0,
+            fallback_positions=0,
+        ),
+    )
+    player = PlayerState.spawn_at_map_start(runtime_map)
+    controller = PlayerController(
+        collision_service=TileCollisionService(runtime_map),
+        tile_size_px=runtime_map.tile_size_px,
+        collision_radius_px=0.0,
+    )
+
+    controller.update(
+        player=player,
+        intent=PlayerMoveIntent(x=1.0, y=0.0),
+        frame_time=0.5,
+        speed_px_per_second=16.0,
+    )
+
+    assert player.world_position == WorldCoord(28.0, 24.0)
+    assert player.tile == TileCoord(1, 1)
+
+
 def test_player_aim_state_points_from_player_to_target() -> None:
     """Player aim state should normalize direction and expose angle."""
     aim = PlayerAimState.from_positions(
