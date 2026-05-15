@@ -100,7 +100,12 @@ class RaylibWindow:
             tile_size_px=runtime_map.tile_size_px,
             collision_radius_px=config.player.collision_radius_px,
         )
-        self._projectile_system = ProjectileSystem(collision_service=collision_service)
+        self._projectile_system = ProjectileSystem(
+            collision_service=collision_service,
+            impact_markers_enabled=config.projectile_impacts.enabled,
+            impact_lifetime_seconds=config.projectile_impacts.lifetime_seconds,
+            impact_radius_px=config.projectile_impacts.radius_px,
+        )
         weapon_database = WeaponConfigLoader().load(config.weapons.database_path)
         self._weapon_controller = WeaponController(
             projectile_system=self._projectile_system,
@@ -161,7 +166,10 @@ class RaylibWindow:
                     camera=self._camera_rig.state,
                     window_config=self._config.window,
                 )
-                self._projectile_renderer.draw(self._projectile_system.projectiles)
+                self._projectile_renderer.draw(
+                    projectiles=self._projectile_system.projectiles,
+                    impacts=self._projectile_system.impacts,
+                )
                 self._player_renderer.draw(self._player)
                 raylib.end_mode_2d()
                 if self._debug_overlay_enabled:

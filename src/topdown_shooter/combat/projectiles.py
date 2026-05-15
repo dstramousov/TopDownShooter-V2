@@ -37,6 +37,25 @@ class ProjectileState:
     alive: bool = True
 
 
+@dataclass(slots=True)
+class ImpactMarkerState:
+    """Short-lived projectile impact marker.
+
+    Attributes:
+        position: Impact world position.
+        radius_px: Impact marker radius in world pixels.
+        lifetime_seconds: Maximum marker lifetime in seconds.
+        age_seconds: Current marker age in seconds.
+        alive: Whether the marker is still active.
+    """
+
+    position: WorldCoord
+    radius_px: float
+    lifetime_seconds: float
+    age_seconds: float = 0.0
+    alive: bool = True
+
+
 @dataclass(frozen=True, slots=True)
 class ProjectileStats:
     """Projectile system statistics.
@@ -44,24 +63,42 @@ class ProjectileStats:
     Attributes:
         active_projectiles: Number of currently active projectiles.
         shots_fired: Total number of spawned projectiles.
+        active_impacts: Number of currently active impact markers.
+        total_impacts: Total number of spawned impact markers.
     """
 
     active_projectiles: int
     shots_fired: int
+    active_impacts: int
+    total_impacts: int
 
 
 class ProjectileSystem:
     """Spawn and update simple map-colliding projectiles."""
 
-    def __init__(self, collision_service: TileCollisionService) -> None:
+    def __init__(
+        self,
+        collision_service: TileCollisionService,
+        impact_markers_enabled: bool = False,
+        impact_lifetime_seconds: float = 0.16,
+        impact_radius_px: float = 5.0,
+    ) -> None:
         """Initialize the projectile system.
 
         Args:
             collision_service: Collision service used to kill blocked projectiles.
+            impact_markers_enabled: Whether blocked-tile hits create impact markers.
+            impact_lifetime_seconds: Impact marker lifetime in seconds.
+            impact_radius_px: Impact marker radius in world pixels.
         """
         self._collision_service = collision_service
+        self._impact_markers_enabled = impact_markers_enabled
+        self._impact_lifetime_seconds = impact_lifetime_seconds
+        self._impact_radius_px = impact_radius_px
         self._projectiles: list[ProjectileState] = []
+        self._impacts: list[ImpactMarkerState] = []
         self._shots_fired = 0
+        self._total_impacts = 0
 
     @property
     def projectiles(self) -> tuple[ProjectileState, ...]:
@@ -69,11 +106,18 @@ class ProjectileSystem:
         return tuple(self._projectiles)
 
     @property
+    def impacts(self) -> tuple[ImpactMarkerState, ...]:
+        """Return active impact marker states."""
+        return tuple(self._impacts)
+
+    @property
     def stats(self) -> ProjectileStats:
         """Return current projectile statistics."""
         return ProjectileStats(
             active_projectiles=len(self._projectiles),
             shots_fired=self._shots_fired,
+            active_impacts=len(self._impacts),
+            total_impacts=self._total_impacts,
         )
 
     def spawn(
@@ -123,13 +167,17 @@ class ProjectileSystem:
         return True
 
     def update(self, frame_time: float) -> None:
-        """Advance active projectiles and remove dead ones.
+        """Advance active projectiles and impact markers.
 
         Args:
             frame_time: Current frame duration in seconds.
         """
         if frame_time <= 0.0:
             return
+
+        for impact in self._impacts:
+            self._update_impact(impact, frame_time)
+        self._impacts = [impact for impact in self._impacts if impact.alive]
 
         for projectile in self._projectiles:
             self._update_projectile(projectile, frame_time)
@@ -161,4 +209,40 @@ class ProjectileSystem:
             projectile.alive = False
             return
         if not self._collision_service.is_point_walkable(projectile.position):
+            if self._collision_service.is_point_inside_map(projectile.position):
+                self._spawn_impact(projectile.position)
             projectile.alive = False
+
+    def _update_impact(self, impact: ImpactMarkerState, frame_time: float) -> None:
+        """Advance a single impact marker.
+
+        Args:
+            impact: Impact marker to update.
+            frame_time: Current frame duration in seconds.
+        """
+        if not impact.alive:
+            return
+        impact.age_seconds += frame_time
+        if impact.age_seconds >= impact.lifetime_seconds:
+            impact.alive = False
+
+    def _spawn_impact(self, position: WorldCoord) -> None:
+        """Create an impact marker at a blocked-tile hit position.
+
+        Args:
+            position: Impact world position.
+        """
+        if (
+            not self._impact_markers_enabled
+            or self._impact_lifetime_seconds <= 0.0
+            or self._impact_radius_px <= 0.0
+        ):
+            return
+        self._impacts.append(
+            ImpactMarkerState(
+                position=position,
+                radius_px=self._impact_radius_px,
+                lifetime_seconds=self._impact_lifetime_seconds,
+            ),
+        )
+        self._total_impacts += 1

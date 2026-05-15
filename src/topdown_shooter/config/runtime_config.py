@@ -108,6 +108,21 @@ class WeaponsConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class ProjectileImpactConfig:
+    """Projectile impact marker settings.
+
+    Attributes:
+        enabled: Whether blocked projectile hits create short-lived markers.
+        lifetime_seconds: Impact marker lifetime in seconds.
+        radius_px: Impact marker radius in world pixels.
+    """
+
+    enabled: bool
+    lifetime_seconds: float
+    radius_px: float
+
+
+@dataclass(frozen=True, slots=True)
 class DebugOverlayConfig:
     """Debug overlay display settings.
 
@@ -222,6 +237,7 @@ class RuntimeConfig:
         player: Player display settings.
         aim_debug: Aim debug display settings.
         weapons: Weapon database settings.
+        projectile_impacts: Projectile impact marker settings.
         debug_overlay: Debug overlay display settings.
         fps_counter: Standalone FPS counter display settings.
         controls: Control bindings.
@@ -232,6 +248,7 @@ class RuntimeConfig:
     player: PlayerConfig
     aim_debug: AimDebugConfig
     weapons: WeaponsConfig
+    projectile_impacts: ProjectileImpactConfig
     debug_overlay: DebugOverlayConfig
     fps_counter: FpsCounterConfig
     controls: ControlsConfig
@@ -269,6 +286,7 @@ class RuntimeConfigLoader:
         player = self._require_dict(raw_config, "player")
         aim_debug = self._require_dict(raw_config, "aim_debug")
         weapons = self._require_dict(raw_config, "weapons")
+        projectile_impacts = self._require_dict(raw_config, "projectile_impacts")
         debug_overlay = self._require_dict(raw_config, "debug_overlay")
         fps_counter = self._require_dict(raw_config, "fps_counter")
         controls = self._require_dict(raw_config, "controls")
@@ -302,6 +320,14 @@ class RuntimeConfigLoader:
             ),
             weapons=WeaponsConfig(
                 database_path=self._require_str(weapons, "database_path"),
+            ),
+            projectile_impacts=ProjectileImpactConfig(
+                enabled=self._require_bool(projectile_impacts, "enabled"),
+                lifetime_seconds=self._require_positive_float(
+                    projectile_impacts,
+                    "lifetime_seconds",
+                ),
+                radius_px=self._require_positive_float(projectile_impacts, "radius_px"),
             ),
             debug_overlay=DebugOverlayConfig(
                 enabled_by_default=self._require_bool(debug_overlay, "enabled_by_default"),

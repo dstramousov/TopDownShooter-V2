@@ -347,6 +347,16 @@ class DebugOverlay:
             rows=(
                 DebugOverlayRow("Active", str(projectile_stats.active_projectiles)),
                 DebugOverlayRow("Shots fired", str(projectile_stats.shots_fired)),
+                DebugOverlayRow("Impacts", str(projectile_stats.active_impacts)),
+                DebugOverlayRow("Total impacts", str(projectile_stats.total_impacts)),
+                DebugOverlayRow(
+                    "Impact life",
+                    f"{self._config.projectile_impacts.lifetime_seconds:.2f}s",
+                ),
+                DebugOverlayRow(
+                    "Impact radius",
+                    f"{self._config.projectile_impacts.radius_px:.1f}px",
+                ),
                 DebugOverlayRow("Speed", f"{weapon_stats.projectile_speed_px_per_second:.1f}px/s"),
                 DebugOverlayRow("Range", f"{weapon_stats.projectile_range_px:.1f}px"),
                 DebugOverlayRow("Lifetime", f"{weapon_stats.projectile_lifetime_seconds:.2f}s"),

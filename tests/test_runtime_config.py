@@ -39,7 +39,7 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.player.movement_speed_px_per_second == 160.0
     assert config.player.collision_radius_px == 5
     assert config.aim_debug.enabled is True
-    assert config.aim_debug.line_length_px == 40.0
+    assert config.aim_debug.line_length_px == 140.0
     assert config.aim_debug.marker_radius_px == 4.0
     assert config.aim_debug.line_thickness_px == 2.0
     assert config.controls.player_up == ("KEY_W",)
@@ -58,6 +58,9 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.debug_overlay.column_gap == 32
     assert config.debug_overlay.label_width == 128
     assert config.debug_overlay.background_alpha == 120
+    assert config.projectile_impacts.enabled is True
+    assert config.projectile_impacts.lifetime_seconds == 0.16
+    assert config.projectile_impacts.radius_px == 5.0
     assert config.fps_counter.enabled is True
     assert config.fps_counter.position == "top_right"
     assert config.fps_counter.margin_x == 12

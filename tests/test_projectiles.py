@@ -36,7 +36,12 @@ def _build_runtime_map(blocked_x: int | None = None) -> RuntimeMap:
     )
 
 
-def _spawn_default(system: ProjectileSystem, origin: WorldCoord, direction_x: float, direction_y: float) -> bool:
+def _spawn_default(
+    system: ProjectileSystem,
+    origin: WorldCoord,
+    direction_x: float,
+    direction_y: float,
+) -> bool:
     """Spawn a projectile with test parameters."""
     return system.spawn(
         origin=origin,
@@ -60,6 +65,8 @@ def test_projectile_system_spawns_and_moves_projectile() -> None:
     assert spawned is True
     assert system.stats.shots_fired == 1
     assert system.stats.active_projectiles == 1
+    assert system.stats.active_impacts == 0
+    assert system.stats.total_impacts == 0
     projectile = system.projectiles[0]
     assert projectile.position == WorldCoord(16.0, 24.0)
     assert projectile.distance_traveled_px == 8.0
@@ -76,6 +83,7 @@ def test_projectile_system_ignores_zero_direction() -> None:
     assert spawned is False
     assert system.stats.shots_fired == 0
     assert system.stats.active_projectiles == 0
+    assert system.stats.active_impacts == 0
 
 
 def test_projectile_system_removes_projectile_on_blocked_tile() -> None:
@@ -88,3 +96,45 @@ def test_projectile_system_removes_projectile_on_blocked_tile() -> None:
 
     assert system.stats.shots_fired == 1
     assert system.stats.active_projectiles == 0
+    assert system.stats.active_impacts == 0
+
+
+def test_projectile_system_spawns_impact_on_blocked_tile_when_enabled() -> None:
+    """Projectile system should spawn a short impact marker on blocked tiles."""
+    runtime_map = _build_runtime_map(blocked_x=1)
+    system = ProjectileSystem(
+        collision_service=TileCollisionService(runtime_map),
+        impact_markers_enabled=True,
+        impact_lifetime_seconds=0.25,
+        impact_radius_px=6.0,
+    )
+
+    _spawn_default(system, WorldCoord(8.0, 24.0), direction_x=1.0, direction_y=0.0)
+    system.update(frame_time=0.5)
+
+    assert system.stats.shots_fired == 1
+    assert system.stats.active_projectiles == 0
+    assert system.stats.active_impacts == 1
+    assert system.stats.total_impacts == 1
+    impact = system.impacts[0]
+    assert impact.position == WorldCoord(16.0, 24.0)
+    assert impact.radius_px == 6.0
+    assert impact.lifetime_seconds == 0.25
+
+
+def test_projectile_system_removes_expired_impact() -> None:
+    """Projectile system should remove impact markers after their lifetime."""
+    runtime_map = _build_runtime_map(blocked_x=1)
+    system = ProjectileSystem(
+        collision_service=TileCollisionService(runtime_map),
+        impact_markers_enabled=True,
+        impact_lifetime_seconds=0.25,
+        impact_radius_px=6.0,
+    )
+
+    _spawn_default(system, WorldCoord(8.0, 24.0), direction_x=1.0, direction_y=0.0)
+    system.update(frame_time=0.5)
+    system.update(frame_time=0.25)
+
+    assert system.stats.active_impacts == 0
+    assert system.stats.total_impacts == 1

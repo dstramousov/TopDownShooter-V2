@@ -4,7 +4,7 @@ Initial runtime foundation for loading a generated TopDownMapGen map package.
 
 ## Current scope
 
-Version `0.0.20` supports map package inspection, a minimal render window, camera foundation, a runtime debug overlay, map-viewer camera controls, an initial player marker, and basic WASD player movement:
+Version `0.0.21` supports map package inspection, a minimal render window, camera foundation, a runtime debug overlay, map-viewer camera controls, an initial player marker, and basic WASD player movement:
 
 - reads `_manifest.json`;
 - reads `validation_report.json`;
@@ -24,7 +24,8 @@ Version `0.0.20` supports map package inspection, a minimal render window, camer
 - draws a short configurable aim debug marker above the player;
 - draws only camera-visible map tiles each frame;
 - shows a standalone FPS counter even when the debug overlay is disabled;
-- fires the default pistol continuously while the primary mouse button is held, using weapon data from `res/config/weapons.json`.
+- fires the default pistol continuously while the primary mouse button is held, using weapon data from `res/config/weapons.json`;
+- shows short-lived impact markers when projectiles hit blocked map tiles.
 
 The shooter runtime does not import or call TopDownMapGen. The map generator remains a separate project.
 
@@ -49,7 +50,7 @@ The minimal renderer opens a raylib window and draws the loaded map package:
 PYTHONPATH=src python3 -m topdown_shooter --map ../TopDownMapGen/out --run
 ```
 
-Window settings, player marker settings, aim debug settings, weapon database path, FPS counter settings, debug overlay settings, and control bindings are stored in the packaged runtime config:
+Window settings, player marker settings, aim debug settings, weapon database path, projectile impact settings, FPS counter settings, debug overlay settings, and control bindings are stored in the packaged runtime config:
 
 ```text
 src/topdown_shooter/config/default_runtime_config.json
@@ -100,6 +101,10 @@ shots_per_fire
 
 Holding the configured primary fire button fires continuously according to the current weapon fire rate. The fire interval is calculated as `60 / fire_rate_rpm`. More weapons can be added to the database later without changing projectile runtime code.
 
+## Projectile impacts
+
+Projectiles disappear when they exceed lifetime/range, leave the map, or hit a blocked tile. Blocked-tile hits create short-lived impact markers so map collision feedback is visible before enemies and damage are implemented. Impact marker lifetime and radius are configured through the `projectile_impacts` section in `default_runtime_config.json`.
+
 ## Player marker
 
-The runtime creates an initial player state at the center of the generated `S` tile and draws it as a simple marker above the map. The player can move with configurable WASD controls. Movement is delta-time based and uses basic tile collision with separate X/Y axis resolution so the marker can slide along blocking tiles. The runtime also calculates a mouse aim direction from the player to the world-space cursor and draws a short configurable aim debug marker. The player holds the default pistol and fires continuously while LMB is held. Projectiles use the current weapon definition, move in the current aim direction, and disappear when they exceed lifetime/range, leave the map, or hit a blocked tile. Enemies, damage, recoil, particles, and sound are intentionally out of scope for this version. Player speed, collision radius, marker radius, aim debug marker settings, weapon database path, and fire binding are configured in `default_runtime_config.json`.
+The runtime creates an initial player state at the center of the generated `S` tile and draws it as a simple marker above the map. The player can move with configurable WASD controls. Movement is delta-time based and uses basic tile collision with separate X/Y axis resolution so the marker can slide along blocking tiles. The runtime also calculates a mouse aim direction from the player to the world-space cursor and draws a short configurable aim debug marker. The player holds the default pistol and fires continuously while LMB is held. Projectiles use the current weapon definition, move in the current aim direction, and disappear when they exceed lifetime/range, leave the map, or hit a blocked tile. Blocked-tile hits create short-lived impact markers. Enemies, damage, recoil, particles, and sound are intentionally out of scope for this version. Player speed, collision radius, marker radius, aim debug marker settings, weapon database path, projectile impact settings, and fire binding are configured in `default_runtime_config.json`.

@@ -161,3 +161,12 @@
 - Added continuous primary fire while LMB is held, limited by current weapon fire rate.
 - Moved projectile spawn parameters from runtime projectile config to current weapon definitions.
 - Added weapon diagnostics to the debug overlay while keeping enemies, damage, recoil, ammo, reloads, and sound out of scope.
+
+
+## v0.0.20 -> v0.0.21
+
+- Added short-lived projectile impact markers when projectiles hit blocked map tiles.
+- Added configurable projectile impact marker lifetime and radius.
+- Added impact marker rendering and projectile impact diagnostics in the debug overlay.
+- Updated the runtime config test to match the current aim debug marker length.
+- Kept enemies, damage, particles, sound, recoil, weapon switching, and tactical overlays out of scope.

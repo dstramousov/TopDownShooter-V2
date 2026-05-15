@@ -44,6 +44,25 @@ class TileCollisionService:
         )
         return all(self.is_point_walkable(point) for point in sample_points)
 
+
+    def is_point_inside_map(self, point: WorldCoord) -> bool:
+        """Return whether a world point is inside runtime map bounds.
+
+        Args:
+            point: World-space point.
+
+        Returns:
+            True if the point is inside map bounds.
+        """
+        tile = world_to_tile(point, self._runtime_map.tile_size_px)
+        if tile.x < 0 or tile.y < 0:
+            return False
+        if tile.x >= self._runtime_map.width_tiles:
+            return False
+        if tile.y >= self._runtime_map.height_tiles:
+            return False
+        return True
+
     def is_point_walkable(self, point: WorldCoord) -> bool:
         """Return whether a world point is inside a walkable tile.
 

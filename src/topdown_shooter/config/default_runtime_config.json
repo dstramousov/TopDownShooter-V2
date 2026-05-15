@@ -93,5 +93,10 @@
   },
   "weapons": {
     "database_path": "res/config/weapons.json"
+  },
+  "projectile_impacts": {
+    "enabled": true,
+    "lifetime_seconds": 0.16,
+    "radius_px": 5.0
   }
 }
