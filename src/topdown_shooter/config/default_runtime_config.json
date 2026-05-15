@@ -16,7 +16,9 @@
     "move_speed_px_per_second": 720.0
   },
   "player": {
-    "marker_radius_px": 6
+    "marker_radius_px": 6,
+    "movement_speed_px_per_second": 160.0,
+    "collision_radius_px": 5
   },
   "debug_overlay": {
     "enabled_by_default": false,
@@ -53,6 +55,18 @@
     "camera_zoom_in": "KEY_E",
     "camera_zoom_out": "KEY_Q",
     "camera_reset": "KEY_HOME",
-    "camera_zoom_mouse_wheel": true
+    "camera_zoom_mouse_wheel": true,
+    "player_up": [
+      "KEY_W"
+    ],
+    "player_down": [
+      "KEY_S"
+    ],
+    "player_left": [
+      "KEY_A"
+    ],
+    "player_right": [
+      "KEY_D"
+    ]
   }
 }

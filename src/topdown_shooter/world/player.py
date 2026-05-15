@@ -10,7 +10,7 @@ from topdown_shooter.world.runtime_map import RuntimeMap
 
 @dataclass(slots=True)
 class PlayerState:
-    """Runtime state for the player entity.
+    """Mutable runtime state for the player entity.
 
     Attributes:
         tile: Current player tile coordinate.

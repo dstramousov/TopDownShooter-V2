@@ -30,6 +30,12 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.camera.smooth_time == 0.0
     assert config.camera.lookahead_tiles == 0.0
     assert config.player.marker_radius_px == 6
+    assert config.player.movement_speed_px_per_second == 160.0
+    assert config.player.collision_radius_px == 5
+    assert config.controls.player_up == ("KEY_W",)
+    assert config.controls.player_down == ("KEY_S",)
+    assert config.controls.player_left == ("KEY_A",)
+    assert config.controls.player_right == ("KEY_D",)
     assert config.debug_overlay.enabled_by_default is False
     assert config.debug_overlay.panel_width == 760
     assert config.debug_overlay.font_size == 14

@@ -56,13 +56,17 @@ class CameraConfig:
 
 @dataclass(frozen=True, slots=True)
 class PlayerConfig:
-    """Player display settings for the runtime.
+    """Player display and movement settings for the runtime.
 
     Attributes:
         marker_radius_px: Player marker radius in world pixels.
+        movement_speed_px_per_second: Player movement speed in world pixels per second.
+        collision_radius_px: Player collision radius in world pixels.
     """
 
     marker_radius_px: int
+    movement_speed_px_per_second: float
+    collision_radius_px: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +124,10 @@ class ControlsConfig:
         camera_zoom_out: Key name used to zoom the camera out.
         camera_zoom_mouse_wheel: Whether mouse wheel zoom is enabled.
         camera_reset: Key name used to reset the camera to the map start tile.
+        player_up: Key names used to move the player up.
+        player_down: Key names used to move the player down.
+        player_left: Key names used to move the player left.
+        player_right: Key names used to move the player right.
     """
 
     quit: str
@@ -132,6 +140,10 @@ class ControlsConfig:
     camera_zoom_out: str
     camera_zoom_mouse_wheel: bool
     camera_reset: str
+    player_up: tuple[str, ...]
+    player_down: tuple[str, ...]
+    player_left: tuple[str, ...]
+    player_right: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -195,6 +207,14 @@ class RuntimeConfigLoader:
             camera=self._build_camera_config(camera),
             player=PlayerConfig(
                 marker_radius_px=self._require_positive_int(player, "marker_radius_px"),
+                movement_speed_px_per_second=self._require_positive_float(
+                    player,
+                    "movement_speed_px_per_second",
+                ),
+                collision_radius_px=self._require_non_negative_int(
+                    player,
+                    "collision_radius_px",
+                ),
             ),
             debug_overlay=DebugOverlayConfig(
                 enabled_by_default=self._require_bool(debug_overlay, "enabled_by_default"),
@@ -224,6 +244,10 @@ class RuntimeConfigLoader:
                     "camera_zoom_mouse_wheel",
                 ),
                 camera_reset=self._require_str(controls, "camera_reset"),
+                player_up=self._require_key_names(controls, "player_up"),
+                player_down=self._require_key_names(controls, "player_down"),
+                player_left=self._require_key_names(controls, "player_left"),
+                player_right=self._require_key_names(controls, "player_right"),
             ),
         )
 

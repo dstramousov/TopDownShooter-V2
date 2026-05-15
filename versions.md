@@ -71,3 +71,13 @@
 - Kept map-viewer camera panning on arrow keys through runtime config.
 - Added configurable mouse wheel zoom alongside existing `Q`/`E` zoom keys.
 - Updated debug overlay and README control descriptions to match the new bindings.
+
+
+## v0.0.9 -> v0.0.10
+
+- Added configurable WASD player movement.
+- Added delta-time based player movement speed to runtime config.
+- Added basic tile collision for the player with separate X/Y axis resolution.
+- Added player movement and collision diagnostics to the debug overlay.
+- Kept camera follow, shooting, enemies, and tactical overlays out of scope.
+

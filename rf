@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT_PATHS=("src" "tests")
+
+run_diagnostics() {
+    echo
+    echo "Запускаю диагностику Ruff..."
+    python3 -m ruff check "${PROJECT_PATHS[@]}"
+}
+
+run_safe_fixes() {
+    echo
+    echo "Запускаю безопасные автоисправления Ruff..."
+    python3 -m ruff check "${PROJECT_PATHS[@]}" --fix
+}
+
+run_format() {
+    echo
+    echo "Запускаю форматирование Ruff..."
+    python3 -m ruff format "${PROJECT_PATHS[@]}"
+}
+
+run_format_check() {
+    echo
+    echo "Проверяю форматирование без изменения файлов..."
+    python3 -m ruff format --check "${PROJECT_PATHS[@]}"
+}
+
+run_full_check() {
+    echo
+    echo "Запускаю полную проверку Ruff..."
+    python3 -m ruff check "${PROJECT_PATHS[@]}"
+    python3 -m ruff format --check "${PROJECT_PATHS[@]}"
+}
+
+while true; do
+    echo
+    echo "Ruff helper"
+    echo "-----------"
+    echo "1. Диагностика"
+    echo "2. Автоисправления безопасной части"
+    echo "3. Форматирование"
+    echo "4. Проверка форматирования без изменений"
+    echo "5. Полная проверка"
+    echo "0. Выход"
+    echo
+
+    read -r -p "Выбери действие: " choice
+
+    case "$choice" in
+        1)
+            run_diagnostics
+            ;;
+        2)
+            run_safe_fixes
+            ;;
+        3)
+            run_format
+            ;;
+        4)
+            run_format_check
+            ;;
+        5)
+            run_full_check
+            ;;
+        0)
+            echo "Выход."
+            exit 0
+            ;;
+        *)
+            echo "Неизвестный пункт: $choice"
+            ;;
+    esac
+done

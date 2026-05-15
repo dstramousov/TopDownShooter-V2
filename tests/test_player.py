@@ -1,7 +1,9 @@
 """Tests for runtime player state."""
 
+from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.coordinates import TileCoord, WorldCoord
 from topdown_shooter.world.player import PlayerState
+from topdown_shooter.world.player_controller import PlayerController, PlayerMoveIntent
 from topdown_shooter.world.runtime_map import RuntimeMap, TacticalRuntimeSummary
 from topdown_shooter.world.tile import RuntimeTile
 
@@ -38,3 +40,69 @@ def test_player_spawns_at_start_tile_center() -> None:
 
     assert player.tile == TileCoord(2, 1)
     assert player.world_position == WorldCoord(40.0, 24.0)
+
+
+def test_player_controller_moves_player_on_walkable_tiles() -> None:
+    """Player controller should move the player with delta-time based speed."""
+    runtime_map = _build_runtime_map(start=TileCoord(1, 1))
+    player = PlayerState.spawn_at_map_start(runtime_map)
+    controller = PlayerController(
+        collision_service=TileCollisionService(runtime_map),
+        tile_size_px=runtime_map.tile_size_px,
+        collision_radius_px=0.0,
+    )
+
+    controller.update(
+        player=player,
+        intent=PlayerMoveIntent(x=1.0, y=0.0),
+        frame_time=0.5,
+        speed_px_per_second=16.0,
+    )
+
+    assert player.world_position == WorldCoord(32.0, 24.0)
+    assert player.tile == TileCoord(2, 1)
+
+
+def test_player_controller_blocks_non_walkable_tiles() -> None:
+    """Player controller should block movement into non-walkable tiles."""
+    tiles = tuple(
+        tuple(
+            RuntimeTile(symbol="#", walkable=False, movement_cost=None)
+            if x == 2 and y == 1
+            else RuntimeTile(symbol="+", walkable=True, movement_cost=1)
+            for x in range(4)
+        )
+        for y in range(4)
+    )
+    runtime_map = RuntimeMap(
+        width_tiles=4,
+        height_tiles=4,
+        tile_size_px=16,
+        tiles=tiles,
+        start_tile=TileCoord(1, 1),
+        goal_tile=TileCoord(3, 3),
+        tactical_summary=TacticalRuntimeSummary(
+            combat_zones=0,
+            cover_points=0,
+            choke_points=0,
+            flank_routes=0,
+            enemy_spawn_zones=0,
+            fallback_positions=0,
+        ),
+    )
+    player = PlayerState.spawn_at_map_start(runtime_map)
+    controller = PlayerController(
+        collision_service=TileCollisionService(runtime_map),
+        tile_size_px=runtime_map.tile_size_px,
+        collision_radius_px=0.0,
+    )
+
+    controller.update(
+        player=player,
+        intent=PlayerMoveIntent(x=1.0, y=0.0),
+        frame_time=0.5,
+        speed_px_per_second=16.0,
+    )
+
+    assert player.world_position == WorldCoord(24.0, 24.0)
+    assert player.tile == TileCoord(1, 1)

@@ -160,6 +160,8 @@ class DebugOverlay:
                         "World",
                         f"{player.world_position.x:.1f}, {player.world_position.y:.1f}",
                     ),
+                    DebugOverlayRow("Move speed", f"{self._config.player.movement_speed_px_per_second:.1f}"),
+                    DebugOverlayRow("Collision", f"{self._config.player.collision_radius_px}px"),
                     DebugOverlayRow("Marker radius", f"{self._config.player.marker_radius_px}px"),
                 ),
             ),
@@ -234,6 +236,7 @@ class DebugOverlay:
                     DebugOverlayRow("Pan", self._format_pan_bindings()),
                     DebugOverlayRow("Zoom", self._format_zoom_bindings()),
                     DebugOverlayRow("Reset", self._config.controls.camera_reset),
+                    DebugOverlayRow("Move", self._format_player_bindings()),
                 ),
             ),
         )
@@ -390,6 +393,23 @@ class DebugOverlay:
         available_width = config.panel_width - config.padding * 2 - config.column_gap
         return max(1, available_width // 2)
 
+
+    def _format_player_bindings(self) -> str:
+        """Format configured player movement bindings for the overlay.
+
+        Returns:
+            Human-readable player movement bindings.
+        """
+        controls = self._config.controls
+        vertical = (
+            f"{self._format_key_names(controls.player_up)}/"
+            f"{self._format_key_names(controls.player_down)}"
+        )
+        horizontal = (
+            f"{self._format_key_names(controls.player_left)}/"
+            f"{self._format_key_names(controls.player_right)}"
+        )
+        return f"{vertical} {horizontal}"
 
     def _format_zoom_bindings(self) -> str:
         """Format configured zoom bindings for the overlay.
