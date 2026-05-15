@@ -4,7 +4,7 @@ Initial runtime foundation for loading a generated TopDownMapGen map package.
 
 ## Current scope
 
-Version `0.0.11` supports map package inspection, a minimal render window, camera foundation, a runtime debug overlay, map-viewer camera controls, an initial player marker, and basic WASD player movement:
+Version `0.0.12` supports map package inspection, a minimal render window, camera foundation, a runtime debug overlay, map-viewer camera controls, an initial player marker, and basic WASD player movement:
 
 - reads `_manifest.json`;
 - reads `validation_report.json`;
@@ -18,7 +18,8 @@ Version `0.0.11` supports map package inspection, a minimal render window, camer
 - pans, zooms, and resets the camera through configurable controls;
 - spawns a simple player marker at the generated start tile;
 - moves the player with configurable WASD controls and basic tile collision;
-- follows the moving player with a configurable camera mode.
+- follows the moving player with a configurable camera mode;
+- applies smooth camera follow, movement lookahead, and a dead zone.
 
 The shooter runtime does not import or call TopDownMapGen. The map generator remains a separate project.
 
@@ -64,7 +65,7 @@ WASD: move player
 
 ## Camera foundation
 
-The renderer uses a small camera rig that centers on the generated start tile and clamps the camera target to map bounds. Runtime starts in player-follow mode by default, so the camera target tracks the moving player. Pressing the configured follow toggle switches between player-follow and manual map-viewer modes. Manual panning uses arrow keys while WASD controls player movement. Zoom is available through the mouse wheel and Q/E fallback keys in both modes. Window size, zoom limits, camera movement speed, follow mode default, camera flags, mouse wheel zoom, and control bindings are stored in the packaged runtime config instead of being hardcoded in rendering systems.
+The renderer uses a small camera rig that centers on the generated start tile and clamps the camera target to map bounds. Runtime starts in player-follow mode by default, so the camera target tracks the moving player with smoothing, movement-direction lookahead, a small dead zone, and a configurable max camera speed. Pressing the configured follow toggle switches between player-follow and manual map-viewer modes. Manual panning uses arrow keys while WASD controls player movement. Zoom is available through the mouse wheel and Q/E fallback keys in both modes. Window size, zoom limits, camera movement speed, follow mode default, smooth time, max follow speed, lookahead, dead zone, camera flags, mouse wheel zoom, and control bindings are stored in the packaged runtime config instead of being hardcoded in rendering systems.
 
 ## Debug overlay
 
@@ -73,4 +74,4 @@ The debug overlay is a translucent runtime panel drawn above the map. It is disa
 
 ## Player marker
 
-The runtime creates an initial player state at the center of the generated `S` tile and draws it as a simple marker above the map. The player can move with configurable WASD controls. Movement is delta-time based and uses basic tile collision with separate X/Y axis resolution so the marker can slide along blocking tiles. Weapons, inertial camera feel, and advanced physics are intentionally out of scope for this version. Player speed, collision radius, and marker radius are configured in `default_runtime_config.json`.
+The runtime creates an initial player state at the center of the generated `S` tile and draws it as a simple marker above the map. The player can move with configurable WASD controls. Movement is delta-time based and uses basic tile collision with separate X/Y axis resolution so the marker can slide along blocking tiles. Weapons, shooting, and advanced physics are intentionally out of scope for this version. Player speed, collision radius, and marker radius are configured in `default_runtime_config.json`.

@@ -122,7 +122,7 @@ class RaylibWindow:
                 frame_time = raylib.get_frame_time()
                 self._update_player_controls(frame_time)
                 self._update_camera_controls(frame_time)
-                self._camera_rig.update_follow_target(self._player.world_position)
+                self._camera_rig.update_follow_target(self._player.world_position, frame_time)
                 camera = self._camera_rig.build_raylib_camera(raylib)
 
                 raylib.begin_drawing()

@@ -152,6 +152,19 @@ class DebugOverlay:
                 rows=(
                     DebugOverlayRow("Mode", "follow" if camera.follow_player else "map_viewer"),
                     DebugOverlayRow("Target", f"{camera.target.x:.1f}, {camera.target.y:.1f}"),
+                    DebugOverlayRow(
+                        "Desired",
+                        f"{camera.desired_target.x:.1f}, {camera.desired_target.y:.1f}",
+                    ),
+                    DebugOverlayRow(
+                        "Velocity",
+                        f"{camera.velocity.x:.1f}, {camera.velocity.y:.1f}",
+                    ),
+                    DebugOverlayRow(
+                        "Lookahead",
+                        f"{camera.lookahead_offset.x:.1f}, {camera.lookahead_offset.y:.1f}",
+                    ),
+                    DebugOverlayRow("Dead zone", f"{camera.dead_zone_radius_px:.1f}px"),
                 ),
             ),
             DebugOverlaySection(

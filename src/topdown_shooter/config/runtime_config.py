@@ -40,8 +40,10 @@ class CameraConfig:
         zoom_step: Zoom delta applied by one zoom key press.
         move_speed_px_per_second: Camera pan speed in world pixels per second.
         clamp_to_map: Whether the camera target is clamped to map bounds.
-        smooth_time: Reserved smoothing time for future inertial follow.
-        lookahead_tiles: Reserved lookahead distance for future player follow.
+        smooth_time: Inertial follow smoothing time in seconds.
+        max_speed_px_per_second: Maximum inertial camera speed in world pixels per second.
+        lookahead_tiles: Movement-direction lookahead distance in tiles.
+        dead_zone_tiles: Follow dead-zone radius in tiles.
         follow_player_by_default: Whether the camera starts in player-follow mode.
     """
 
@@ -52,7 +54,9 @@ class CameraConfig:
     move_speed_px_per_second: float
     clamp_to_map: bool
     smooth_time: float
+    max_speed_px_per_second: float
     lookahead_tiles: float
+    dead_zone_tiles: float
     follow_player_by_default: bool
 
 
@@ -283,7 +287,12 @@ class RuntimeConfigLoader:
             ),
             clamp_to_map=self._require_bool(camera, "clamp_to_map"),
             smooth_time=self._require_non_negative_float(camera, "smooth_time"),
+            max_speed_px_per_second=self._require_non_negative_float(
+                camera,
+                "max_speed_px_per_second",
+            ),
             lookahead_tiles=self._require_non_negative_float(camera, "lookahead_tiles"),
+            dead_zone_tiles=self._require_non_negative_float(camera, "dead_zone_tiles"),
             follow_player_by_default=self._require_bool(camera, "follow_player_by_default"),
         )
 

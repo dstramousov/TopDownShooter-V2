@@ -90,3 +90,11 @@
 - Kept manual pan as a map-viewer action while zoom remains available in both modes.
 - Surfaced camera mode and debug overlay font size in the debug overlay diagnostics.
 - Documented debug overlay font size as a runtime config setting.
+
+
+## v0.0.11 -> v0.0.12
+
+- Added smooth/inertial player-follow camera movement.
+- Added configurable camera max speed, movement lookahead, and dead-zone radius.
+- Added camera diagnostics for desired target, velocity, lookahead offset, and dead-zone size.
+- Kept mouse aim, shooting, enemies, tactical overlays, and cinematic camera out of scope.

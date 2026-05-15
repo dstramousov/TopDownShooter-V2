@@ -28,8 +28,10 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.camera.zoom_step == 0.1
     assert config.camera.move_speed_px_per_second == 720.0
     assert config.camera.clamp_to_map is True
-    assert config.camera.smooth_time == 0.0
-    assert config.camera.lookahead_tiles == 0.0
+    assert config.camera.smooth_time == 0.18
+    assert config.camera.max_speed_px_per_second == 1800.0
+    assert config.camera.lookahead_tiles == 3.0
+    assert config.camera.dead_zone_tiles == 1.25
     assert config.camera.follow_player_by_default is True
     assert config.player.marker_radius_px == 6
     assert config.player.movement_speed_px_per_second == 160.0
