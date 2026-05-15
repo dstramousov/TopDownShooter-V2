@@ -17,18 +17,24 @@ class PlayerState:
     Attributes:
         tile: Current player tile coordinate.
         world_position: Current player position in world pixels.
+        aim: Current player aim state.
+        health: Current player health points.
+        max_health: Maximum player health points.
     """
 
     tile: TileCoord
     world_position: WorldCoord
     aim: PlayerAimState
+    health: int
+    max_health: int
 
     @classmethod
-    def spawn_at_map_start(cls, runtime_map: RuntimeMap) -> Self:
+    def spawn_at_map_start(cls, runtime_map: RuntimeMap, max_health: int = 100) -> Self:
         """Create a player state at the map start tile center.
 
         Args:
             runtime_map: Runtime map containing the start tile.
+            max_health: Initial and maximum health points.
 
         Returns:
             Player state placed at the start tile center.
@@ -41,4 +47,6 @@ class PlayerState:
             tile=runtime_map.start_tile,
             world_position=start_position,
             aim=PlayerAimState.from_positions(start_position, start_position),
+            health=max_health,
+            max_health=max_health,
         )

@@ -23,7 +23,8 @@
   "player": {
     "marker_radius_px": 6,
     "movement_speed_px_per_second": 160.0,
-    "collision_radius_px": 5
+    "collision_radius_px": 5,
+    "max_health": 100
   },
   "debug_overlay": {
     "enabled_by_default": false,
@@ -76,7 +77,10 @@
       "KEY_D"
     ],
     "camera_toggle_follow": "KEY_F",
-    "fire_primary": "MOUSE_BUTTON_LEFT"
+    "fire_primary": "MOUSE_BUTTON_LEFT",
+    "reload": "KEY_R",
+    "weapon_slot_1": "KEY_ONE",
+    "weapon_slot_2": "KEY_TWO"
   },
   "aim_debug": {
     "enabled": true,
@@ -98,5 +102,14 @@
     "enabled": true,
     "lifetime_seconds": 0.16,
     "radius_px": 5.0
+  },
+  "hud": {
+    "enabled": true,
+    "position": "top",
+    "margin_x": 12,
+    "margin_y": 12,
+    "padding": 8,
+    "font_size": 16,
+    "background_alpha": 150
   }
 }

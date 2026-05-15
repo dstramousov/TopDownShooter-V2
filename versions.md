@@ -170,3 +170,18 @@
 - Added impact marker rendering and projectile impact diagnostics in the debug overlay.
 - Updated the runtime config test to match the current aim debug marker length.
 - Kept enemies, damage, particles, sound, recoil, weapon switching, and tactical overlays out of scope.
+
+## v0.0.21 -> v0.0.22
+
+- Added AK-47 as a second data-driven weapon in `res/config/weapons.json`.
+- Added weapon slot switching for pistol and AK-47.
+- Added magazine ammo, finite/infinite reserve ammo, and reload support.
+- Added a configurable player HUD showing health, active weapon, and magazine/reserve ammo.
+- Updated debug overlay weapon, ammo, health, and control diagnostics.
+- Kept enemies, damage, pickups, recoil, sound, weapon wheel, and tactical overlays out of scope.
+
+
+## v0.0.22 -> v0.0.23
+
+- Added the missing `src/topdown_shooter/rendering/player_hud.py` module required by the v0.0.22 HUD import.
+- Restored runtime startup after the weapon/HUD patch without changing weapon, projectile, camera, or movement behavior.

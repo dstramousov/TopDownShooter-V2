@@ -288,6 +288,7 @@ class DebugOverlay:
                         "World",
                         f"{player.world_position.x:.1f}, {player.world_position.y:.1f}",
                     ),
+                    DebugOverlayRow("Health", f"{player.health}/{player.max_health}"),
                     DebugOverlayRow(
                         "Move speed",
                         f"{self._config.player.movement_speed_px_per_second:.1f}",
@@ -334,12 +335,18 @@ class DebugOverlay:
             rows=(
                 DebugOverlayRow("Current", weapon_stats.display_name),
                 DebugOverlayRow("Weapon id", weapon_stats.weapon_id),
+                DebugOverlayRow("Slot", str(weapon_stats.slot)),
+                DebugOverlayRow("Ammo", weapon_stats.ammo_display),
+                DebugOverlayRow("Magazine", str(weapon_stats.magazine_size)),
+                DebugOverlayRow("Reserve", weapon_stats.reserve_display),
                 DebugOverlayRow("Fire rate", f"{weapon_stats.fire_rate_rpm:.1f}rpm"),
                 DebugOverlayRow("Interval", f"{weapon_stats.fire_interval_seconds:.3f}s"),
                 DebugOverlayRow("Cooldown", f"{weapon_stats.cooldown_remaining_seconds:.3f}s"),
                 DebugOverlayRow("Spread", f"{weapon_stats.spread_degrees:.2f}deg"),
                 DebugOverlayRow("Shots/fire", str(weapon_stats.shots_per_fire)),
                 DebugOverlayRow("Fire", self._config.controls.fire_primary),
+                DebugOverlayRow("Reload", self._config.controls.reload),
+                DebugOverlayRow("Slots", self._format_weapon_slot_bindings()),
             ),
         )
         projectile_section = DebugOverlaySection(
@@ -432,6 +439,9 @@ class DebugOverlay:
                     DebugOverlayRow("Reset", self._config.controls.camera_reset),
                     DebugOverlayRow("Follow", self._config.controls.camera_toggle_follow),
                     DebugOverlayRow("Move", self._format_player_bindings()),
+                    DebugOverlayRow("Fire", self._config.controls.fire_primary),
+                    DebugOverlayRow("Reload", self._config.controls.reload),
+                    DebugOverlayRow("Weapons", self._format_weapon_slot_bindings()),
                 ),
             ),
         )
@@ -604,6 +614,15 @@ class DebugOverlay:
             f"{self._format_key_names(controls.player_right)}"
         )
         return f"{vertical} {horizontal}"
+
+    def _format_weapon_slot_bindings(self) -> str:
+        """Format configured weapon slot bindings for the overlay.
+
+        Returns:
+            Human-readable weapon slot binding text.
+        """
+        controls = self._config.controls
+        return f"1:{controls.weapon_slot_1} 2:{controls.weapon_slot_2}"
 
     def _format_zoom_bindings(self) -> str:
         """Format configured zoom bindings for the overlay.

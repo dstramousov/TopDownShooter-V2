@@ -72,11 +72,13 @@ class PlayerConfig:
         marker_radius_px: Player marker radius in world pixels.
         movement_speed_px_per_second: Player movement speed in world pixels per second.
         collision_radius_px: Player collision radius in world pixels.
+        max_health: Initial and maximum player health points.
     """
 
     marker_radius_px: int
     movement_speed_px_per_second: float
     collision_radius_px: int
+    max_health: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,6 +156,30 @@ class DebugOverlayConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class HudConfig:
+    """Player HUD display settings.
+
+    Attributes:
+        enabled: Whether player HUD is drawn.
+        position: HUD anchor position. Supported values are ``top``, ``bottom``,
+            ``left``, and ``right``.
+        margin_x: Horizontal margin from the selected screen edge.
+        margin_y: Vertical margin from the selected screen edge.
+        padding: Inner panel padding in pixels.
+        font_size: HUD font size in pixels.
+        background_alpha: Panel background alpha value in the 0..255 range.
+    """
+
+    enabled: bool
+    position: str
+    margin_x: int
+    margin_y: int
+    padding: int
+    font_size: int
+    background_alpha: int
+
+
+@dataclass(frozen=True, slots=True)
 class FpsCounterConfig:
     """Standalone FPS counter settings.
 
@@ -207,6 +233,9 @@ class ControlsConfig:
         player_left: Key names used to move the player left.
         player_right: Key names used to move the player right.
         fire_primary: Mouse button name used to fire the current weapon.
+        reload: Key name used to reload the current weapon.
+        weapon_slot_1: Key name used to equip weapon slot 1.
+        weapon_slot_2: Key name used to equip weapon slot 2.
     """
 
     quit: str
@@ -225,6 +254,9 @@ class ControlsConfig:
     player_left: tuple[str, ...]
     player_right: tuple[str, ...]
     fire_primary: str
+    reload: str
+    weapon_slot_1: str
+    weapon_slot_2: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,6 +271,7 @@ class RuntimeConfig:
         weapons: Weapon database settings.
         projectile_impacts: Projectile impact marker settings.
         debug_overlay: Debug overlay display settings.
+        hud: Player HUD display settings.
         fps_counter: Standalone FPS counter display settings.
         controls: Control bindings.
     """
@@ -250,6 +283,7 @@ class RuntimeConfig:
     weapons: WeaponsConfig
     projectile_impacts: ProjectileImpactConfig
     debug_overlay: DebugOverlayConfig
+    hud: HudConfig
     fps_counter: FpsCounterConfig
     controls: ControlsConfig
 
@@ -288,6 +322,7 @@ class RuntimeConfigLoader:
         weapons = self._require_dict(raw_config, "weapons")
         projectile_impacts = self._require_dict(raw_config, "projectile_impacts")
         debug_overlay = self._require_dict(raw_config, "debug_overlay")
+        hud = self._require_dict(raw_config, "hud")
         fps_counter = self._require_dict(raw_config, "fps_counter")
         controls = self._require_dict(raw_config, "controls")
         return RuntimeConfig(
@@ -308,6 +343,7 @@ class RuntimeConfigLoader:
                     player,
                     "collision_radius_px",
                 ),
+                max_health=self._require_positive_int(player, "max_health"),
             ),
             aim_debug=AimDebugConfig(
                 enabled=self._require_bool(aim_debug, "enabled"),
@@ -345,6 +381,15 @@ class RuntimeConfigLoader:
                 label_width=self._require_positive_int(debug_overlay, "label_width"),
                 background_alpha=self._require_alpha(debug_overlay, "background_alpha"),
             ),
+            hud=HudConfig(
+                enabled=self._require_bool(hud, "enabled"),
+                position=self._require_str(hud, "position"),
+                margin_x=self._require_non_negative_int(hud, "margin_x"),
+                margin_y=self._require_non_negative_int(hud, "margin_y"),
+                padding=self._require_non_negative_int(hud, "padding"),
+                font_size=self._require_positive_int(hud, "font_size"),
+                background_alpha=self._require_alpha(hud, "background_alpha"),
+            ),
             fps_counter=FpsCounterConfig(
                 enabled=self._require_bool(fps_counter, "enabled"),
                 margin_x=self._require_non_negative_int(fps_counter, "margin_x"),
@@ -372,6 +417,9 @@ class RuntimeConfigLoader:
                 player_left=self._require_key_names(controls, "player_left"),
                 player_right=self._require_key_names(controls, "player_right"),
                 fire_primary=self._require_str(controls, "fire_primary"),
+                reload=self._require_str(controls, "reload"),
+                weapon_slot_1=self._require_str(controls, "weapon_slot_1"),
+                weapon_slot_2=self._require_str(controls, "weapon_slot_2"),
             ),
         )
 

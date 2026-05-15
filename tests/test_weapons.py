@@ -47,6 +47,7 @@ def _write_weapon_database(path: Path) -> None:
                     {
                         "id": "pistol",
                         "display_name": "Pistol",
+                        "slot": 1,
                         "fire_rate_rpm": 300.0,
                         "projectile_speed_px_per_second": 16.0,
                         "projectile_range_px": 64.0,
@@ -54,6 +55,8 @@ def _write_weapon_database(path: Path) -> None:
                         "projectile_radius_px": 3.0,
                         "spread_degrees": 0.0,
                         "shots_per_fire": 1,
+                        "magazine_size": 8,
+                        "initial_reserve_ammo": "infinite",
                     }
                 ],
             },
@@ -72,6 +75,9 @@ def test_weapon_config_loader_loads_default_weapon(tmp_path: Path) -> None:
     assert database.schema_version == "weapons-v1"
     assert database.default_weapon.weapon_id == "pistol"
     assert database.default_weapon.fire_interval_seconds == 0.2
+    assert database.default_weapon.slot == 1
+    assert database.default_weapon.magazine_size == 8
+    assert database.default_weapon.initial_reserve_ammo is None
 
 
 def test_weapon_controller_continuously_fires_while_button_is_held(tmp_path: Path) -> None:
@@ -112,3 +118,112 @@ def test_weapon_controller_continuously_fires_while_button_is_held(tmp_path: Pat
     assert projectile_system.stats.shots_fired == 2
     assert controller.stats.weapon_id == "pistol"
     assert controller.stats.fire_rate_rpm == 300.0
+    assert controller.stats.ammo_in_magazine == 6
+    assert controller.stats.reserve_ammo is None
+
+
+def _write_two_weapon_database(path: Path) -> None:
+    """Write a test database with pistol and rifle definitions."""
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "weapons-v1",
+                "default_weapon_id": "pistol",
+                "weapons": [
+                    {
+                        "id": "pistol",
+                        "display_name": "Pistol",
+                        "slot": 1,
+                        "fire_rate_rpm": 300.0,
+                        "projectile_speed_px_per_second": 16.0,
+                        "projectile_range_px": 64.0,
+                        "projectile_lifetime_seconds": 10.0,
+                        "projectile_radius_px": 3.0,
+                        "spread_degrees": 0.0,
+                        "shots_per_fire": 1,
+                        "magazine_size": 8,
+                        "initial_reserve_ammo": "infinite",
+                    },
+                    {
+                        "id": "ak47",
+                        "display_name": "AK-47",
+                        "slot": 2,
+                        "fire_rate_rpm": 600.0,
+                        "projectile_speed_px_per_second": 24.0,
+                        "projectile_range_px": 96.0,
+                        "projectile_lifetime_seconds": 10.0,
+                        "projectile_radius_px": 3.0,
+                        "spread_degrees": 4.0,
+                        "shots_per_fire": 1,
+                        "magazine_size": 30,
+                        "initial_reserve_ammo": 90,
+                    },
+                ],
+            },
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_weapon_controller_switches_weapon_slots(tmp_path: Path) -> None:
+    """Weapon controller should switch to configured weapon slots."""
+    database_path = tmp_path / "weapons.json"
+    _write_two_weapon_database(database_path)
+    runtime_map = _build_runtime_map()
+    projectile_system = ProjectileSystem(TileCollisionService(runtime_map))
+    weapon_state = WeaponState.from_database(WeaponConfigLoader().load(database_path))
+    controller = WeaponController(projectile_system=projectile_system, state=weapon_state)
+
+    switched = controller.switch_to_slot(2)
+
+    assert switched is True
+    assert controller.stats.weapon_id == "ak47"
+    assert controller.stats.slot == 2
+    assert controller.stats.ammo_in_magazine == 30
+    assert controller.stats.reserve_ammo == 90
+
+
+def test_weapon_controller_reloads_from_infinite_reserve(tmp_path: Path) -> None:
+    """Pistol reload should refill magazine without finite reserve consumption."""
+    database_path = tmp_path / "weapons.json"
+    _write_weapon_database(database_path)
+    runtime_map = _build_runtime_map()
+    projectile_system = ProjectileSystem(TileCollisionService(runtime_map))
+    weapon_state = WeaponState.from_database(WeaponConfigLoader().load(database_path))
+    controller = WeaponController(projectile_system=projectile_system, state=weapon_state)
+
+    for _shot in range(8):
+        controller.update(
+            fire_held=True,
+            frame_time=0.2,
+            origin=WorldCoord(8.0, 24.0),
+            direction_x=1.0,
+            direction_y=0.0,
+        )
+    reloaded = controller.reload_current()
+
+    assert reloaded is True
+    assert controller.stats.ammo_in_magazine == 8
+    assert controller.stats.reserve_ammo is None
+
+
+def test_weapon_controller_stops_when_magazine_is_empty(tmp_path: Path) -> None:
+    """Weapon controller should not fire when magazine ammo is empty."""
+    database_path = tmp_path / "weapons.json"
+    _write_weapon_database(database_path)
+    runtime_map = _build_runtime_map()
+    projectile_system = ProjectileSystem(TileCollisionService(runtime_map))
+    weapon_state = WeaponState.from_database(WeaponConfigLoader().load(database_path))
+    controller = WeaponController(projectile_system=projectile_system, state=weapon_state)
+
+    for _shot in range(10):
+        controller.update(
+            fire_held=True,
+            frame_time=0.2,
+            origin=WorldCoord(8.0, 24.0),
+            direction_x=1.0,
+            direction_y=0.0,
+        )
+
+    assert projectile_system.stats.shots_fired == 8
+    assert controller.stats.ammo_in_magazine == 0

@@ -38,6 +38,7 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.player.marker_radius_px == 6
     assert config.player.movement_speed_px_per_second == 160.0
     assert config.player.collision_radius_px == 5
+    assert config.player.max_health == 100
     assert config.aim_debug.enabled is True
     assert config.aim_debug.line_length_px == 140.0
     assert config.aim_debug.marker_radius_px == 4.0
@@ -47,6 +48,9 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.controls.player_left == ("KEY_A",)
     assert config.controls.player_right == ("KEY_D",)
     assert config.controls.fire_primary == "MOUSE_BUTTON_LEFT"
+    assert config.controls.reload == "KEY_R"
+    assert config.controls.weapon_slot_1 == "KEY_ONE"
+    assert config.controls.weapon_slot_2 == "KEY_TWO"
     assert config.weapons.database_path == "res/config/weapons.json"
     assert config.debug_overlay.enabled_by_default is False
     assert config.debug_overlay.panel_width == 1200
@@ -66,3 +70,10 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.fps_counter.margin_x == 12
     assert config.fps_counter.margin_y == 12
     assert config.fps_counter.font_size == 14
+    assert config.hud.enabled is True
+    assert config.hud.position == "top"
+    assert config.hud.margin_x == 12
+    assert config.hud.margin_y == 12
+    assert config.hud.padding == 8
+    assert config.hud.font_size == 16
+    assert config.hud.background_alpha == 150

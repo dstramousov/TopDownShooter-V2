@@ -10,6 +10,7 @@ from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.rendering.camera import CameraRig
 from topdown_shooter.rendering.fps_counter import FpsCounter
 from topdown_shooter.rendering.map_renderer import MapRenderer
+from topdown_shooter.rendering.player_hud import PlayerHud
 from topdown_shooter.rendering.player_renderer import PlayerRenderer
 from topdown_shooter.rendering.projectile_renderer import ProjectileRenderer
 from topdown_shooter.world.collision import TileCollisionService
@@ -86,6 +87,9 @@ class RaylibWindow:
         self._player_left_keys = self._resolve_keys(config.controls.player_left)
         self._player_right_keys = self._resolve_keys(config.controls.player_right)
         self._fire_primary_button = self._resolve_mouse_button(config.controls.fire_primary)
+        self._reload_key = self._resolve_key(config.controls.reload)
+        self._weapon_slot_1_key = self._resolve_key(config.controls.weapon_slot_1)
+        self._weapon_slot_2_key = self._resolve_key(config.controls.weapon_slot_2)
         self._debug_overlay_enabled = config.debug_overlay.enabled_by_default
         self._renderer = MapRenderer(self._raylib)
         self._fps_counter = FpsCounter(
@@ -93,7 +97,10 @@ class RaylibWindow:
             config=config.fps_counter,
             window=config.window,
         )
-        self._player = PlayerState.spawn_at_map_start(runtime_map)
+        self._player = PlayerState.spawn_at_map_start(
+            runtime_map,
+            max_health=config.player.max_health,
+        )
         collision_service = TileCollisionService(runtime_map)
         self._player_controller = PlayerController(
             collision_service=collision_service,
@@ -117,6 +124,11 @@ class RaylibWindow:
             aim_debug=config.aim_debug,
         )
         self._projectile_renderer = ProjectileRenderer(raylib=self._raylib)
+        self._player_hud = PlayerHud(
+            raylib=self._raylib,
+            config=config.hud,
+            window=config.window,
+        )
         self._debug_overlay = DebugOverlay(
             raylib=self._raylib,
             runtime_map=runtime_map,
@@ -172,6 +184,7 @@ class RaylibWindow:
                 )
                 self._player_renderer.draw(self._player)
                 raylib.end_mode_2d()
+                self._player_hud.draw(self._player, self._weapon_controller.stats)
                 if self._debug_overlay_enabled:
                     self._debug_overlay.draw(
                         camera=self._camera_rig.state,
@@ -206,6 +219,13 @@ class RaylibWindow:
         Args:
             frame_time: Current frame duration in seconds.
         """
+        if self._raylib.is_key_pressed(self._weapon_slot_1_key):
+            self._weapon_controller.switch_to_slot(1)
+        if self._raylib.is_key_pressed(self._weapon_slot_2_key):
+            self._weapon_controller.switch_to_slot(2)
+        if self._raylib.is_key_pressed(self._reload_key):
+            self._weapon_controller.reload_current()
+
         self._weapon_controller.update(
             fire_held=self._raylib.is_mouse_button_down(self._fire_primary_button),
             frame_time=frame_time,
