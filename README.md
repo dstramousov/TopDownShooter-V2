@@ -26,3 +26,18 @@ or, after installing the package:
 ```bash
 topdown-shooter --map ./maps/current --inspect-map
 ```
+
+
+## Run map renderer
+
+The minimal renderer opens a raylib window and draws the loaded map package:
+
+```bash
+PYTHONPATH=src python3 -m topdown_shooter --map ../TopDownMapGen/out --run
+```
+
+Window settings and control bindings are stored in the packaged runtime config:
+
+```text
+src/topdown_shooter/config/default_runtime_config.json
+```

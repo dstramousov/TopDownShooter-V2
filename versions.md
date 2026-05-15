@@ -14,3 +14,11 @@
 - Improved human-readable CLI diagnostics for invalid map package paths.
 - Added clear recovery hints when required map package files are missing.
 - Added validation for missing `--map` paths and file paths passed instead of directories.
+
+
+## v0.0.2 -> v0.0.3
+
+- Added `--run` CLI mode for a minimal raylib map render window.
+- Added packaged runtime configuration for window settings and control bindings.
+- Rendered generated maps from `RuntimeMap` with simple tile colors.
+- Centered the initial camera on the map start tile.

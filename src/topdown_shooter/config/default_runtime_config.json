@@ -1,0 +1,14 @@
+{
+  "window": {
+    "title": "TopDownShooter V.2",
+    "width": 1280,
+    "height": 720,
+    "target_fps": 60
+  },
+  "camera": {
+    "zoom": 1.0
+  },
+  "controls": {
+    "quit": "KEY_ESCAPE"
+  }
+}

@@ -6,8 +6,6 @@ set -u
 # Example: "tmp,log,bak"
 EXTENSIONS_RAW="tmp,pyc,bak,html,js"
 
-rm -Rf ./out/*
-
 # Set to true to only print matching files without deleting them.
 DRY_RUN=false
 
