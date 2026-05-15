@@ -118,6 +118,7 @@ class ControlsConfig:
         camera_right: Key names used to pan the camera right.
         camera_zoom_in: Key name used to zoom the camera in.
         camera_zoom_out: Key name used to zoom the camera out.
+        camera_zoom_mouse_wheel: Whether mouse wheel zoom is enabled.
         camera_reset: Key name used to reset the camera to the map start tile.
     """
 
@@ -129,6 +130,7 @@ class ControlsConfig:
     camera_right: tuple[str, ...]
     camera_zoom_in: str
     camera_zoom_out: str
+    camera_zoom_mouse_wheel: bool
     camera_reset: str
 
 
@@ -217,6 +219,10 @@ class RuntimeConfigLoader:
                 camera_right=self._require_key_names(controls, "camera_right"),
                 camera_zoom_in=self._require_str(controls, "camera_zoom_in"),
                 camera_zoom_out=self._require_str(controls, "camera_zoom_out"),
+                camera_zoom_mouse_wheel=self._require_bool(
+                    controls,
+                    "camera_zoom_mouse_wheel",
+                ),
                 camera_reset=self._require_str(controls, "camera_reset"),
             ),
         )

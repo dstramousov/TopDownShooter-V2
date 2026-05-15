@@ -63,3 +63,11 @@
 - Added a simple player marker renderer drawn above the map.
 - Added player position and marker diagnostics to the debug overlay.
 - Added player marker display settings to the packaged runtime config.
+
+
+## v0.0.8 -> v0.0.9
+
+- Reserved `WASD` for future player movement by removing it from map-viewer camera pan bindings.
+- Kept map-viewer camera panning on arrow keys through runtime config.
+- Added configurable mouse wheel zoom alongside existing `Q`/`E` zoom keys.
+- Updated debug overlay and README control descriptions to match the new bindings.

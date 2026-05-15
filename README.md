@@ -4,7 +4,7 @@ Initial runtime foundation for loading a generated TopDownMapGen map package.
 
 ## Current scope
 
-Version `0.0.8` supports map package inspection, a minimal render window, camera foundation, a runtime debug overlay, map-viewer camera controls, and an initial player marker:
+Version `0.0.9` supports map package inspection, a minimal render window, camera foundation, a runtime debug overlay, map-viewer camera controls, and an initial player marker:
 
 - reads `_manifest.json`;
 - reads `validation_report.json`;
@@ -52,14 +52,16 @@ Default controls:
 ```text
 Esc: close runtime window
 Ctrl+D: toggle debug overlay
-WASD / arrows: pan camera
+Arrows: pan camera
+Mouse wheel: zoom in / zoom out
 Q / E: zoom out / zoom in
 Home: reset camera to map start
+WASD: reserved for future player movement
 ```
 
 ## Camera foundation
 
-The renderer uses a small camera rig that centers on the generated start tile and clamps the camera target to map bounds. The map viewer can pan, zoom, and reset the camera to the start tile. Window size, zoom limits, camera movement speed, camera flags, and control bindings are stored in the packaged runtime config instead of being hardcoded in rendering systems.
+The renderer uses a small camera rig that centers on the generated start tile and clamps the camera target to map bounds. The map viewer can pan, zoom, and reset the camera to the start tile. Camera pan uses arrow keys so WASD stays reserved for future player movement. Zoom is available through the mouse wheel and Q/E fallback keys. Window size, zoom limits, camera movement speed, camera flags, mouse wheel zoom, and control bindings are stored in the packaged runtime config instead of being hardcoded in rendering systems.
 
 ## Debug overlay
 

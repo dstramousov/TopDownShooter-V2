@@ -397,10 +397,13 @@ class DebugOverlay:
         Returns:
             Human-readable zoom bindings.
         """
-        return (
+        bindings = (
             f"{self._config.controls.camera_zoom_out}/"
             f"{self._config.controls.camera_zoom_in}"
         )
+        if self._config.controls.camera_zoom_mouse_wheel:
+            bindings = f"Wheel {bindings}"
+        return bindings
 
     def _format_pan_bindings(self) -> str:
         """Format configured pan bindings for the overlay.

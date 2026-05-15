@@ -39,23 +39,20 @@
       ]
     },
     "camera_up": [
-      "KEY_W",
       "KEY_UP"
     ],
     "camera_down": [
-      "KEY_S",
       "KEY_DOWN"
     ],
     "camera_left": [
-      "KEY_A",
       "KEY_LEFT"
     ],
     "camera_right": [
-      "KEY_D",
       "KEY_RIGHT"
     ],
     "camera_zoom_in": "KEY_E",
     "camera_zoom_out": "KEY_Q",
-    "camera_reset": "KEY_HOME"
+    "camera_reset": "KEY_HOME",
+    "camera_zoom_mouse_wheel": true
   }
 }
