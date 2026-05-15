@@ -10,6 +10,7 @@ from topdown_shooter.config.runtime_config import DebugOverlayConfig, RuntimeCon
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.rendering.camera import RuntimeCamera
 from topdown_shooter.world.coordinates import ScreenCoord, TileCoord, WorldCoord, world_to_tile
+from topdown_shooter.world.player import PlayerState
 from topdown_shooter.world.runtime_map import RuntimeMap
 from topdown_shooter.world.tile import RuntimeTile
 
@@ -82,18 +83,20 @@ class DebugOverlay:
         self._package = package
         self._config = config
 
-    def draw(self, camera: RuntimeCamera, raylib_camera: Any) -> None:
+    def draw(self, camera: RuntimeCamera, raylib_camera: Any, player: PlayerState) -> None:
         """Draw the overlay for the current frame.
 
         Args:
             camera: Current runtime camera state.
             raylib_camera: Current raylib Camera2D object.
+            player: Current player state.
         """
         overlay_config = self._config.debug_overlay
         columns = self._build_columns(
             fps=self._raylib.get_fps(),
             camera=camera,
             mouse=self._read_mouse(raylib_camera),
+            player=player,
         )
         panel_height = self._calculate_panel_height(overlay_config, columns)
         self._draw_panel(overlay_config, panel_height)
@@ -104,6 +107,7 @@ class DebugOverlay:
         fps: int,
         camera: RuntimeCamera,
         mouse: MouseDebugInfo,
+        player: PlayerState,
     ) -> tuple[tuple[DebugOverlaySection, ...], tuple[DebugOverlaySection, ...]]:
         """Build two balanced debug overlay columns.
 
@@ -111,6 +115,7 @@ class DebugOverlay:
             fps: Current frames per second.
             camera: Current runtime camera state.
             mouse: Current mouse debug information.
+            player: Current player state.
 
         Returns:
             Two columns with debug sections.
@@ -135,12 +140,27 @@ class DebugOverlay:
                     DebugOverlayRow("FPS", f"{fps}/{window.target_fps}"),
                     DebugOverlayRow("Size", f"{window.width}x{window.height}"),
                     DebugOverlayRow("Zoom", f"{camera.zoom:.2f}"),
+                    DebugOverlayRow(
+                        "Zoom range",
+                        f"{self._config.camera.min_zoom:.2f}..{self._config.camera.max_zoom:.2f}",
+                    ),
                 ),
             ),
             DebugOverlaySection(
                 title="Camera",
                 rows=(
                     DebugOverlayRow("Target", f"{camera.target.x:.1f}, {camera.target.y:.1f}"),
+                ),
+            ),
+            DebugOverlaySection(
+                title="Player",
+                rows=(
+                    DebugOverlayRow("Tile", f"{player.tile.x}, {player.tile.y}"),
+                    DebugOverlayRow(
+                        "World",
+                        f"{player.world_position.x:.1f}, {player.world_position.y:.1f}",
+                    ),
+                    DebugOverlayRow("Marker radius", f"{self._config.player.marker_radius_px}px"),
                 ),
             ),
             DebugOverlaySection(
@@ -211,6 +231,9 @@ class DebugOverlay:
                 rows=(
                     DebugOverlayRow("Exit", self._config.controls.quit),
                     DebugOverlayRow("Debug", self._format_debug_binding()),
+                    DebugOverlayRow("Pan", self._format_pan_bindings()),
+                    DebugOverlayRow("Zoom", self._format_zoom_bindings()),
+                    DebugOverlayRow("Reset", self._config.controls.camera_reset),
                 ),
             ),
         )
@@ -366,6 +389,46 @@ class DebugOverlay:
         """
         available_width = config.panel_width - config.padding * 2 - config.column_gap
         return max(1, available_width // 2)
+
+
+    def _format_zoom_bindings(self) -> str:
+        """Format configured zoom bindings for the overlay.
+
+        Returns:
+            Human-readable zoom bindings.
+        """
+        return (
+            f"{self._config.controls.camera_zoom_out}/"
+            f"{self._config.controls.camera_zoom_in}"
+        )
+
+    def _format_pan_bindings(self) -> str:
+        """Format configured pan bindings for the overlay.
+
+        Returns:
+            Human-readable pan bindings.
+        """
+        controls = self._config.controls
+        vertical = (
+            f"{self._format_key_names(controls.camera_up)}/"
+            f"{self._format_key_names(controls.camera_down)}"
+        )
+        horizontal = (
+            f"{self._format_key_names(controls.camera_left)}/"
+            f"{self._format_key_names(controls.camera_right)}"
+        )
+        return f"{vertical} {horizontal}"
+
+    def _format_key_names(self, key_names: tuple[str, ...]) -> str:
+        """Format key names for compact overlay output.
+
+        Args:
+            key_names: Configured key names.
+
+        Returns:
+            Human-readable key name list.
+        """
+        return ",".join(key_name.removeprefix("KEY_") for key_name in key_names)
 
     def _format_debug_binding(self) -> str:
         """Return human-readable debug toggle binding.

@@ -9,7 +9,14 @@
     "zoom": 1.0,
     "clamp_to_map": true,
     "smooth_time": 0.0,
-    "lookahead_tiles": 0.0
+    "lookahead_tiles": 0.0,
+    "min_zoom": 0.5,
+    "max_zoom": 3.0,
+    "zoom_step": 0.1,
+    "move_speed_px_per_second": 720.0
+  },
+  "player": {
+    "marker_radius_px": 6
   },
   "debug_overlay": {
     "enabled_by_default": false,
@@ -26,7 +33,29 @@
     "quit": "KEY_ESCAPE",
     "debug_overlay": {
       "key": "KEY_D",
-      "modifiers": ["KEY_LEFT_CONTROL", "KEY_RIGHT_CONTROL"]
-    }
+      "modifiers": [
+        "KEY_LEFT_CONTROL",
+        "KEY_RIGHT_CONTROL"
+      ]
+    },
+    "camera_up": [
+      "KEY_W",
+      "KEY_UP"
+    ],
+    "camera_down": [
+      "KEY_S",
+      "KEY_DOWN"
+    ],
+    "camera_left": [
+      "KEY_A",
+      "KEY_LEFT"
+    ],
+    "camera_right": [
+      "KEY_D",
+      "KEY_RIGHT"
+    ],
+    "camera_zoom_in": "KEY_E",
+    "camera_zoom_out": "KEY_Q",
+    "camera_reset": "KEY_HOME"
   }
 }

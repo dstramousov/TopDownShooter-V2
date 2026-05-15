@@ -57,6 +57,10 @@ def test_camera_rig_clamps_start_target_to_map_bounds() -> None:
         ),
         camera_config=CameraConfig(
             zoom=1.0,
+            min_zoom=0.5,
+            max_zoom=3.0,
+            zoom_step=0.1,
+            move_speed_px_per_second=720.0,
             clamp_to_map=True,
             smooth_time=0.0,
             lookahead_tiles=0.0,
@@ -65,3 +69,41 @@ def test_camera_rig_clamps_start_target_to_map_bounds() -> None:
 
     assert camera.state.target.x == 640.0
     assert camera.state.target.y == 360.0
+
+
+def test_camera_rig_pans_zooms_and_resets_to_start() -> None:
+    """Camera rig should support map-viewer controls."""
+    runtime_map = _build_runtime_map(width=160, height=96, start=TileCoord(80, 48))
+    camera = CameraRig(
+        runtime_map=runtime_map,
+        window_config=WindowConfig(
+            title="Test",
+            width=1280,
+            height=720,
+            target_fps=60,
+        ),
+        camera_config=CameraConfig(
+            zoom=1.0,
+            min_zoom=0.5,
+            max_zoom=3.0,
+            zoom_step=0.1,
+            move_speed_px_per_second=720.0,
+            clamp_to_map=True,
+            smooth_time=0.0,
+            lookahead_tiles=0.0,
+        ),
+    )
+
+    start_target = camera.state.target
+    camera.pan(32.0, -16.0)
+    assert camera.state.target == WorldCoord(start_target.x + 32.0, start_target.y - 16.0)
+
+    camera.zoom_by(10.0)
+    assert camera.state.zoom == 3.0
+
+    camera.zoom_by(-10.0)
+    assert camera.state.zoom == 0.5
+
+    camera.reset_to_start()
+    assert camera.state.zoom == 1.0
+    assert camera.state.target == start_target

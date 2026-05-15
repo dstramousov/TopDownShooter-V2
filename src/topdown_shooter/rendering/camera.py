@@ -43,10 +43,9 @@ class RuntimeCamera:
 class CameraRig:
     """Build and update the runtime camera.
 
-    The rig currently uses a static target centered on the map start tile. The
-    structure deliberately keeps target and config data separate so future
-    inertia, lookahead, and director-camera behavior can be added without
-    changing rendering code.
+    The rig owns interactive map-viewer camera state. It supports panning,
+    zooming, reset-to-start, and clamping to map bounds while keeping room for
+    future inertia, lookahead, and director-camera behavior.
     """
 
     def __init__(
@@ -65,14 +64,15 @@ class CameraRig:
         self._runtime_map = runtime_map
         self._window_config = window_config
         self._camera_config = camera_config
-        initial_target = tile_to_world_center(
+        self._start_target = tile_to_world_center(
             runtime_map.start_tile,
             runtime_map.tile_size_px,
         )
         self._state = RuntimeCamera(
-            target=self._clamp_target(initial_target),
+            target=self._start_target,
             zoom=camera_config.zoom,
         )
+        self._state.target = self._clamp_target(self._state.target)
 
     @property
     def state(self) -> RuntimeCamera:
@@ -98,16 +98,52 @@ class CameraRig:
             self._state.zoom,
         )
 
-    def calculate_bounds(self) -> CameraBounds:
+    def pan(self, dx: float, dy: float) -> None:
+        """Move the camera target by a world-space delta.
+
+        Args:
+            dx: Horizontal movement in world pixels.
+            dy: Vertical movement in world pixels.
+        """
+        self._state.target = self._clamp_target(
+            WorldCoord(
+                x=self._state.target.x + dx,
+                y=self._state.target.y + dy,
+            ),
+        )
+
+    def zoom_by(self, delta: float) -> None:
+        """Change camera zoom and keep the target inside map bounds.
+
+        Args:
+            delta: Zoom delta.
+        """
+        requested_zoom = self._state.zoom + delta
+        self._state.zoom = min(
+            max(requested_zoom, self._camera_config.min_zoom),
+            self._camera_config.max_zoom,
+        )
+        self._state.target = self._clamp_target(self._state.target)
+
+    def reset_to_start(self) -> None:
+        """Reset camera target and zoom to configured start values."""
+        self._state.zoom = self._camera_config.zoom
+        self._state.target = self._clamp_target(self._start_target)
+
+    def calculate_bounds(self, zoom: float | None = None) -> CameraBounds:
         """Calculate camera target bounds for the current map and window.
+
+        Args:
+            zoom: Optional zoom value. Uses the current camera zoom when omitted.
 
         Returns:
             Camera target bounds in world space.
         """
+        active_zoom = self._state.zoom if zoom is None else zoom
         map_width_px = self._runtime_map.width_tiles * self._runtime_map.tile_size_px
         map_height_px = self._runtime_map.height_tiles * self._runtime_map.tile_size_px
-        half_view_width = self._window_config.width / (2 * self._camera_config.zoom)
-        half_view_height = self._window_config.height / (2 * self._camera_config.zoom)
+        half_view_width = self._window_config.width / (2 * active_zoom)
+        half_view_height = self._window_config.height / (2 * active_zoom)
 
         if map_width_px <= half_view_width * 2:
             min_x = max_x = map_width_px / 2

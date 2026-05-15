@@ -9,6 +9,8 @@ from topdown_shooter.debug.overlay import DebugOverlay
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.rendering.camera import CameraRig
 from topdown_shooter.rendering.map_renderer import MapRenderer
+from topdown_shooter.rendering.player_renderer import PlayerRenderer
+from topdown_shooter.world.player import PlayerState
 from topdown_shooter.world.runtime_map import RuntimeMap
 
 
@@ -62,8 +64,20 @@ class RaylibWindow:
         self._raylib = import_raylib()
         self._quit_key = self._resolve_key(config.controls.quit)
         self._debug_overlay_chord = self._resolve_key_chord(config.controls.debug_overlay)
+        self._camera_up_keys = self._resolve_keys(config.controls.camera_up)
+        self._camera_down_keys = self._resolve_keys(config.controls.camera_down)
+        self._camera_left_keys = self._resolve_keys(config.controls.camera_left)
+        self._camera_right_keys = self._resolve_keys(config.controls.camera_right)
+        self._camera_zoom_in_key = self._resolve_key(config.controls.camera_zoom_in)
+        self._camera_zoom_out_key = self._resolve_key(config.controls.camera_zoom_out)
+        self._camera_reset_key = self._resolve_key(config.controls.camera_reset)
         self._debug_overlay_enabled = config.debug_overlay.enabled_by_default
         self._renderer = MapRenderer(self._raylib)
+        self._player = PlayerState.spawn_at_map_start(runtime_map)
+        self._player_renderer = PlayerRenderer(
+            raylib=self._raylib,
+            marker_radius_px=config.player.marker_radius_px,
+        )
         self._debug_overlay = DebugOverlay(
             raylib=self._raylib,
             runtime_map=runtime_map,
@@ -85,26 +99,57 @@ class RaylibWindow:
         raylib.set_target_fps(window.target_fps)
 
         try:
-            camera = self._camera_rig.build_raylib_camera(raylib)
             while not raylib.window_should_close():
                 if raylib.is_key_pressed(self._quit_key):
                     break
                 if self._is_key_chord_pressed(self._debug_overlay_chord):
                     self._debug_overlay_enabled = not self._debug_overlay_enabled
+                self._update_camera_controls(raylib.get_frame_time())
+                camera = self._camera_rig.build_raylib_camera(raylib)
 
                 raylib.begin_drawing()
                 raylib.clear_background(raylib.BLACK)
                 raylib.begin_mode_2d(camera)
                 self._renderer.draw(self._runtime_map)
+                self._player_renderer.draw(self._player)
                 raylib.end_mode_2d()
                 if self._debug_overlay_enabled:
                     self._debug_overlay.draw(
                         camera=self._camera_rig.state,
                         raylib_camera=camera,
+                        player=self._player,
                     )
                 raylib.end_drawing()
         finally:
             raylib.close_window()
+
+    def _update_camera_controls(self, frame_time: float) -> None:
+        """Apply configured map-viewer camera controls for the current frame.
+
+        Args:
+            frame_time: Current frame duration in seconds.
+        """
+        move_speed = self._config.camera.move_speed_px_per_second
+        move_distance = move_speed * frame_time / self._camera_rig.state.zoom
+        dx = 0.0
+        dy = 0.0
+        if self._is_any_key_down(self._camera_left_keys):
+            dx -= move_distance
+        if self._is_any_key_down(self._camera_right_keys):
+            dx += move_distance
+        if self._is_any_key_down(self._camera_up_keys):
+            dy -= move_distance
+        if self._is_any_key_down(self._camera_down_keys):
+            dy += move_distance
+        if dx != 0.0 or dy != 0.0:
+            self._camera_rig.pan(dx, dy)
+
+        if self._raylib.is_key_pressed(self._camera_zoom_in_key):
+            self._camera_rig.zoom_by(self._config.camera.zoom_step)
+        if self._raylib.is_key_pressed(self._camera_zoom_out_key):
+            self._camera_rig.zoom_by(-self._config.camera.zoom_step)
+        if self._raylib.is_key_pressed(self._camera_reset_key):
+            self._camera_rig.reset_to_start()
 
     def _configure_raylib_logging(self) -> None:
         """Reduce raylib logging noise before opening the window."""
@@ -132,6 +177,17 @@ class RaylibWindow:
             )
         return key_value
 
+    def _resolve_keys(self, key_names: tuple[str, ...]) -> tuple[int, ...]:
+        """Resolve configured key names to raylib key constants.
+
+        Args:
+            key_names: Raylib key constant names.
+
+        Returns:
+            Raylib key constants.
+        """
+        return tuple(self._resolve_key(key_name) for key_name in key_names)
+
     def _resolve_key_chord(self, chord: KeyChordConfig) -> tuple[int, tuple[int, ...]]:
         """Resolve a configured key chord to raylib key constants.
 
@@ -145,6 +201,17 @@ class RaylibWindow:
             self._resolve_key(chord.key),
             tuple(self._resolve_key(modifier) for modifier in chord.modifiers),
         )
+
+    def _is_any_key_down(self, keys: tuple[int, ...]) -> bool:
+        """Return whether any configured key is currently down.
+
+        Args:
+            keys: Raylib key constants.
+
+        Returns:
+            True if at least one key is down.
+        """
+        return any(self._raylib.is_key_down(key) for key in keys)
 
     def _is_key_chord_pressed(self, chord: tuple[int, tuple[int, ...]]) -> bool:
         """Return whether a configured key chord was pressed this frame.

@@ -47,3 +47,19 @@
 - Drew overlay labels in white and values in orange for better readability.
 - Expanded configurable overlay layout settings for panel width, section spacing, column gap, and label width.
 - Kept the overlay as a debug-only layer without changing gameplay, camera behavior, or map rendering.
+
+
+## v0.0.6 -> v0.0.7
+
+- Added configurable map-viewer camera controls for panning, zooming, and reset-to-start.
+- Added camera zoom limits, zoom step, and movement speed to runtime config.
+- Rebuilt the raylib camera each frame from `CameraRig` state so debug overlay mouse/world/tile coordinates follow camera changes.
+- Updated debug overlay controls output to include pan, zoom, and reset bindings.
+
+
+## v0.0.7 -> v0.0.8
+
+- Added an initial player runtime state spawned at the generated start tile.
+- Added a simple player marker renderer drawn above the map.
+- Added player position and marker diagnostics to the debug overlay.
+- Added player marker display settings to the packaged runtime config.

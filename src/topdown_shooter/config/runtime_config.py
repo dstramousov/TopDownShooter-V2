@@ -35,15 +35,34 @@ class CameraConfig:
 
     Attributes:
         zoom: Initial camera zoom.
+        min_zoom: Minimum interactive camera zoom.
+        max_zoom: Maximum interactive camera zoom.
+        zoom_step: Zoom delta applied by one zoom key press.
+        move_speed_px_per_second: Camera pan speed in world pixels per second.
         clamp_to_map: Whether the camera target is clamped to map bounds.
         smooth_time: Reserved smoothing time for future inertial follow.
         lookahead_tiles: Reserved lookahead distance for future player follow.
     """
 
     zoom: float
+    min_zoom: float
+    max_zoom: float
+    zoom_step: float
+    move_speed_px_per_second: float
     clamp_to_map: bool
     smooth_time: float
     lookahead_tiles: float
+
+
+@dataclass(frozen=True, slots=True)
+class PlayerConfig:
+    """Player display settings for the runtime.
+
+    Attributes:
+        marker_radius_px: Player marker radius in world pixels.
+    """
+
+    marker_radius_px: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,10 +112,24 @@ class ControlsConfig:
     Attributes:
         quit: Key name used to close the runtime window.
         debug_overlay: Key chord used to toggle debug overlay visibility.
+        camera_up: Key names used to pan the camera up.
+        camera_down: Key names used to pan the camera down.
+        camera_left: Key names used to pan the camera left.
+        camera_right: Key names used to pan the camera right.
+        camera_zoom_in: Key name used to zoom the camera in.
+        camera_zoom_out: Key name used to zoom the camera out.
+        camera_reset: Key name used to reset the camera to the map start tile.
     """
 
     quit: str
     debug_overlay: KeyChordConfig
+    camera_up: tuple[str, ...]
+    camera_down: tuple[str, ...]
+    camera_left: tuple[str, ...]
+    camera_right: tuple[str, ...]
+    camera_zoom_in: str
+    camera_zoom_out: str
+    camera_reset: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,12 +139,14 @@ class RuntimeConfig:
     Attributes:
         window: Window settings.
         camera: Camera settings.
+        player: Player display settings.
         debug_overlay: Debug overlay display settings.
         controls: Control bindings.
     """
 
     window: WindowConfig
     camera: CameraConfig
+    player: PlayerConfig
     debug_overlay: DebugOverlayConfig
     controls: ControlsConfig
 
@@ -145,6 +180,7 @@ class RuntimeConfigLoader:
         """
         window = self._require_dict(raw_config, "window")
         camera = self._require_dict(raw_config, "camera")
+        player = self._require_dict(raw_config, "player")
         debug_overlay = self._require_dict(raw_config, "debug_overlay")
         controls = self._require_dict(raw_config, "controls")
         return RuntimeConfig(
@@ -154,11 +190,9 @@ class RuntimeConfigLoader:
                 height=self._require_positive_int(window, "height"),
                 target_fps=self._require_positive_int(window, "target_fps"),
             ),
-            camera=CameraConfig(
-                zoom=self._require_positive_float(camera, "zoom"),
-                clamp_to_map=self._require_bool(camera, "clamp_to_map"),
-                smooth_time=self._require_non_negative_float(camera, "smooth_time"),
-                lookahead_tiles=self._require_non_negative_float(camera, "lookahead_tiles"),
+            camera=self._build_camera_config(camera),
+            player=PlayerConfig(
+                marker_radius_px=self._require_positive_int(player, "marker_radius_px"),
             ),
             debug_overlay=DebugOverlayConfig(
                 enabled_by_default=self._require_bool(debug_overlay, "enabled_by_default"),
@@ -177,7 +211,44 @@ class RuntimeConfigLoader:
             controls=ControlsConfig(
                 quit=self._require_str(controls, "quit"),
                 debug_overlay=self._require_key_chord(controls, "debug_overlay"),
+                camera_up=self._require_key_names(controls, "camera_up"),
+                camera_down=self._require_key_names(controls, "camera_down"),
+                camera_left=self._require_key_names(controls, "camera_left"),
+                camera_right=self._require_key_names(controls, "camera_right"),
+                camera_zoom_in=self._require_str(controls, "camera_zoom_in"),
+                camera_zoom_out=self._require_str(controls, "camera_zoom_out"),
+                camera_reset=self._require_str(controls, "camera_reset"),
             ),
+        )
+
+    def _build_camera_config(self, camera: dict[str, Any]) -> CameraConfig:
+        """Build typed camera config from raw data.
+
+        Args:
+            camera: Raw camera configuration dictionary.
+
+        Returns:
+            Camera configuration.
+        """
+        zoom = self._require_positive_float(camera, "zoom")
+        min_zoom = self._require_positive_float(camera, "min_zoom")
+        max_zoom = self._require_positive_float(camera, "max_zoom")
+        if min_zoom > max_zoom:
+            raise RuntimeConfigError("Runtime config camera zoom range is invalid.")
+        if zoom < min_zoom or zoom > max_zoom:
+            raise RuntimeConfigError("Runtime config camera zoom is outside the configured range.")
+        return CameraConfig(
+            zoom=zoom,
+            min_zoom=min_zoom,
+            max_zoom=max_zoom,
+            zoom_step=self._require_positive_float(camera, "zoom_step"),
+            move_speed_px_per_second=self._require_positive_float(
+                camera,
+                "move_speed_px_per_second",
+            ),
+            clamp_to_map=self._require_bool(camera, "clamp_to_map"),
+            smooth_time=self._require_non_negative_float(camera, "smooth_time"),
+            lookahead_tiles=self._require_non_negative_float(camera, "lookahead_tiles"),
         )
 
     def _require_dict(self, data: dict[str, Any], key: str) -> dict[str, Any]:
@@ -299,6 +370,25 @@ class RuntimeConfigLoader:
         if not isinstance(value, int | float) or value < 0:
             raise RuntimeConfigError(f"Runtime config number is missing or invalid: {key}")
         return float(value)
+
+    def _require_key_names(self, data: dict[str, Any], key: str) -> tuple[str, ...]:
+        """Return one or more required key names.
+
+        Args:
+            data: Source dictionary.
+            key: Required key.
+
+        Returns:
+            Key name tuple.
+        """
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return (value,)
+        if isinstance(value, list) and value and all(
+            isinstance(item, str) and item.strip() for item in value
+        ):
+            return tuple(value)
+        raise RuntimeConfigError(f"Runtime config key list is missing or invalid: {key}")
 
     def _require_key_chord(self, data: dict[str, Any], key: str) -> KeyChordConfig:
         """Return a required key chord value.
