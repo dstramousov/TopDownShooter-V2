@@ -106,3 +106,26 @@
 - Replaced `typing.Any` annotations at the raylib rendering/debug boundary with explicit `object` annotations.
 - Replaced the quoted `PlayerState` return annotation with `Self`.
 - Kept gameplay, camera behavior, rendering behavior, and map loading unchanged.
+
+
+## v0.0.13 -> v0.0.14
+
+- Added mouse aim direction state calculated from player position to the world-space cursor.
+- Added a configurable aim debug line and marker rendered above the player.
+- Added aim direction, angle, and target diagnostics to the debug overlay.
+- Kept shooting, projectiles, recoil, enemies, and camera aim-lookahead out of scope.
+
+## v0.0.14 -> v0.0.15
+
+- Increased the default debug overlay panel width so long value strings have more room.
+- Increased the default debug overlay label width for cleaner two-column alignment.
+- Documented and adjusted the configurable debug overlay background alpha value.
+- Kept gameplay, camera, aim, and rendering behavior otherwise unchanged.
+
+
+## v0.0.15 -> v0.0.16
+
+- Added a `res/fonts/` resource directory for runtime font assets.
+- Added configurable debug overlay font path and glyph spacing settings.
+- Made the debug overlay load a custom TTF font when available and fall back to the default raylib font otherwise.
+- Documented `res/fonts/IBMPlexMono-Regular.ttf` as the expected overlay font path without changing gameplay behavior.

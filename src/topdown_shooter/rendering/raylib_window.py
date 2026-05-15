@@ -9,7 +9,9 @@ from topdown_shooter.rendering.camera import CameraRig
 from topdown_shooter.rendering.map_renderer import MapRenderer
 from topdown_shooter.rendering.player_renderer import PlayerRenderer
 from topdown_shooter.world.collision import TileCollisionService
+from topdown_shooter.world.coordinates import WorldCoord
 from topdown_shooter.world.player import PlayerState
+from topdown_shooter.world.player_aim import PlayerAimState
 from topdown_shooter.world.player_controller import PlayerController, PlayerMoveIntent
 from topdown_shooter.world.runtime_map import RuntimeMap
 
@@ -90,6 +92,7 @@ class RaylibWindow:
         self._player_renderer = PlayerRenderer(
             raylib=self._raylib,
             marker_radius_px=config.player.marker_radius_px,
+            aim_debug=config.aim_debug,
         )
         self._debug_overlay = DebugOverlay(
             raylib=self._raylib,
@@ -122,6 +125,7 @@ class RaylibWindow:
                 self._update_camera_controls(frame_time)
                 self._camera_rig.update_follow_target(self._player.world_position, frame_time)
                 camera = self._camera_rig.build_raylib_camera(raylib)
+                self._update_player_aim(camera)
 
                 raylib.begin_drawing()
                 raylib.clear_background(raylib.BLACK)
@@ -137,8 +141,21 @@ class RaylibWindow:
                     )
                 raylib.end_drawing()
         finally:
+            self._debug_overlay.unload()
             raylib.close_window()
 
+    def _update_player_aim(self, raylib_camera: object) -> None:
+        """Update player aim from the current mouse world position.
+
+        Args:
+            raylib_camera: Current raylib Camera2D object.
+        """
+        mouse_position = self._raylib.get_mouse_position()
+        mouse_world = self._raylib.get_screen_to_world_2d(mouse_position, raylib_camera)
+        self._player.aim = PlayerAimState.from_positions(
+            origin=self._player.world_position,
+            target=WorldCoord(x=float(mouse_world.x), y=float(mouse_world.y)),
+        )
 
     def _update_player_controls(self, frame_time: float) -> None:
         """Apply configured player movement controls for the current frame.

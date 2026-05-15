@@ -76,6 +76,23 @@ class PlayerConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class AimDebugConfig:
+    """Aim debug visualization settings.
+
+    Attributes:
+        enabled: Whether the aim direction marker is drawn.
+        line_length_px: Aim direction line length in world pixels.
+        marker_radius_px: Aim marker radius in world pixels.
+        line_thickness_px: Aim direction line thickness in world pixels.
+    """
+
+    enabled: bool
+    line_length_px: float
+    marker_radius_px: float
+    line_thickness_px: float
+
+
+@dataclass(frozen=True, slots=True)
 class DebugOverlayConfig:
     """Debug overlay display settings.
 
@@ -83,7 +100,9 @@ class DebugOverlayConfig:
         enabled_by_default: Whether the overlay starts enabled.
         panel_width: Overlay panel width in pixels.
         padding: Inner panel padding in pixels.
+        font_path: Relative or absolute path to the optional overlay TTF font.
         font_size: Text font size in pixels.
+        font_spacing: Extra spacing between rendered font glyphs.
         line_spacing: Extra spacing between text lines in pixels.
         section_spacing: Extra spacing between overlay sections in pixels.
         column_gap: Horizontal spacing between two overlay columns in pixels.
@@ -94,7 +113,9 @@ class DebugOverlayConfig:
     enabled_by_default: bool
     panel_width: int
     padding: int
+    font_path: str
     font_size: int
+    font_spacing: float
     line_spacing: int
     section_spacing: int
     column_gap: int
@@ -162,6 +183,7 @@ class RuntimeConfig:
         window: Window settings.
         camera: Camera settings.
         player: Player display settings.
+        aim_debug: Aim debug display settings.
         debug_overlay: Debug overlay display settings.
         controls: Control bindings.
     """
@@ -169,6 +191,7 @@ class RuntimeConfig:
     window: WindowConfig
     camera: CameraConfig
     player: PlayerConfig
+    aim_debug: AimDebugConfig
     debug_overlay: DebugOverlayConfig
     controls: ControlsConfig
 
@@ -203,6 +226,7 @@ class RuntimeConfigLoader:
         window = self._require_dict(raw_config, "window")
         camera = self._require_dict(raw_config, "camera")
         player = self._require_dict(raw_config, "player")
+        aim_debug = self._require_dict(raw_config, "aim_debug")
         debug_overlay = self._require_dict(raw_config, "debug_overlay")
         controls = self._require_dict(raw_config, "controls")
         return RuntimeConfig(
@@ -224,11 +248,22 @@ class RuntimeConfigLoader:
                     "collision_radius_px",
                 ),
             ),
+            aim_debug=AimDebugConfig(
+                enabled=self._require_bool(aim_debug, "enabled"),
+                line_length_px=self._require_positive_float(aim_debug, "line_length_px"),
+                marker_radius_px=self._require_positive_float(aim_debug, "marker_radius_px"),
+                line_thickness_px=self._require_positive_float(
+                    aim_debug,
+                    "line_thickness_px",
+                ),
+            ),
             debug_overlay=DebugOverlayConfig(
                 enabled_by_default=self._require_bool(debug_overlay, "enabled_by_default"),
                 panel_width=self._require_positive_int(debug_overlay, "panel_width"),
                 padding=self._require_non_negative_int(debug_overlay, "padding"),
+                font_path=self._require_str(debug_overlay, "font_path"),
                 font_size=self._require_positive_int(debug_overlay, "font_size"),
+                font_spacing=self._require_non_negative_float(debug_overlay, "font_spacing"),
                 line_spacing=self._require_non_negative_int(debug_overlay, "line_spacing"),
                 section_spacing=self._require_non_negative_int(
                     debug_overlay,

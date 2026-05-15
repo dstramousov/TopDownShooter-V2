@@ -36,15 +36,21 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.player.marker_radius_px == 6
     assert config.player.movement_speed_px_per_second == 160.0
     assert config.player.collision_radius_px == 5
+    assert config.aim_debug.enabled is True
+    assert config.aim_debug.line_length_px == 40.0
+    assert config.aim_debug.marker_radius_px == 4.0
+    assert config.aim_debug.line_thickness_px == 2.0
     assert config.controls.player_up == ("KEY_W",)
     assert config.controls.player_down == ("KEY_S",)
     assert config.controls.player_left == ("KEY_A",)
     assert config.controls.player_right == ("KEY_D",)
     assert config.debug_overlay.enabled_by_default is False
-    assert config.debug_overlay.panel_width == 760
-    assert config.debug_overlay.font_size == 14
+    assert config.debug_overlay.panel_width == 920
+    assert config.debug_overlay.font_path == "res/fonts/IBMPlexMono-Regular.ttf"
+    assert config.debug_overlay.font_size == 15
+    assert config.debug_overlay.font_spacing == 0.0
     assert config.debug_overlay.line_spacing == 3
     assert config.debug_overlay.section_spacing == 9
     assert config.debug_overlay.column_gap == 32
-    assert config.debug_overlay.label_width == 118
-    assert config.debug_overlay.background_alpha == 195
+    assert config.debug_overlay.label_width == 128
+    assert config.debug_overlay.background_alpha == 210

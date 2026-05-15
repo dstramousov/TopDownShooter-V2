@@ -3,6 +3,7 @@
 from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.coordinates import TileCoord, WorldCoord
 from topdown_shooter.world.player import PlayerState
+from topdown_shooter.world.player_aim import PlayerAimState
 from topdown_shooter.world.player_controller import PlayerController, PlayerMoveIntent
 from topdown_shooter.world.runtime_map import RuntimeMap, TacticalRuntimeSummary
 from topdown_shooter.world.tile import RuntimeTile
@@ -106,3 +107,30 @@ def test_player_controller_blocks_non_walkable_tiles() -> None:
 
     assert player.world_position == WorldCoord(24.0, 24.0)
     assert player.tile == TileCoord(1, 1)
+
+
+def test_player_aim_state_points_from_player_to_target() -> None:
+    """Player aim state should normalize direction and expose angle."""
+    aim = PlayerAimState.from_positions(
+        origin=WorldCoord(10.0, 10.0),
+        target=WorldCoord(10.0, 20.0),
+    )
+
+    assert aim.target_world == WorldCoord(10.0, 20.0)
+    assert aim.direction_x == 0.0
+    assert aim.direction_y == 1.0
+    assert aim.angle_degrees == 90.0
+    assert aim.has_direction is True
+
+
+def test_player_aim_state_handles_zero_length_direction() -> None:
+    """Player aim state should remain stable when target equals origin."""
+    aim = PlayerAimState.from_positions(
+        origin=WorldCoord(10.0, 10.0),
+        target=WorldCoord(10.0, 10.0),
+    )
+
+    assert aim.direction_x == 0.0
+    assert aim.direction_y == 0.0
+    assert aim.angle_degrees == 0.0
+    assert aim.has_direction is False

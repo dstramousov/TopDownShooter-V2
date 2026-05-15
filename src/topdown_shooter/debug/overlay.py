@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from topdown_shooter import __version__
 from topdown_shooter.config.runtime_config import DebugOverlayConfig, RuntimeConfig
@@ -81,6 +82,8 @@ class DebugOverlay:
         self._runtime_map = runtime_map
         self._package = package
         self._config = config
+        self._custom_font: object | None = None
+        self._custom_font_checked = False
 
     def draw(self, camera: RuntimeCamera, raylib_camera: object, player: PlayerState) -> None:
         """Draw the overlay for the current frame.
@@ -100,6 +103,90 @@ class DebugOverlay:
         panel_height = self._calculate_panel_height(overlay_config, columns)
         self._draw_panel(overlay_config, panel_height)
         self._draw_columns(overlay_config, columns)
+
+
+    def unload(self) -> None:
+        """Unload optional raylib resources owned by the overlay."""
+        if self._custom_font is None:
+            return
+        unload_font = getattr(self._raylib, "unload_font", None)
+        if callable(unload_font):
+            unload_font(self._custom_font)
+        self._custom_font = None
+        self._custom_font_checked = False
+
+    def _draw_text(self, text: str, x: int, y: int, font_size: int, color: object) -> None:
+        """Draw overlay text with the configured custom font when available.
+
+        Args:
+            text: Text to draw.
+            x: Text left position in screen pixels.
+            y: Text top position in screen pixels.
+            font_size: Text size in pixels.
+            color: Raylib color object.
+        """
+        font = self._get_custom_font()
+        if font is None:
+            self._raylib.draw_text(text, x, y, font_size, color)
+            return
+
+        vector = self._raylib.Vector2(float(x), float(y))
+        self._raylib.draw_text_ex(
+            font,
+            text,
+            vector,
+            float(font_size),
+            self._config.debug_overlay.font_spacing,
+            color,
+        )
+
+    def _get_custom_font(self) -> object | None:
+        """Return loaded custom overlay font or None when unavailable.
+
+        Returns:
+            Loaded raylib font object or None.
+        """
+        if self._custom_font_checked:
+            return self._custom_font
+        self._custom_font_checked = True
+
+        font_path = self._resolve_font_path()
+        if font_path is None:
+            return None
+
+        load_font = getattr(self._raylib, "load_font", None)
+        if not callable(load_font):
+            return None
+
+        self._custom_font = load_font(str(font_path))
+        return self._custom_font
+
+    def _resolve_font_path(self) -> Path | None:
+        """Resolve configured overlay font path.
+
+        Returns:
+            Existing font path, or None when no usable path exists.
+        """
+        configured_path = Path(self._config.debug_overlay.font_path)
+        candidates = (
+            configured_path,
+            Path.cwd() / configured_path,
+        )
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate
+        return None
+
+    def _format_font_info(self) -> str:
+        """Format configured overlay font diagnostics.
+
+        Returns:
+            Human-readable font diagnostics.
+        """
+        font_name = Path(self._config.debug_overlay.font_path).name
+        if self._resolve_font_path() is None:
+            font_name = "raylib default"
+        return f"{font_name} {self._config.debug_overlay.font_size}px"
 
     def _build_columns(
         self,
@@ -131,7 +218,7 @@ class DebugOverlay:
                 rows=(
                     DebugOverlayRow("Version", __version__),
                     DebugOverlayRow("Overlay", "on"),
-                    DebugOverlayRow("Font", f"{self._config.debug_overlay.font_size}px"),
+                    DebugOverlayRow("Font", self._format_font_info()),
                 ),
             ),
             DebugOverlaySection(
@@ -192,6 +279,21 @@ class DebugOverlay:
                         "Tile data",
                         f"{mouse.tile_symbol} walkable={mouse.tile_walkable}",
                     ),
+                ),
+            ),
+            DebugOverlaySection(
+                title="Aim",
+                rows=(
+                    DebugOverlayRow(
+                        "Direction",
+                        f"{player.aim.direction_x:.2f}, {player.aim.direction_y:.2f}",
+                    ),
+                    DebugOverlayRow("Angle", f"{player.aim.angle_degrees:.1f} deg"),
+                    DebugOverlayRow(
+                        "Target",
+                        f"{player.aim.target_world.x:.1f}, {player.aim.target_world.y:.1f}",
+                    ),
+                    DebugOverlayRow("Debug line", str(self._config.aim_debug.enabled)),
                 ),
             ),
         )
@@ -343,17 +445,17 @@ class DebugOverlay:
         value_color = self._raylib.ORANGE
 
         for section in sections:
-            self._raylib.draw_text(section.title, x, y, config.font_size, label_color)
+            self._draw_text(section.title, x, y, config.font_size, label_color)
             y += line_height
             for row in section.rows:
-                self._raylib.draw_text(
+                self._draw_text(
                     f"{row.label}:",
                     x,
                     y,
                     config.font_size,
                     label_color,
                 )
-                self._raylib.draw_text(row.value, value_x, y, config.font_size, value_color)
+                self._draw_text(row.value, value_x, y, config.font_size, value_color)
                 y += line_height
             y += config.section_spacing
 
@@ -410,7 +512,6 @@ class DebugOverlay:
         """
         available_width = config.panel_width - config.padding * 2 - config.column_gap
         return max(1, available_width // 2)
-
 
     def _format_player_bindings(self) -> str:
         """Format configured player movement bindings for the overlay.
