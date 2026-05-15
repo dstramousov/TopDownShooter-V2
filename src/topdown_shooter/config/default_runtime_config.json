@@ -111,5 +111,8 @@
     "padding": 8,
     "font_size": 16,
     "background_alpha": 150
+  },
+  "enemies": {
+    "marker_radius_px": 6
   }
 }

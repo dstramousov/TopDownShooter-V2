@@ -65,6 +65,7 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.projectile_impacts.enabled is True
     assert config.projectile_impacts.lifetime_seconds == 0.16
     assert config.projectile_impacts.radius_px == 5.0
+    assert config.enemies.marker_radius_px == 6
     assert config.fps_counter.enabled is True
     assert config.fps_counter.position == "top_right"
     assert config.fps_counter.margin_x == 12

@@ -185,3 +185,11 @@
 
 - Added the missing `src/topdown_shooter/rendering/player_hud.py` module required by the v0.0.22 HUD import.
 - Restored runtime startup after the weapon/HUD patch without changing weapon, projectile, camera, or movement behavior.
+
+## v0.0.23 -> v0.0.24
+
+- Added static enemy markers spawned from tactical `enemy_spawn_zones`.
+- Added enemy marker rendering above the map and below the player marker.
+- Added configurable enemy marker radius through `enemies.marker_radius_px`.
+- Added enemy diagnostics to the debug overlay.
+- Kept enemy AI, movement, damage, health, and projectile hits out of scope.

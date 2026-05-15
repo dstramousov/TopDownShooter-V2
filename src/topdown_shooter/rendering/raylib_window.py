@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from topdown_shooter.combat.enemies import EnemySystem
 from topdown_shooter.combat.projectiles import ProjectileSystem
 from topdown_shooter.combat.weapons import WeaponConfigLoader, WeaponController, WeaponState
 from topdown_shooter.config.runtime_config import KeyChordConfig, RuntimeConfig
 from topdown_shooter.debug.overlay import DebugOverlay
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.rendering.camera import CameraRig
+from topdown_shooter.rendering.enemy_renderer import EnemyRenderer
 from topdown_shooter.rendering.fps_counter import FpsCounter
 from topdown_shooter.rendering.map_renderer import MapRenderer
 from topdown_shooter.rendering.player_hud import PlayerHud
@@ -118,6 +120,14 @@ class RaylibWindow:
             projectile_system=self._projectile_system,
             state=WeaponState.from_database(weapon_database),
         )
+        self._enemy_system = EnemySystem.from_tactical_map(
+            tactical_map=package.tactical_map,
+            runtime_map=runtime_map,
+        )
+        self._enemy_renderer = EnemyRenderer(
+            raylib=self._raylib,
+            marker_radius_px=config.enemies.marker_radius_px,
+        )
         self._player_renderer = PlayerRenderer(
             raylib=self._raylib,
             marker_radius_px=config.player.marker_radius_px,
@@ -182,6 +192,7 @@ class RaylibWindow:
                     projectiles=self._projectile_system.projectiles,
                     impacts=self._projectile_system.impacts,
                 )
+                self._enemy_renderer.draw(self._enemy_system.enemies)
                 self._player_renderer.draw(self._player)
                 raylib.end_mode_2d()
                 self._player_hud.draw(self._player, self._weapon_controller.stats)
@@ -193,6 +204,7 @@ class RaylibWindow:
                         render_stats=render_stats,
                         projectile_stats=self._projectile_system.stats,
                         weapon_stats=self._weapon_controller.stats,
+                        enemy_stats=self._enemy_system.stats,
                     )
                 self._fps_counter.draw()
                 raylib.end_drawing()

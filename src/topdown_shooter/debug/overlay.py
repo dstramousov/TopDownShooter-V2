@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from topdown_shooter import __version__
+from topdown_shooter.combat.enemies import EnemyStats
 from topdown_shooter.combat.projectiles import ProjectileStats
 from topdown_shooter.combat.weapons import WeaponStats
 from topdown_shooter.config.runtime_config import DebugOverlayConfig, RuntimeConfig
@@ -96,6 +97,7 @@ class DebugOverlay:
         render_stats: RenderStats,
         projectile_stats: ProjectileStats,
         weapon_stats: WeaponStats,
+        enemy_stats: EnemyStats,
     ) -> None:
         """Draw the overlay for the current frame.
 
@@ -106,6 +108,7 @@ class DebugOverlay:
             render_stats: Current map render statistics.
             projectile_stats: Current projectile system statistics.
             weapon_stats: Current weapon diagnostics.
+            enemy_stats: Current enemy marker diagnostics.
         """
         overlay_config = self._config.debug_overlay
         columns = self._build_columns(
@@ -116,6 +119,7 @@ class DebugOverlay:
             render_stats=render_stats,
             projectile_stats=projectile_stats,
             weapon_stats=weapon_stats,
+            enemy_stats=enemy_stats,
         )
         panel_height = self._calculate_panel_height(overlay_config, columns)
         self._draw_panel(overlay_config, panel_height)
@@ -213,6 +217,7 @@ class DebugOverlay:
         render_stats: RenderStats,
         projectile_stats: ProjectileStats,
         weapon_stats: WeaponStats,
+        enemy_stats: EnemyStats,
     ) -> tuple[tuple[DebugOverlaySection, ...], tuple[DebugOverlaySection, ...]]:
         """Build two balanced debug overlay columns.
 
@@ -224,6 +229,7 @@ class DebugOverlay:
             render_stats: Current map render statistics.
             projectile_stats: Current projectile system statistics.
             weapon_stats: Current weapon diagnostics.
+            enemy_stats: Current enemy marker diagnostics.
 
         Returns:
             Two columns with debug sections.
@@ -349,6 +355,15 @@ class DebugOverlay:
                 DebugOverlayRow("Slots", self._format_weapon_slot_bindings()),
             ),
         )
+        enemy_section = DebugOverlaySection(
+            title="Enemies",
+            rows=(
+                DebugOverlayRow("Active", str(enemy_stats.active_enemies)),
+                DebugOverlayRow("Spawned", str(enemy_stats.spawned_enemies)),
+                DebugOverlayRow("Source spawns", str(enemy_stats.source_spawn_zones)),
+                DebugOverlayRow("Marker radius", f"{self._config.enemies.marker_radius_px}px"),
+            ),
+        )
         projectile_section = DebugOverlaySection(
             title="Projectiles",
             rows=(
@@ -370,7 +385,7 @@ class DebugOverlay:
                 DebugOverlayRow("Radius", f"{weapon_stats.projectile_radius_px:.1f}px"),
             ),
         )
-        left_column = (*left_column, weapon_section, projectile_section)
+        left_column = (*left_column, weapon_section, enemy_section, projectile_section)
 
         right_column = (
             DebugOverlaySection(

@@ -125,6 +125,17 @@ class ProjectileImpactConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class EnemyConfig:
+    """Enemy marker display settings.
+
+    Attributes:
+        marker_radius_px: Enemy marker radius in world pixels.
+    """
+
+    marker_radius_px: int
+
+
+@dataclass(frozen=True, slots=True)
 class DebugOverlayConfig:
     """Debug overlay display settings.
 
@@ -270,6 +281,7 @@ class RuntimeConfig:
         aim_debug: Aim debug display settings.
         weapons: Weapon database settings.
         projectile_impacts: Projectile impact marker settings.
+        enemies: Enemy marker display settings.
         debug_overlay: Debug overlay display settings.
         hud: Player HUD display settings.
         fps_counter: Standalone FPS counter display settings.
@@ -282,6 +294,7 @@ class RuntimeConfig:
     aim_debug: AimDebugConfig
     weapons: WeaponsConfig
     projectile_impacts: ProjectileImpactConfig
+    enemies: EnemyConfig
     debug_overlay: DebugOverlayConfig
     hud: HudConfig
     fps_counter: FpsCounterConfig
@@ -321,6 +334,7 @@ class RuntimeConfigLoader:
         aim_debug = self._require_dict(raw_config, "aim_debug")
         weapons = self._require_dict(raw_config, "weapons")
         projectile_impacts = self._require_dict(raw_config, "projectile_impacts")
+        enemies = self._require_dict(raw_config, "enemies")
         debug_overlay = self._require_dict(raw_config, "debug_overlay")
         hud = self._require_dict(raw_config, "hud")
         fps_counter = self._require_dict(raw_config, "fps_counter")
@@ -364,6 +378,9 @@ class RuntimeConfigLoader:
                     "lifetime_seconds",
                 ),
                 radius_px=self._require_positive_float(projectile_impacts, "radius_px"),
+            ),
+            enemies=EnemyConfig(
+                marker_radius_px=self._require_positive_int(enemies, "marker_radius_px"),
             ),
             debug_overlay=DebugOverlayConfig(
                 enabled_by_default=self._require_bool(debug_overlay, "enabled_by_default"),

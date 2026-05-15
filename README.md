@@ -4,7 +4,7 @@ Initial runtime foundation for loading a generated TopDownMapGen map package.
 
 ## Current scope
 
-Version `0.0.22` supports map package inspection, a minimal render window, camera foundation, a runtime debug overlay, map-viewer camera controls, an initial player marker, and basic WASD player movement:
+Version `0.0.24` supports map package inspection, a minimal render window, camera foundation, a runtime debug overlay, map-viewer camera controls, an initial player marker, and basic WASD player movement:
 
 - reads `_manifest.json`;
 - reads `validation_report.json`;
@@ -29,7 +29,8 @@ Version `0.0.22` supports map package inspection, a minimal render window, camer
 - tracks magazine ammo and reserve ammo, including infinite reserve ammo for the pistol;
 - reloads the equipped weapon from reserve ammo;
 - draws a configurable player HUD with health, active weapon, and ammo status;
-- shows short-lived impact markers when projectiles hit blocked map tiles.
+- shows short-lived impact markers when projectiles hit blocked map tiles;
+- spawns static enemy markers from tactical `enemy_spawn_zones`.
 
 The shooter runtime does not import or call TopDownMapGen. The map generator remains a separate project.
 
@@ -54,7 +55,7 @@ The minimal renderer opens a raylib window and draws the loaded map package:
 PYTHONPATH=src python3 -m topdown_shooter --map ../TopDownMapGen/out --run
 ```
 
-Window settings, player marker settings, aim debug settings, weapon database path, projectile impact settings, player HUD settings, FPS counter settings, debug overlay settings, and control bindings are stored in the packaged runtime config:
+Window settings, player marker settings, enemy marker settings, aim debug settings, weapon database path, projectile impact settings, player HUD settings, FPS counter settings, debug overlay settings, and control bindings are stored in the packaged runtime config:
 
 ```text
 src/topdown_shooter/config/default_runtime_config.json
@@ -121,10 +122,14 @@ Holding the configured primary fire button fires continuously according to the c
 
 The player HUD is separate from the debug overlay. It displays health, equipped weapon, and current magazine/reserve ammo. Its position is configured through `hud.position` with supported values `top`, `bottom`, `left`, and `right`. HUD margins, padding, font size, and background alpha are also configured in `default_runtime_config.json`.
 
+## Enemies
+
+The runtime creates one static enemy marker for each valid tactical `enemy_spawn_zones` entry in the loaded map package. Enemy markers are intentionally simple red circles for now. They do not move, attack, take damage, or react to projectiles yet. Enemy marker radius is configured through `enemies.marker_radius_px` in `default_runtime_config.json`.
+
 ## Projectile impacts
 
 Projectiles disappear when they exceed lifetime/range, leave the map, or hit a blocked tile. Blocked-tile hits create short-lived impact markers so map collision feedback is visible before enemies and damage are implemented. Impact marker lifetime and radius are configured through the `projectile_impacts` section in `default_runtime_config.json`.
 
 ## Player marker
 
-The runtime creates an initial player state at the center of the generated `S` tile and draws it as a simple marker above the map. The player can move with configurable WASD controls. Movement is delta-time based and uses basic tile collision with separate X/Y axis resolution so the marker can slide along blocking tiles. The runtime also calculates a mouse aim direction from the player to the world-space cursor and draws a short configurable aim debug marker. The player starts with the default pistol and can switch to the AK-47 with configured slot keys. Holding LMB fires the equipped weapon continuously while the weapon has magazine ammo. Pressing reload refills the equipped magazine from reserve ammo. Projectiles use the current weapon definition, move in the current aim direction, and disappear when they exceed lifetime/range, leave the map, or hit a blocked tile. Blocked-tile hits create short-lived impact markers. Enemies, damage, recoil, particles, and sound are intentionally out of scope for this version. Player speed, health, collision radius, marker radius, aim debug marker settings, weapon database path, HUD settings, projectile impact settings, fire binding, reload binding, and weapon slot bindings are configured in `default_runtime_config.json`.
+The runtime creates an initial player state at the center of the generated `S` tile and draws it as a simple marker above the map. The player can move with configurable WASD controls. Movement is delta-time based and uses basic tile collision with separate X/Y axis resolution so the marker can slide along blocking tiles. The runtime also calculates a mouse aim direction from the player to the world-space cursor and draws a short configurable aim debug marker. The player starts with the default pistol and can switch to the AK-47 with configured slot keys. Holding LMB fires the equipped weapon continuously while the weapon has magazine ammo. Pressing reload refills the equipped magazine from reserve ammo. Projectiles use the current weapon definition, move in the current aim direction, and disappear when they exceed lifetime/range, leave the map, or hit a blocked tile. Blocked-tile hits create short-lived impact markers. Enemy AI, enemy damage, recoil, particles, and sound are intentionally out of scope for this version. Player speed, health, collision radius, marker radius, enemy marker radius, aim debug marker settings, weapon database path, HUD settings, projectile impact settings, fire binding, reload binding, and weapon slot bindings are configured in `default_runtime_config.json`.
