@@ -4,7 +4,7 @@ Initial runtime foundation for loading a generated TopDownMapGen map package.
 
 ## Current scope
 
-Version `0.0.5` supports map package inspection, a minimal render window, camera foundation, and a runtime debug overlay:
+Version `0.0.6` supports map package inspection, a minimal render window, camera foundation, and a runtime debug overlay:
 
 - reads `_manifest.json`;
 - reads `validation_report.json`;
@@ -58,4 +58,4 @@ The renderer uses a small camera rig that centers on the generated start tile an
 
 ## Debug overlay
 
-The debug overlay is a translucent runtime panel drawn above the map. It is disabled by default and can be toggled with the configured debug key chord. The first overlay version shows FPS, window parameters, map package metadata, map dimensions, camera target, mouse screen/world/tile coordinates, tile data under the cursor, tactical entity counts, validation status, warning codes, and active controls.
+The debug overlay is a translucent runtime panel drawn above the map. It is disabled by default and can be toggled with the configured debug key chord. The overlay uses two aligned columns: labels are drawn in white and values in orange for readability. It shows FPS, window parameters, map package metadata, map dimensions, camera target, mouse screen/world/tile coordinates, tile data under the cursor, tactical entity counts, validation status, warning codes, and active controls.

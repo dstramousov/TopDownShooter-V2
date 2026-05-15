@@ -18,6 +18,10 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.camera.smooth_time == 0.0
     assert config.camera.lookahead_tiles == 0.0
     assert config.debug_overlay.enabled_by_default is False
-    assert config.debug_overlay.panel_width == 420
+    assert config.debug_overlay.panel_width == 760
     assert config.debug_overlay.font_size == 14
-    assert config.debug_overlay.background_alpha == 190
+    assert config.debug_overlay.line_spacing == 3
+    assert config.debug_overlay.section_spacing == 9
+    assert config.debug_overlay.column_gap == 32
+    assert config.debug_overlay.label_width == 118
+    assert config.debug_overlay.background_alpha == 195

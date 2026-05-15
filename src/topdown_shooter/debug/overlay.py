@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from topdown_shooter import __version__
 from topdown_shooter.config.runtime_config import DebugOverlayConfig, RuntimeConfig
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.rendering.camera import RuntimeCamera
@@ -30,6 +31,32 @@ class MouseDebugInfo:
     tile: TileCoord
     tile_symbol: str
     tile_walkable: bool
+
+
+@dataclass(frozen=True, slots=True)
+class DebugOverlayRow:
+    """Single aligned key-value row in a debug overlay section.
+
+    Attributes:
+        label: Human-readable row label.
+        value: Human-readable row value.
+    """
+
+    label: str
+    value: str
+
+
+@dataclass(frozen=True, slots=True)
+class DebugOverlaySection:
+    """Debug overlay section with a title and key-value rows.
+
+    Attributes:
+        title: Section title.
+        rows: Section rows.
+    """
+
+    title: str
+    rows: tuple[DebugOverlayRow, ...]
 
 
 class DebugOverlay:
@@ -63,22 +90,22 @@ class DebugOverlay:
             raylib_camera: Current raylib Camera2D object.
         """
         overlay_config = self._config.debug_overlay
-        lines = self._build_lines(
+        columns = self._build_columns(
             fps=self._raylib.get_fps(),
             camera=camera,
             mouse=self._read_mouse(raylib_camera),
         )
-        panel_height = self._calculate_panel_height(overlay_config, len(lines))
+        panel_height = self._calculate_panel_height(overlay_config, columns)
         self._draw_panel(overlay_config, panel_height)
-        self._draw_lines(overlay_config, lines)
+        self._draw_columns(overlay_config, columns)
 
-    def _build_lines(
+    def _build_columns(
         self,
         fps: int,
         camera: RuntimeCamera,
         mouse: MouseDebugInfo,
-    ) -> list[str]:
-        """Build text lines for the current debug panel.
+    ) -> tuple[tuple[DebugOverlaySection, ...], tuple[DebugOverlaySection, ...]]:
+        """Build two balanced debug overlay columns.
 
         Args:
             fps: Current frames per second.
@@ -86,62 +113,108 @@ class DebugOverlay:
             mouse: Current mouse debug information.
 
         Returns:
-            Text lines to draw.
+            Two columns with debug sections.
         """
         manifest = self._package.manifest
         report = self._package.validation_report
         window = self._config.window
         tactical = self._runtime_map.tactical_summary
         warning_codes = ", ".join(issue.code for issue in report.warnings) or "none"
-        return [
-            "TopDownShooter V.2",
-            "Debug overlay: on",
-            "",
-            "Window:",
-            f"  FPS: {fps}/{window.target_fps}",
-            f"  Size: {window.width}x{window.height}",
-            f"  Zoom: {camera.zoom:.2f}",
-            "",
-            "Map:",
-            f"  Generator: {manifest.versions.generator}",
-            f"  Manifest: {manifest.schema_version}",
-            f"  Tactical: {manifest.versions.schemas.get('tactical_map', 'unknown')}",
-            f"  Profile: {manifest.profile}",
-            f"  Seed: {manifest.resolved_seed}",
-            f"  Size: {self._runtime_map.width_tiles}x{self._runtime_map.height_tiles}",
-            f"  Tile size: {self._runtime_map.tile_size_px}px",
-            f"  Start: ({self._runtime_map.start_tile.x}, {self._runtime_map.start_tile.y})",
-            f"  Goal: ({self._runtime_map.goal_tile.x}, {self._runtime_map.goal_tile.y})",
-            f"  Walkable: {self._runtime_map.walkable_tile_count}",
-            f"  Blocked: {self._runtime_map.blocked_tile_count}",
-            "",
-            "Camera:",
-            f"  Target: {camera.target.x:.1f}, {camera.target.y:.1f}",
-            "",
-            "Mouse:",
-            f"  Screen: {mouse.screen.x:.1f}, {mouse.screen.y:.1f}",
-            f"  World: {mouse.world.x:.1f}, {mouse.world.y:.1f}",
-            f"  Tile: {mouse.tile.x}, {mouse.tile.y}",
-            f"  Tile data: {mouse.tile_symbol} walkable={mouse.tile_walkable}",
-            "",
-            "Tactical:",
-            f"  Combat zones: {tactical.combat_zones}",
-            f"  Cover points: {tactical.cover_points}",
-            f"  Choke points: {tactical.choke_points}",
-            f"  Flank routes: {tactical.flank_routes}",
-            f"  Enemy spawns: {tactical.enemy_spawn_zones}",
-            f"  Fallbacks: {tactical.fallback_positions}",
-            "",
-            "Validation:",
-            f"  Status: {report.status}",
-            f"  Errors: {len(report.errors)}",
-            f"  Warnings: {len(report.warnings)}",
-            f"  Warning codes: {warning_codes}",
-            "",
-            "Controls:",
-            f"  Exit: {self._config.controls.quit}",
-            f"  Debug: {self._format_debug_binding()}",
-        ]
+
+        left_column = (
+            DebugOverlaySection(
+                title="Runtime",
+                rows=(
+                    DebugOverlayRow("Version", __version__),
+                    DebugOverlayRow("Overlay", "on"),
+                ),
+            ),
+            DebugOverlaySection(
+                title="Window",
+                rows=(
+                    DebugOverlayRow("FPS", f"{fps}/{window.target_fps}"),
+                    DebugOverlayRow("Size", f"{window.width}x{window.height}"),
+                    DebugOverlayRow("Zoom", f"{camera.zoom:.2f}"),
+                ),
+            ),
+            DebugOverlaySection(
+                title="Camera",
+                rows=(
+                    DebugOverlayRow("Target", f"{camera.target.x:.1f}, {camera.target.y:.1f}"),
+                ),
+            ),
+            DebugOverlaySection(
+                title="Mouse",
+                rows=(
+                    DebugOverlayRow("Screen", f"{mouse.screen.x:.1f}, {mouse.screen.y:.1f}"),
+                    DebugOverlayRow("World", f"{mouse.world.x:.1f}, {mouse.world.y:.1f}"),
+                    DebugOverlayRow("Tile", f"{mouse.tile.x}, {mouse.tile.y}"),
+                    DebugOverlayRow(
+                        "Tile data",
+                        f"{mouse.tile_symbol} walkable={mouse.tile_walkable}",
+                    ),
+                ),
+            ),
+        )
+
+        right_column = (
+            DebugOverlaySection(
+                title="Map",
+                rows=(
+                    DebugOverlayRow("Generator", manifest.versions.generator),
+                    DebugOverlayRow("Manifest", manifest.schema_version),
+                    DebugOverlayRow(
+                        "Tactical",
+                        manifest.versions.schemas.get("tactical_map", "unknown"),
+                    ),
+                    DebugOverlayRow("Profile", manifest.profile),
+                    DebugOverlayRow("Seed", str(manifest.resolved_seed)),
+                    DebugOverlayRow(
+                        "Size",
+                        f"{self._runtime_map.width_tiles}x{self._runtime_map.height_tiles}",
+                    ),
+                    DebugOverlayRow("Tile size", f"{self._runtime_map.tile_size_px}px"),
+                    DebugOverlayRow(
+                        "Start",
+                        f"({self._runtime_map.start_tile.x}, {self._runtime_map.start_tile.y})",
+                    ),
+                    DebugOverlayRow(
+                        "Goal",
+                        f"({self._runtime_map.goal_tile.x}, {self._runtime_map.goal_tile.y})",
+                    ),
+                    DebugOverlayRow("Walkable", str(self._runtime_map.walkable_tile_count)),
+                    DebugOverlayRow("Blocked", str(self._runtime_map.blocked_tile_count)),
+                ),
+            ),
+            DebugOverlaySection(
+                title="Tactical",
+                rows=(
+                    DebugOverlayRow("Combat zones", str(tactical.combat_zones)),
+                    DebugOverlayRow("Cover points", str(tactical.cover_points)),
+                    DebugOverlayRow("Choke points", str(tactical.choke_points)),
+                    DebugOverlayRow("Flank routes", str(tactical.flank_routes)),
+                    DebugOverlayRow("Enemy spawns", str(tactical.enemy_spawn_zones)),
+                    DebugOverlayRow("Fallbacks", str(tactical.fallback_positions)),
+                ),
+            ),
+            DebugOverlaySection(
+                title="Validation",
+                rows=(
+                    DebugOverlayRow("Status", report.status),
+                    DebugOverlayRow("Errors", str(len(report.errors))),
+                    DebugOverlayRow("Warnings", str(len(report.warnings))),
+                    DebugOverlayRow("Warning codes", warning_codes),
+                ),
+            ),
+            DebugOverlaySection(
+                title="Controls",
+                rows=(
+                    DebugOverlayRow("Exit", self._config.controls.quit),
+                    DebugOverlayRow("Debug", self._format_debug_binding()),
+                ),
+            ),
+        )
+        return left_column, right_column
 
     def _read_mouse(self, raylib_camera: Any) -> MouseDebugInfo:
         """Read mouse data and convert it to map coordinates.
@@ -190,32 +263,109 @@ class DebugOverlay:
         panel_color = self._raylib.Color(0, 0, 0, config.background_alpha)
         self._raylib.draw_rectangle(0, 0, config.panel_width, panel_height, panel_color)
 
-    def _draw_lines(self, config: DebugOverlayConfig, lines: list[str]) -> None:
-        """Draw debug text lines.
+    def _draw_columns(
+        self,
+        config: DebugOverlayConfig,
+        columns: tuple[tuple[DebugOverlaySection, ...], tuple[DebugOverlaySection, ...]],
+    ) -> None:
+        """Draw two debug overlay columns.
 
         Args:
             config: Debug overlay configuration.
-            lines: Text lines to draw.
+            columns: Two debug overlay columns.
+        """
+        column_width = self._calculate_column_width(config)
+        for column_index, sections in enumerate(columns):
+            x = config.padding + column_index * (column_width + config.column_gap)
+            self._draw_sections(config=config, sections=sections, x=x)
+
+    def _draw_sections(
+        self,
+        config: DebugOverlayConfig,
+        sections: tuple[DebugOverlaySection, ...],
+        x: int,
+    ) -> None:
+        """Draw a column of debug overlay sections.
+
+        Args:
+            config: Debug overlay configuration.
+            sections: Sections in the column.
+            x: Left edge of the column in pixels.
         """
         y = config.padding
         line_height = config.font_size + config.line_spacing
-        for line in lines:
-            self._raylib.draw_text(line, config.padding, y, config.font_size, self._raylib.RAYWHITE)
-            y += line_height
+        value_x = x + config.label_width
+        label_color = self._raylib.RAYWHITE
+        value_color = self._raylib.ORANGE
 
-    def _calculate_panel_height(self, config: DebugOverlayConfig, line_count: int) -> int:
+        for section in sections:
+            self._raylib.draw_text(section.title, x, y, config.font_size, label_color)
+            y += line_height
+            for row in section.rows:
+                self._raylib.draw_text(
+                    f"{row.label}:",
+                    x,
+                    y,
+                    config.font_size,
+                    label_color,
+                )
+                self._raylib.draw_text(row.value, value_x, y, config.font_size, value_color)
+                y += line_height
+            y += config.section_spacing
+
+    def _calculate_panel_height(
+        self,
+        config: DebugOverlayConfig,
+        columns: tuple[tuple[DebugOverlaySection, ...], tuple[DebugOverlaySection, ...]],
+    ) -> int:
         """Calculate overlay panel height.
 
         Args:
             config: Debug overlay configuration.
-            line_count: Number of lines to draw.
+            columns: Two debug overlay columns.
 
         Returns:
             Panel height in pixels.
         """
         line_height = config.font_size + config.line_spacing
-        content_height = line_count * line_height
-        return min(self._config.window.height, content_height + config.padding * 2)
+        column_heights = [
+            self._calculate_column_height(config, sections, line_height)
+            for sections in columns
+        ]
+        return min(self._config.window.height, max(column_heights) + config.padding * 2)
+
+    def _calculate_column_height(
+        self,
+        config: DebugOverlayConfig,
+        sections: tuple[DebugOverlaySection, ...],
+        line_height: int,
+    ) -> int:
+        """Calculate content height for one overlay column.
+
+        Args:
+            config: Debug overlay configuration.
+            sections: Sections in the column.
+            line_height: Rendered line height in pixels.
+
+        Returns:
+            Column height in pixels.
+        """
+        if not sections:
+            return 0
+        row_count = sum(1 + len(section.rows) for section in sections)
+        return row_count * line_height + (len(sections) - 1) * config.section_spacing
+
+    def _calculate_column_width(self, config: DebugOverlayConfig) -> int:
+        """Calculate one overlay column width.
+
+        Args:
+            config: Debug overlay configuration.
+
+        Returns:
+            Column width in pixels.
+        """
+        available_width = config.panel_width - config.padding * 2 - config.column_gap
+        return max(1, available_width // 2)
 
     def _format_debug_binding(self) -> str:
         """Return human-readable debug toggle binding.

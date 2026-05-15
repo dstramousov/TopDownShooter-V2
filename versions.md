@@ -39,3 +39,11 @@
 - Added overlay diagnostics for FPS, window, map package metadata, camera, mouse, tactical counts, validation status, and controls.
 - Added configurable debug overlay panel settings and key chord bindings.
 - Kept debug overlay separate from map rendering and camera logic.
+
+
+## v0.0.5 -> v0.0.6
+
+- Reworked the debug overlay into two aligned columns.
+- Drew overlay labels in white and values in orange for better readability.
+- Expanded configurable overlay layout settings for panel width, section spacing, column gap, and label width.
+- Kept the overlay as a debug-only layer without changing gameplay, camera behavior, or map rendering.

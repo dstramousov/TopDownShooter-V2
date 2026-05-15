@@ -56,6 +56,9 @@ class DebugOverlayConfig:
         padding: Inner panel padding in pixels.
         font_size: Text font size in pixels.
         line_spacing: Extra spacing between text lines in pixels.
+        section_spacing: Extra spacing between overlay sections in pixels.
+        column_gap: Horizontal spacing between two overlay columns in pixels.
+        label_width: Reserved label area width in pixels.
         background_alpha: Panel background alpha value in the 0..255 range.
     """
 
@@ -64,6 +67,9 @@ class DebugOverlayConfig:
     padding: int
     font_size: int
     line_spacing: int
+    section_spacing: int
+    column_gap: int
+    label_width: int
     background_alpha: int
 
 
@@ -160,6 +166,12 @@ class RuntimeConfigLoader:
                 padding=self._require_non_negative_int(debug_overlay, "padding"),
                 font_size=self._require_positive_int(debug_overlay, "font_size"),
                 line_spacing=self._require_non_negative_int(debug_overlay, "line_spacing"),
+                section_spacing=self._require_non_negative_int(
+                    debug_overlay,
+                    "section_spacing",
+                ),
+                column_gap=self._require_non_negative_int(debug_overlay, "column_gap"),
+                label_width=self._require_positive_int(debug_overlay, "label_width"),
                 background_alpha=self._require_alpha(debug_overlay, "background_alpha"),
             ),
             controls=ControlsConfig(

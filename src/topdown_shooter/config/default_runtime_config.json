@@ -13,11 +13,14 @@
   },
   "debug_overlay": {
     "enabled_by_default": false,
-    "panel_width": 420,
+    "panel_width": 760,
     "padding": 12,
     "font_size": 14,
-    "line_spacing": 2,
-    "background_alpha": 190
+    "line_spacing": 3,
+    "section_spacing": 9,
+    "column_gap": 32,
+    "label_width": 118,
+    "background_alpha": 195
   },
   "controls": {
     "quit": "KEY_ESCAPE",
