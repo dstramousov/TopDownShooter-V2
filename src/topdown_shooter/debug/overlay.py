@@ -315,6 +315,7 @@ class DebugOverlay:
             title="Enemies",
             rows=(
                 DebugOverlayRow("Active", str(enemy_stats.active_enemies)),
+                DebugOverlayRow("Alerted", str(enemy_stats.alerted_enemies)),
                 DebugOverlayRow("Spawned", str(enemy_stats.spawned_enemies)),
                 DebugOverlayRow("Killed", str(enemy_stats.killed_enemies)),
                 DebugOverlayRow("Hits", str(enemy_stats.total_hits)),
@@ -327,6 +328,13 @@ class DebugOverlay:
                 ),
                 DebugOverlayRow("Flash", f"{self._config.enemies.hit_flash_seconds:.2f}s"),
                 DebugOverlayRow("Marker radius", f"{self._config.enemies.marker_radius_px}px"),
+                DebugOverlayRow("View cones", str(self._config.enemies.draw_view_cones)),
+                DebugOverlayRow("Vision", f"{self._config.enemies.vision_range_px:.0f}px"),
+                DebugOverlayRow("Vision angle", f"{self._config.enemies.vision_angle_degrees:.0f}deg"),
+                DebugOverlayRow(
+                    "LOS step",
+                    f"{self._config.enemies.line_of_sight_sample_step_px:.0f}px",
+                ),
             ),
         )
         projectile_section = DebugOverlaySection(

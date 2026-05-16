@@ -135,6 +135,10 @@ class EnemyConfig:
         hit_marker_radius_px: Enemy hit marker radius in world pixels.
         health_bar_visible_seconds: Duration for temporary enemy health bars.
         hit_flash_seconds: Duration for enemy hit flash feedback.
+        draw_view_cones: Whether debug enemy vision cones are drawn.
+        vision_range_px: Enemy vision range in world pixels.
+        vision_angle_degrees: Full enemy vision cone angle in degrees.
+        line_of_sight_sample_step_px: Sampling step for vision blocked tile checks.
     """
 
     marker_radius_px: int
@@ -143,6 +147,10 @@ class EnemyConfig:
     hit_marker_radius_px: float
     health_bar_visible_seconds: float
     hit_flash_seconds: float
+    draw_view_cones: bool
+    vision_range_px: float
+    vision_angle_degrees: float
+    line_of_sight_sample_step_px: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -410,6 +418,16 @@ class RuntimeConfigLoader:
                     enemies,
                     "hit_flash_seconds",
                 ),
+                draw_view_cones=self._require_bool(enemies, "draw_view_cones"),
+                vision_range_px=self._require_positive_float(enemies, "vision_range_px"),
+                vision_angle_degrees=self._require_angle_degrees(
+                    enemies,
+                    "vision_angle_degrees",
+                ),
+                line_of_sight_sample_step_px=self._require_positive_float(
+                    enemies,
+                    "line_of_sight_sample_step_px",
+                ),
             ),
             debug_overlay=DebugOverlayConfig(
                 enabled_by_default=self._require_bool(debug_overlay, "enabled_by_default"),
@@ -566,6 +584,21 @@ class RuntimeConfigLoader:
         value = data.get(key)
         if not isinstance(value, int) or value < 0:
             raise RuntimeConfigError(f"Runtime config integer is missing or invalid: {key}")
+        return value
+
+    def _require_angle_degrees(self, data: dict[str, Any], key: str) -> float:
+        """Return an angle value in the 0..360 range.
+
+        Args:
+            data: Source dictionary.
+            key: Required key.
+
+        Returns:
+            Angle value in degrees.
+        """
+        value = self._require_positive_float(data, key)
+        if value > 360.0:
+            raise RuntimeConfigError(f"Runtime config angle is out of range: {key}")
         return value
 
     def _require_alpha(self, data: dict[str, Any], key: str) -> int:

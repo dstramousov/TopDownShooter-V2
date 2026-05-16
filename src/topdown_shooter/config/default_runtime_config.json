@@ -119,6 +119,10 @@
     "hit_marker_lifetime_seconds": 0.14,
     "hit_marker_radius_px": 8.0,
     "health_bar_visible_seconds": 1.6,
-    "hit_flash_seconds": 0.12
+    "hit_flash_seconds": 0.12,
+    "draw_view_cones": true,
+    "vision_range_px": 320.0,
+    "vision_angle_degrees": 80.0,
+    "line_of_sight_sample_step_px": 8.0
   }
 }

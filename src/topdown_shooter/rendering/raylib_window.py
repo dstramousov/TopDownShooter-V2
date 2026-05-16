@@ -104,14 +104,14 @@ class RaylibWindow:
             runtime_map,
             max_health=config.player.max_health,
         )
-        collision_service = TileCollisionService(runtime_map)
+        self._collision_service = TileCollisionService(runtime_map)
         self._player_controller = PlayerController(
-            collision_service=collision_service,
+            collision_service=self._collision_service,
             tile_size_px=runtime_map.tile_size_px,
             collision_radius_px=config.player.collision_radius_px,
         )
         self._projectile_system = ProjectileSystem(
-            collision_service=collision_service,
+            collision_service=self._collision_service,
             impact_markers_enabled=config.projectile_impacts.enabled,
             impact_lifetime_seconds=config.projectile_impacts.lifetime_seconds,
             impact_radius_px=config.projectile_impacts.radius_px,
@@ -133,6 +133,9 @@ class RaylibWindow:
             marker_radius_px=config.enemies.marker_radius_px,
             health_bar_visible_seconds=config.enemies.health_bar_visible_seconds,
             hit_flash_seconds=config.enemies.hit_flash_seconds,
+            draw_view_cones=config.enemies.draw_view_cones,
+            vision_range_px=config.enemies.vision_range_px,
+            vision_angle_degrees=config.enemies.vision_angle_degrees,
         )
         self._player_renderer = PlayerRenderer(
             raylib=self._raylib,
@@ -184,6 +187,15 @@ class RaylibWindow:
                 self._enemy_system.apply_projectile_hits(
                     projectiles=self._projectile_system.projectiles,
                     enemy_collision_radius_px=self._config.enemies.marker_radius_px,
+                )
+                self._enemy_system.update_perception(
+                    player_position=self._player.world_position,
+                    collision_service=self._collision_service,
+                    vision_range_px=self._config.enemies.vision_range_px,
+                    vision_angle_degrees=self._config.enemies.vision_angle_degrees,
+                    line_of_sight_sample_step_px=(
+                        self._config.enemies.line_of_sight_sample_step_px
+                    ),
                 )
                 self._projectile_system.prune_dead()
                 self._camera_rig.update_follow_target(

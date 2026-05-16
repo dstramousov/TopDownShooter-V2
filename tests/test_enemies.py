@@ -172,3 +172,149 @@ def test_enemy_system_removes_enemy_when_health_reaches_zero() -> None:
     assert system.stats.spawned_enemies == 1
     assert system.stats.killed_enemies == 1
     assert system.stats.total_hits == 1
+
+
+def _build_runtime_map_from_rows(rows: tuple[str, ...]) -> RuntimeMap:
+    """Build a runtime map from compact walkability rows."""
+    tiles = tuple(
+        tuple(
+            RuntimeTile(symbol=symbol, walkable=symbol != "#", movement_cost=1)
+            for symbol in row
+        )
+        for row in rows
+    )
+    return RuntimeMap(
+        width_tiles=len(rows[0]),
+        height_tiles=len(rows),
+        tile_size_px=16,
+        tiles=tiles,
+        start_tile=TileCoord(0, 0),
+        goal_tile=TileCoord(len(rows[0]) - 1, len(rows) - 1),
+        tactical_summary=TacticalRuntimeSummary(
+            combat_zones=0,
+            cover_points=0,
+            choke_points=0,
+            flank_routes=0,
+            enemy_spawn_zones=1,
+            fallback_positions=0,
+        ),
+    )
+
+
+def test_enemy_system_alerts_enemy_when_player_is_inside_view_cone() -> None:
+    """Enemy perception should alert enemies that see the player."""
+    from topdown_shooter.world.collision import TileCollisionService
+
+    runtime_map = _build_runtime_map_from_rows(("++++", "++++", "++++"))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {
+                    "id": "spawn_0",
+                    "position": [1, 1],
+                    "facing_angle_degrees": 0.0,
+                },
+            ],
+        },
+        runtime_map,
+    )
+
+    system.update_perception(
+        player_position=WorldCoord(x=48.0, y=24.0),
+        collision_service=TileCollisionService(runtime_map),
+        vision_range_px=64.0,
+        vision_angle_degrees=80.0,
+        line_of_sight_sample_step_px=4.0,
+    )
+
+    assert system.enemies[0].alerted is True
+    assert system.stats.alerted_enemies == 1
+
+
+def test_enemy_system_keeps_enemy_idle_when_player_is_outside_view_cone() -> None:
+    """Enemy perception should ignore players outside the facing cone."""
+    from topdown_shooter.world.collision import TileCollisionService
+
+    runtime_map = _build_runtime_map_from_rows(("++++", "++++", "++++"))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {
+                    "id": "spawn_0",
+                    "position": [1, 1],
+                    "facing_angle_degrees": 0.0,
+                },
+            ],
+        },
+        runtime_map,
+    )
+
+    system.update_perception(
+        player_position=WorldCoord(x=24.0, y=56.0),
+        collision_service=TileCollisionService(runtime_map),
+        vision_range_px=64.0,
+        vision_angle_degrees=80.0,
+        line_of_sight_sample_step_px=4.0,
+    )
+
+    assert system.enemies[0].alerted is False
+    assert system.stats.alerted_enemies == 0
+
+
+def test_enemy_system_requires_line_of_sight_for_vision_alert() -> None:
+    """Enemy perception should not see through blocked tiles."""
+    from topdown_shooter.world.collision import TileCollisionService
+
+    runtime_map = _build_runtime_map_from_rows(("++++", "+#++", "++++"))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {
+                    "id": "spawn_0",
+                    "position": [0, 1],
+                    "facing_angle_degrees": 0.0,
+                },
+            ],
+        },
+        runtime_map,
+    )
+
+    system.update_perception(
+        player_position=WorldCoord(x=56.0, y=24.0),
+        collision_service=TileCollisionService(runtime_map),
+        vision_range_px=96.0,
+        vision_angle_degrees=80.0,
+        line_of_sight_sample_step_px=4.0,
+    )
+
+    assert system.enemies[0].alerted is False
+
+
+def test_enemy_system_alerts_enemy_when_projectile_hits() -> None:
+    """Projectile hits should alert enemies even outside the view cone."""
+    tactical_map: dict[str, object] = {
+        "enemy_spawn_zones": [
+            {
+                "id": "spawn_0",
+                "position": [2, 1],
+                "facing_angle_degrees": 180.0,
+            },
+        ],
+    }
+    system = EnemySystem.from_tactical_map(tactical_map, _build_runtime_map(), enemy_max_health=50.0)
+    projectile = ProjectileState(
+        position=WorldCoord(x=48.0, y=24.0),
+        previous_position=WorldCoord(x=24.0, y=24.0),
+        direction_x=1.0,
+        direction_y=0.0,
+        speed_px_per_second=16.0,
+        max_distance_px=64.0,
+        lifetime_seconds=10.0,
+        radius_px=3.0,
+        damage=10.0,
+    )
+
+    system.apply_projectile_hits((projectile,), enemy_collision_radius_px=6.0)
+
+    assert system.enemies[0].alerted is True
+    assert system.stats.alerted_enemies == 1

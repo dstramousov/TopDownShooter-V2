@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 
 from topdown_shooter.combat.projectiles import ProjectileState
+from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.coordinates import TileCoord, WorldCoord, tile_to_world_center
 from topdown_shooter.world.runtime_map import RuntimeMap
 
@@ -23,6 +25,8 @@ class EnemyState:
         world_position: Enemy world position in pixels.
         max_health: Maximum enemy health points.
         health: Current enemy health points.
+        facing_angle_degrees: Direction the enemy is looking at in degrees.
+        alerted: Whether the enemy has detected the player.
         alive: Whether the enemy is still active.
         last_hit_age_seconds: Seconds elapsed since the last damaging hit.
     """
@@ -36,6 +40,8 @@ class EnemyState:
     world_position: WorldCoord
     max_health: float
     health: float
+    facing_angle_degrees: float
+    alerted: bool = False
     alive: bool = True
     last_hit_age_seconds: float | None = None
 
@@ -65,6 +71,7 @@ class EnemyStats:
 
     Attributes:
         active_enemies: Number of currently active enemy markers.
+        alerted_enemies: Number of active enemies that have detected the player.
         spawned_enemies: Number of enemy markers created at startup.
         killed_enemies: Number of enemies killed by projectile damage.
         total_hits: Total number of projectile hits applied to enemies.
@@ -73,6 +80,7 @@ class EnemyStats:
     """
 
     active_enemies: int
+    alerted_enemies: int
     spawned_enemies: int
     killed_enemies: int
     total_hits: int
@@ -155,6 +163,7 @@ class EnemySystem:
                     world_position=tile_to_world_center(tile, runtime_map.tile_size_px),
                     max_health=enemy_max_health,
                     health=enemy_max_health,
+                    facing_angle_degrees=cls._read_facing_angle(raw_spawn, spawn_index),
                 ),
             )
         return cls(
@@ -179,6 +188,7 @@ class EnemySystem:
         """Return current enemy diagnostics."""
         return EnemyStats(
             active_enemies=len(self.enemies),
+            alerted_enemies=sum(1 for enemy in self.enemies if enemy.alerted),
             spawned_enemies=self._spawned_enemies,
             killed_enemies=self._killed_enemies,
             total_hits=self._total_hits,
@@ -202,6 +212,38 @@ class EnemySystem:
             if marker.age_seconds >= marker.lifetime_seconds:
                 marker.alive = False
         self._hit_markers = [marker for marker in self._hit_markers if marker.alive]
+
+    def update_perception(
+        self,
+        player_position: WorldCoord,
+        collision_service: TileCollisionService,
+        vision_range_px: float,
+        vision_angle_degrees: float,
+        line_of_sight_sample_step_px: float,
+    ) -> None:
+        """Update enemy player detection from vision cones.
+
+        Args:
+            player_position: Current player world position.
+            collision_service: Collision service used for line-of-sight checks.
+            vision_range_px: Maximum vision distance in world pixels.
+            vision_angle_degrees: Full vision cone angle in degrees.
+            line_of_sight_sample_step_px: Sampling step for blocking tile checks.
+        """
+        if vision_range_px <= 0.0 or vision_angle_degrees <= 0.0:
+            return
+        for enemy in self._enemies:
+            if not enemy.alive or enemy.alerted:
+                continue
+            if self._can_see_player(
+                enemy=enemy,
+                player_position=player_position,
+                collision_service=collision_service,
+                vision_range_px=vision_range_px,
+                vision_angle_degrees=vision_angle_degrees,
+                line_of_sight_sample_step_px=line_of_sight_sample_step_px,
+            ):
+                enemy.alerted = True
 
     def apply_projectile_hits(
         self,
@@ -239,6 +281,7 @@ class EnemySystem:
         if damage <= 0.0:
             return
         enemy.health = max(0.0, enemy.health - damage)
+        enemy.alerted = True
         enemy.last_hit_age_seconds = 0.0
         self._total_hits += 1
         if enemy.health <= 0.0:
@@ -260,6 +303,85 @@ class EnemySystem:
                 lifetime_seconds=self._hit_marker_lifetime_seconds,
             ),
         )
+
+    @staticmethod
+    def _can_see_player(
+        enemy: EnemyState,
+        player_position: WorldCoord,
+        collision_service: TileCollisionService,
+        vision_range_px: float,
+        vision_angle_degrees: float,
+        line_of_sight_sample_step_px: float,
+    ) -> bool:
+        """Return whether an enemy currently sees the player.
+
+        Args:
+            enemy: Enemy checking player visibility.
+            player_position: Player world position.
+            collision_service: Collision service for blocked tile checks.
+            vision_range_px: Maximum vision distance.
+            vision_angle_degrees: Full vision cone angle in degrees.
+            line_of_sight_sample_step_px: Sampling step for line of sight.
+
+        Returns:
+            True when the player is inside distance, cone, and line of sight.
+        """
+        dx = player_position.x - enemy.world_position.x
+        dy = player_position.y - enemy.world_position.y
+        distance_squared = dx * dx + dy * dy
+        if distance_squared > vision_range_px * vision_range_px:
+            return False
+        if distance_squared <= 0.000001:
+            return True
+
+        distance = math.sqrt(distance_squared)
+        direction_x = dx / distance
+        direction_y = dy / distance
+        facing_radians = math.radians(enemy.facing_angle_degrees)
+        facing_x = math.cos(facing_radians)
+        facing_y = math.sin(facing_radians)
+        dot = max(-1.0, min(1.0, direction_x * facing_x + direction_y * facing_y))
+        half_angle = min(180.0, vision_angle_degrees * 0.5)
+        if dot < math.cos(math.radians(half_angle)):
+            return False
+        return EnemySystem._has_line_of_sight(
+            start=enemy.world_position,
+            end=player_position,
+            collision_service=collision_service,
+            sample_step_px=line_of_sight_sample_step_px,
+        )
+
+    @staticmethod
+    def _has_line_of_sight(
+        start: WorldCoord,
+        end: WorldCoord,
+        collision_service: TileCollisionService,
+        sample_step_px: float,
+    ) -> bool:
+        """Return whether walkable tiles connect two world points.
+
+        Args:
+            start: Vision segment start point.
+            end: Vision segment end point.
+            collision_service: Collision service for tile checks.
+            sample_step_px: Desired sample distance in world pixels.
+
+        Returns:
+            True if no sampled point crosses a blocked tile.
+        """
+        dx = end.x - start.x
+        dy = end.y - start.y
+        distance = math.hypot(dx, dy)
+        if distance <= 0.000001:
+            return True
+        safe_step = max(1.0, sample_step_px)
+        steps = max(1, int(math.ceil(distance / safe_step)))
+        for index in range(1, steps + 1):
+            ratio = index / steps
+            point = WorldCoord(x=start.x + dx * ratio, y=start.y + dy * ratio)
+            if not collision_service.is_point_walkable(point):
+                return False
+        return True
 
     @staticmethod
     def _projectile_hits_enemy(
@@ -350,6 +472,23 @@ class EnemySystem:
             True when the tile is inside map bounds.
         """
         return 0 <= tile.x < runtime_map.width_tiles and 0 <= tile.y < runtime_map.height_tiles
+
+    @staticmethod
+    def _read_facing_angle(raw_spawn: dict[object, object], spawn_index: int) -> float:
+        """Read enemy facing angle from tactical data or create a fallback.
+
+        Args:
+            raw_spawn: Raw spawn object.
+            spawn_index: Source spawn index used for deterministic fallback.
+
+        Returns:
+            Normalized facing angle in degrees.
+        """
+        for key in ("facing_angle_degrees", "facing_degrees", "facing_angle"):
+            value = raw_spawn.get(key)
+            if isinstance(value, int | float) and not isinstance(value, bool):
+                return float(value) % 360.0
+        return float((spawn_index * 97) % 360)
 
     @staticmethod
     def _read_string(raw_spawn: dict[object, object], key: str, default: str) -> str:

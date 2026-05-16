@@ -231,3 +231,17 @@
 - Added temporary enemy health bars for recently damaged enemies.
 - Added configurable enemy feedback durations to the runtime config and debug overlay.
 - Kept enemy AI, movement, player damage, score, pickups, sound, particles, recoil, and overheating out of scope.
+
+
+## v0.0.29 -> v0.0.30
+
+- Added enemy facing angles and deterministic fallback directions for spawned enemies.
+- Added configurable debug enemy view cones with vision range, angle, and line-of-sight sampling.
+- Added enemy perception state: enemies become alerted when they see the player or get hit.
+- Updated enemy diagnostics to show alerted enemies and vision settings.
+- Kept enemy movement, chase AI, attacks, player damage, sound, and pathfinding out of scope.
+
+## v0.0.30 -> v0.0.31
+
+- Fixed the enemy perception runtime crash caused by passing an out-of-scope collision service variable from the raylib loop.
+- Kept enemy behavior, perception rules, weapon behavior, rendering, and gameplay balance unchanged.

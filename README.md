@@ -124,7 +124,7 @@ The player HUD is separate from the debug overlay. It displays health, equipped 
 
 ## Enemies
 
-The runtime creates one static enemy marker for each valid tactical `enemy_spawn_zones` entry in the loaded map package. Enemy markers are intentionally simple red circles for now. They do not move, attack, take damage, or react to projectiles yet. Enemy marker radius is configured through `enemies.marker_radius_px` in `default_runtime_config.json`.
+The runtime creates one static enemy marker for each valid tactical `enemy_spawn_zones` entry in the loaded map package. Enemy markers are intentionally simple runtime targets for now. They can be damaged by projectiles, flash on hit, show temporary health bars, and enter an alerted perception state when they see the player or get hit. Debug enemy view cones can be enabled through `enemies.draw_view_cones` in `default_runtime_config.json`. They still do not move, attack, pathfind, or damage the player yet.
 
 ## Projectile impacts
 
