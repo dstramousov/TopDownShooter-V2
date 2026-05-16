@@ -73,7 +73,8 @@ class PlayerHud:
         self._raylib.draw_rectangle(layout.x, layout.y, layout.width, layout.height, background)
         next_y = self._draw_lines(lines, layout)
         if weapon.is_reloading:
-            self._draw_reload_bar(layout.x + self._config.padding, next_y, weapon)
+            bar_x = self._calculate_reload_bar_x(layout, player, weapon)
+            self._draw_reload_bar(bar_x, next_y, weapon)
 
     def _build_lines(self, player: PlayerState, weapon: WeaponStats) -> tuple[str, ...]:
         """Build HUD text lines.
@@ -130,6 +131,34 @@ class PlayerHud:
                 x = (self._window.width - width) // 2
                 y = self._config.margin_y
         return HudLayout(x=x, y=y, width=width, height=height)
+
+    def _calculate_reload_bar_x(
+        self,
+        layout: HudLayout,
+        player: PlayerState,
+        weapon: WeaponStats,
+    ) -> int:
+        """Calculate reload progress bar X position.
+
+        Args:
+            layout: Calculated panel layout.
+            player: Current player state.
+            weapon: Current weapon runtime stats.
+
+        Returns:
+            Screen X position for the reload progress bar.
+        """
+        if self._config.position in {"left", "right"}:
+            return layout.x + self._config.padding
+
+        health_text = f"HP: {player.health} / {player.max_health}"
+        weapon_prefix = f"{health_text}    "
+        desired_x = layout.x + self._config.padding + self._text.measure_text(
+            weapon_prefix,
+            self._config.font_size,
+        )
+        max_x = layout.x + layout.width - self._config.padding - _RELOAD_BAR_WIDTH
+        return min(desired_x, max_x)
 
     def _draw_lines(self, lines: tuple[str, ...], layout: HudLayout) -> int:
         """Draw HUD text lines and return the next free Y position.

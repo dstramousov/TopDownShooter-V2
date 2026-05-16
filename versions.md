@@ -209,3 +209,9 @@
 - Added a compact HUD reload progress bar while a reload is in progress.
 - Updated weapon diagnostics to expose reload progress and active weapon movement multipliers.
 - Kept enemy hits, enemy AI, player damage, recoil, sound, overheating, and pickups out of scope.
+
+
+## v0.0.26 -> v0.0.27
+
+- Moved the reload progress bar under the active weapon label in the top/bottom HUD layout.
+- Kept reload timing, weapon stats, movement speed modifiers, and combat behavior unchanged.
