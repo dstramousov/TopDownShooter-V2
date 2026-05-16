@@ -131,6 +131,8 @@ class RaylibWindow:
         self._enemy_renderer = EnemyRenderer(
             raylib=self._raylib,
             marker_radius_px=config.enemies.marker_radius_px,
+            health_bar_visible_seconds=config.enemies.health_bar_visible_seconds,
+            hit_flash_seconds=config.enemies.hit_flash_seconds,
         )
         self._player_renderer = PlayerRenderer(
             raylib=self._raylib,

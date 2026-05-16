@@ -117,6 +117,8 @@
     "marker_radius_px": 6,
     "max_health": 100.0,
     "hit_marker_lifetime_seconds": 0.14,
-    "hit_marker_radius_px": 8.0
+    "hit_marker_radius_px": 8.0,
+    "health_bar_visible_seconds": 1.6,
+    "hit_flash_seconds": 0.12
   }
 }

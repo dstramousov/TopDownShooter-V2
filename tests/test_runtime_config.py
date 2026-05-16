@@ -70,6 +70,8 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.enemies.max_health == 100.0
     assert config.enemies.hit_marker_lifetime_seconds == 0.14
     assert config.enemies.hit_marker_radius_px == 8.0
+    assert config.enemies.health_bar_visible_seconds == 1.6
+    assert config.enemies.hit_flash_seconds == 0.12
     assert config.fps_counter.enabled is True
     assert config.fps_counter.position == "top_right"
     assert config.fps_counter.margin_x == 12

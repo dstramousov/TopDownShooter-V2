@@ -24,6 +24,7 @@ class EnemyState:
         max_health: Maximum enemy health points.
         health: Current enemy health points.
         alive: Whether the enemy is still active.
+        last_hit_age_seconds: Seconds elapsed since the last damaging hit.
     """
 
     enemy_id: str
@@ -36,6 +37,7 @@ class EnemyState:
     max_health: float
     health: float
     alive: bool = True
+    last_hit_age_seconds: float | None = None
 
 
 @dataclass(slots=True)
@@ -192,6 +194,9 @@ class EnemySystem:
         """
         if frame_time <= 0.0:
             return
+        for enemy in self._enemies:
+            if enemy.alive and enemy.last_hit_age_seconds is not None:
+                enemy.last_hit_age_seconds += frame_time
         for marker in self._hit_markers:
             marker.age_seconds += frame_time
             if marker.age_seconds >= marker.lifetime_seconds:
@@ -234,6 +239,7 @@ class EnemySystem:
         if damage <= 0.0:
             return
         enemy.health = max(0.0, enemy.health - damage)
+        enemy.last_hit_age_seconds = 0.0
         self._total_hits += 1
         if enemy.health <= 0.0:
             enemy.alive = False

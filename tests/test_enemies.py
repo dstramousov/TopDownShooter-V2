@@ -126,9 +126,15 @@ def test_enemy_system_applies_projectile_damage_and_hit_markers() -> None:
     assert system.stats.killed_enemies == 0
     assert system.stats.active_hit_markers == 1
     assert system.enemies[0].health == 15.0
+    assert system.enemies[0].last_hit_age_seconds == 0.0
     assert system.hit_markers[0].radius_px == 7.0
 
-    system.update(frame_time=0.2)
+    system.update(frame_time=0.1)
+
+    assert system.enemies[0].last_hit_age_seconds == 0.1
+    assert system.stats.active_hit_markers == 1
+
+    system.update(frame_time=0.1)
 
     assert system.stats.active_hit_markers == 0
 

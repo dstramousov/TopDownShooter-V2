@@ -224,3 +224,10 @@
 - Added short-lived enemy hit feedback markers distinct from wall impacts.
 - Updated enemy and weapon diagnostics with hit, kill, damage, and hit-marker counters.
 - Kept enemy AI, enemy movement, player damage, score, pickups, sound, particles, recoil, and overheating out of scope.
+
+## v0.0.28 -> v0.0.29
+
+- Added short enemy hit flash feedback when projectile damage is applied.
+- Added temporary enemy health bars for recently damaged enemies.
+- Added configurable enemy feedback durations to the runtime config and debug overlay.
+- Kept enemy AI, movement, player damage, score, pickups, sound, particles, recoil, and overheating out of scope.

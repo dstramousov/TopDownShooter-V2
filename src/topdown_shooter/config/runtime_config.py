@@ -133,12 +133,16 @@ class EnemyConfig:
         max_health: Initial and maximum health for static enemies.
         hit_marker_lifetime_seconds: Enemy hit marker lifetime in seconds.
         hit_marker_radius_px: Enemy hit marker radius in world pixels.
+        health_bar_visible_seconds: Duration for temporary enemy health bars.
+        hit_flash_seconds: Duration for enemy hit flash feedback.
     """
 
     marker_radius_px: int
     max_health: float
     hit_marker_lifetime_seconds: float
     hit_marker_radius_px: float
+    health_bar_visible_seconds: float
+    hit_flash_seconds: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -397,6 +401,14 @@ class RuntimeConfigLoader:
                 hit_marker_radius_px=self._require_positive_float(
                     enemies,
                     "hit_marker_radius_px",
+                ),
+                health_bar_visible_seconds=self._require_positive_float(
+                    enemies,
+                    "health_bar_visible_seconds",
+                ),
+                hit_flash_seconds=self._require_positive_float(
+                    enemies,
+                    "hit_flash_seconds",
                 ),
             ),
             debug_overlay=DebugOverlayConfig(

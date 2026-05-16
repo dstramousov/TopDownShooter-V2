@@ -321,6 +321,11 @@ class DebugOverlay:
                 DebugOverlayRow("Hit markers", str(enemy_stats.active_hit_markers)),
                 DebugOverlayRow("Source spawns", str(enemy_stats.source_spawn_zones)),
                 DebugOverlayRow("Health", f"{self._config.enemies.max_health:.1f}"),
+                DebugOverlayRow(
+                    "HP bar",
+                    f"{self._config.enemies.health_bar_visible_seconds:.2f}s",
+                ),
+                DebugOverlayRow("Flash", f"{self._config.enemies.hit_flash_seconds:.2f}s"),
                 DebugOverlayRow("Marker radius", f"{self._config.enemies.marker_radius_px}px"),
             ),
         )
