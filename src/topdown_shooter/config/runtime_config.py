@@ -247,6 +247,7 @@ class ControlsConfig:
         reload: Key name used to reload the current weapon.
         weapon_slot_1: Key name used to equip weapon slot 1.
         weapon_slot_2: Key name used to equip weapon slot 2.
+        weapon_slot_3: Key name used to equip weapon slot 3.
     """
 
     quit: str
@@ -268,6 +269,7 @@ class ControlsConfig:
     reload: str
     weapon_slot_1: str
     weapon_slot_2: str
+    weapon_slot_3: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -437,6 +439,7 @@ class RuntimeConfigLoader:
                 reload=self._require_str(controls, "reload"),
                 weapon_slot_1=self._require_str(controls, "weapon_slot_1"),
                 weapon_slot_2=self._require_str(controls, "weapon_slot_2"),
+                weapon_slot_3=self._require_str(controls, "weapon_slot_3"),
             ),
         )
 

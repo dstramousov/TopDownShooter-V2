@@ -298,6 +298,11 @@ class DebugOverlay:
                 DebugOverlayRow("Cooldown", f"{weapon_stats.cooldown_remaining_seconds:.3f}s"),
                 DebugOverlayRow("Reload time", f"{weapon_stats.reload_time_seconds:.3f}s"),
                 DebugOverlayRow("Reload left", f"{weapon_stats.reload_remaining_seconds:.3f}s"),
+                DebugOverlayRow("Reload prog", f"{weapon_stats.reload_progress:.2f}"),
+                DebugOverlayRow(
+                    "Move mult",
+                    f"{weapon_stats.active_movement_speed_multiplier:.2f}x",
+                ),
                 DebugOverlayRow("Spread", f"{weapon_stats.spread_degrees:.2f}deg"),
                 DebugOverlayRow("Shots/fire", str(weapon_stats.shots_per_fire)),
                 DebugOverlayRow("Fire", self._config.controls.fire_primary),

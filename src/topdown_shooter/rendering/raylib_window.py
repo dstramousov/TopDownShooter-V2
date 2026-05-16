@@ -92,6 +92,7 @@ class RaylibWindow:
         self._reload_key = self._resolve_key(config.controls.reload)
         self._weapon_slot_1_key = self._resolve_key(config.controls.weapon_slot_1)
         self._weapon_slot_2_key = self._resolve_key(config.controls.weapon_slot_2)
+        self._weapon_slot_3_key = self._resolve_key(config.controls.weapon_slot_3)
         self._debug_overlay_enabled = config.debug_overlay.enabled_by_default
         self._renderer = MapRenderer(self._raylib)
         self._fps_counter = FpsCounter(
@@ -238,6 +239,8 @@ class RaylibWindow:
             self._weapon_controller.switch_to_slot(1)
         if self._raylib.is_key_pressed(self._weapon_slot_2_key):
             self._weapon_controller.switch_to_slot(2)
+        if self._raylib.is_key_pressed(self._weapon_slot_3_key):
+            self._weapon_controller.switch_to_slot(3)
         if self._raylib.is_key_pressed(self._reload_key):
             self._weapon_controller.reload_current()
 
@@ -269,7 +272,10 @@ class RaylibWindow:
             player=self._player,
             intent=PlayerMoveIntent(x=dx, y=dy),
             frame_time=frame_time,
-            speed_px_per_second=self._config.player.movement_speed_px_per_second,
+            speed_px_per_second=(
+                self._config.player.movement_speed_px_per_second
+                * self._weapon_controller.stats.active_movement_speed_multiplier
+            ),
         )
 
     def _update_camera_controls(self, frame_time: float) -> None:

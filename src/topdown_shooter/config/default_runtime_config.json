@@ -80,7 +80,8 @@
     "fire_primary": "MOUSE_BUTTON_LEFT",
     "reload": "KEY_R",
     "weapon_slot_1": "KEY_ONE",
-    "weapon_slot_2": "KEY_TWO"
+    "weapon_slot_2": "KEY_TWO",
+    "weapon_slot_3": "KEY_THREE"
   },
   "aim_debug": {
     "enabled": true,

@@ -201,3 +201,11 @@
 - Updated the player HUD to use the same configured custom font as the debug overlay.
 - Added per-weapon reload durations to `res/config/weapons.json` and runtime reload timing.
 - Kept enemy hits, enemy AI, player damage, pickups, recoil, sound, and tactical overlays out of scope.
+
+## v0.0.25 -> v0.0.26
+
+- Added the M134 Minigun as weapon slot 3 with a 1000-round magazine and 2000 reserve rounds.
+- Added per-weapon active movement speed multipliers and applied them to player movement.
+- Added a compact HUD reload progress bar while a reload is in progress.
+- Updated weapon diagnostics to expose reload progress and active weapon movement multipliers.
+- Kept enemy hits, enemy AI, player damage, recoil, sound, overheating, and pickups out of scope.

@@ -15,7 +15,8 @@
       "shots_per_fire": 1,
       "magazine_size": 8,
       "initial_reserve_ammo": "infinite",
-      "reload_time_seconds": 0.9
+      "reload_time_seconds": 0.9,
+      "active_movement_speed_multiplier": 1.0
     },
     {
       "id": "ak47",
@@ -30,7 +31,24 @@
       "shots_per_fire": 1,
       "magazine_size": 30,
       "initial_reserve_ammo": 90,
-      "reload_time_seconds": 1.7
+      "reload_time_seconds": 1.7,
+      "active_movement_speed_multiplier": 0.96
+    },
+    {
+      "id": "minigun_m134",
+      "display_name": "M134 Minigun",
+      "slot": 3,
+      "fire_rate_rpm": 3000.0,
+      "projectile_speed_px_per_second": 2200.0,
+      "projectile_range_px": 1040.0,
+      "projectile_lifetime_seconds": 1.5,
+      "projectile_radius_px": 3.0,
+      "spread_degrees": 6.0,
+      "shots_per_fire": 1,
+      "magazine_size": 1000,
+      "initial_reserve_ammo": 2000,
+      "reload_time_seconds": 4.5,
+      "active_movement_speed_multiplier": 0.75
     }
   ]
 }

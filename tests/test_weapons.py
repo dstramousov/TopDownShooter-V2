@@ -58,6 +58,7 @@ def _write_weapon_database(path: Path) -> None:
                         "magazine_size": 8,
                         "initial_reserve_ammo": "infinite",
                         "reload_time_seconds": 0.9,
+                        "active_movement_speed_multiplier": 1.0,
                     }
                 ],
             },
@@ -80,6 +81,7 @@ def test_weapon_config_loader_loads_default_weapon(tmp_path: Path) -> None:
     assert database.default_weapon.magazine_size == 8
     assert database.default_weapon.initial_reserve_ammo is None
     assert database.default_weapon.reload_time_seconds == 0.9
+    assert database.default_weapon.active_movement_speed_multiplier == 1.0
 
 
 def test_weapon_controller_continuously_fires_while_button_is_held(tmp_path: Path) -> None:
@@ -146,6 +148,7 @@ def _write_two_weapon_database(path: Path) -> None:
                         "magazine_size": 8,
                         "initial_reserve_ammo": "infinite",
                         "reload_time_seconds": 0.9,
+                        "active_movement_speed_multiplier": 1.0,
                     },
                     {
                         "id": "ak47",
@@ -161,6 +164,7 @@ def _write_two_weapon_database(path: Path) -> None:
                         "magazine_size": 30,
                         "initial_reserve_ammo": 90,
                         "reload_time_seconds": 1.7,
+                        "active_movement_speed_multiplier": 0.96,
                     },
                 ],
             },
@@ -186,6 +190,7 @@ def test_weapon_controller_switches_weapon_slots(tmp_path: Path) -> None:
     assert controller.stats.ammo_in_magazine == 30
     assert controller.stats.reserve_ammo == 90
     assert controller.stats.reload_time_seconds == 1.7
+    assert controller.stats.active_movement_speed_multiplier == 0.96
 
 
 def test_weapon_controller_reloads_from_infinite_reserve(tmp_path: Path) -> None:
@@ -211,6 +216,7 @@ def test_weapon_controller_reloads_from_infinite_reserve(tmp_path: Path) -> None
     assert controller.stats.ammo_in_magazine == 0
     assert controller.stats.reserve_ammo is None
     assert controller.stats.is_reloading is True
+    assert controller.stats.reload_progress == 0.0
 
     controller.update(
         fire_held=False,
@@ -223,6 +229,7 @@ def test_weapon_controller_reloads_from_infinite_reserve(tmp_path: Path) -> None
     assert controller.stats.ammo_in_magazine == 8
     assert controller.stats.reserve_ammo is None
     assert controller.stats.is_reloading is False
+    assert controller.stats.reload_progress == 0.0
 
 
 def test_weapon_controller_stops_when_magazine_is_empty(tmp_path: Path) -> None:
@@ -274,3 +281,17 @@ def test_weapon_controller_blocks_fire_during_reload(tmp_path: Path) -> None:
 
     assert projectile_system.stats.shots_fired == 1
     assert controller.stats.is_reloading is True
+
+
+def test_packaged_weapon_database_includes_minigun() -> None:
+    """Packaged weapon database should expose the M134 minigun test weapon."""
+    database = WeaponConfigLoader().load(Path("res/config/weapons.json"))
+    minigun = database.get_by_slot(3)
+
+    assert minigun.weapon_id == "minigun_m134"
+    assert minigun.display_name == "M134 Minigun"
+    assert minigun.fire_rate_rpm == 3000.0
+    assert minigun.magazine_size == 1000
+    assert minigun.initial_reserve_ammo == 2000
+    assert minigun.reload_time_seconds == 4.5
+    assert minigun.active_movement_speed_multiplier == 0.75

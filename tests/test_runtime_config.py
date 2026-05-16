@@ -51,6 +51,7 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.controls.reload == "KEY_R"
     assert config.controls.weapon_slot_1 == "KEY_ONE"
     assert config.controls.weapon_slot_2 == "KEY_TWO"
+    assert config.controls.weapon_slot_3 == "KEY_THREE"
     assert config.weapons.database_path == "res/config/weapons.json"
     assert config.debug_overlay.enabled_by_default is False
     assert config.debug_overlay.panel_width == 1200

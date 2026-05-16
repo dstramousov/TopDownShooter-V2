@@ -36,6 +36,7 @@ class WeaponDefinition:
         magazine_size: Number of fire events available before reload.
         initial_reserve_ammo: Initial reserve ammo, or None for infinite reserve.
         reload_time_seconds: Time required to reload this weapon.
+        active_movement_speed_multiplier: Player movement multiplier while this weapon is active.
     """
 
     weapon_id: str
@@ -51,6 +52,7 @@ class WeaponDefinition:
     magazine_size: int
     initial_reserve_ammo: int | None
     reload_time_seconds: float
+    active_movement_speed_multiplier: float
 
     @property
     def fire_interval_seconds(self) -> float:
@@ -150,6 +152,7 @@ class WeaponStats:
         reserve_ammo: Current finite reserve ammo, or None for infinite reserve.
         reload_time_seconds: Current weapon reload duration.
         reload_remaining_seconds: Current reload countdown.
+        active_movement_speed_multiplier: Player movement multiplier while this weapon is active.
         available_slots: Available weapon slot numbers.
     """
 
@@ -170,12 +173,21 @@ class WeaponStats:
     reserve_ammo: int | None
     reload_time_seconds: float
     reload_remaining_seconds: float
+    active_movement_speed_multiplier: float
     available_slots: tuple[int, ...]
 
     @property
     def is_reloading(self) -> bool:
         """Return whether the current weapon is reloading."""
         return self.reload_remaining_seconds > 0.0
+
+    @property
+    def reload_progress(self) -> float:
+        """Return normalized reload progress in the 0..1 range."""
+        if self.reload_time_seconds <= 0.0 or self.reload_remaining_seconds <= 0.0:
+            return 0.0
+        progress = 1.0 - self.reload_remaining_seconds / self.reload_time_seconds
+        return min(1.0, max(0.0, progress))
 
     @property
     def reserve_display(self) -> str:
@@ -278,6 +290,10 @@ class WeaponConfigLoader:
             magazine_size=self._require_positive_int(raw_weapon, "magazine_size"),
             initial_reserve_ammo=self._require_reserve_ammo(raw_weapon, "initial_reserve_ammo"),
             reload_time_seconds=self._require_positive_float(raw_weapon, "reload_time_seconds"),
+            active_movement_speed_multiplier=self._require_positive_float(
+                raw_weapon,
+                "active_movement_speed_multiplier",
+            ),
         )
 
     def _require_str(self, data: dict[str, object], key: str) -> str:
@@ -466,6 +482,7 @@ class WeaponController:
             reserve_ammo=ammo.reserve_ammo,
             reload_time_seconds=weapon.reload_time_seconds,
             reload_remaining_seconds=self._state.reload_remaining_seconds,
+            active_movement_speed_multiplier=weapon.active_movement_speed_multiplier,
             available_slots=tuple(sorted(self._state.database.weapon_ids_by_slot)),
         )
 
