@@ -14,24 +14,28 @@ class ProjectileState:
 
     Attributes:
         position: Current projectile world position.
+        previous_position: Previous projectile world position.
         direction_x: Normalized horizontal movement direction.
         direction_y: Normalized vertical movement direction.
         speed_px_per_second: Projectile speed in world pixels per second.
         max_distance_px: Maximum allowed travel distance in world pixels.
         lifetime_seconds: Maximum allowed lifetime in seconds.
         radius_px: Projectile marker radius in world pixels.
+        damage: Damage applied when this projectile hits an enemy.
         distance_traveled_px: Current traveled distance in world pixels.
         age_seconds: Current lifetime in seconds.
         alive: Whether the projectile is still active.
     """
 
     position: WorldCoord
+    previous_position: WorldCoord
     direction_x: float
     direction_y: float
     speed_px_per_second: float
     max_distance_px: float
     lifetime_seconds: float
     radius_px: float
+    damage: float
     distance_traveled_px: float = 0.0
     age_seconds: float = 0.0
     alive: bool = True
@@ -129,6 +133,7 @@ class ProjectileSystem:
         max_distance_px: float,
         lifetime_seconds: float,
         radius_px: float,
+        damage: float,
     ) -> bool:
         """Spawn a projectile when the direction and parameters are valid.
 
@@ -140,6 +145,7 @@ class ProjectileSystem:
             max_distance_px: Maximum projectile travel distance in world pixels.
             lifetime_seconds: Maximum projectile lifetime in seconds.
             radius_px: Projectile marker radius in world pixels.
+            damage: Damage applied when this projectile hits an enemy.
 
         Returns:
             True if a projectile was spawned.
@@ -151,16 +157,19 @@ class ProjectileSystem:
             or max_distance_px <= 0.0
             or lifetime_seconds <= 0.0
             or radius_px <= 0.0
+            or damage <= 0.0
         ):
             return False
         projectile = ProjectileState(
             position=origin,
+            previous_position=origin,
             direction_x=direction_x,
             direction_y=direction_y,
             speed_px_per_second=speed_px_per_second,
             max_distance_px=max_distance_px,
             lifetime_seconds=lifetime_seconds,
             radius_px=radius_px,
+            damage=damage,
         )
         self._projectiles.append(projectile)
         self._shots_fired += 1
@@ -181,7 +190,12 @@ class ProjectileSystem:
 
         for projectile in self._projectiles:
             self._update_projectile(projectile, frame_time)
+        self.prune_dead()
+
+    def prune_dead(self) -> None:
+        """Remove dead projectiles and expired impact markers from runtime lists."""
         self._projectiles = [projectile for projectile in self._projectiles if projectile.alive]
+        self._impacts = [impact for impact in self._impacts if impact.alive]
 
     def _update_projectile(self, projectile: ProjectileState, frame_time: float) -> None:
         """Advance a single projectile.
@@ -194,10 +208,12 @@ class ProjectileSystem:
             return
 
         distance = projectile.speed_px_per_second * frame_time
+        previous_position = projectile.position
         new_position = WorldCoord(
             x=projectile.position.x + projectile.direction_x * distance,
             y=projectile.position.y + projectile.direction_y * distance,
         )
+        projectile.previous_position = previous_position
         projectile.position = new_position
         projectile.distance_traveled_px += distance
         projectile.age_seconds += frame_time

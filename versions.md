@@ -215,3 +215,12 @@
 
 - Moved the reload progress bar under the active weapon label in the top/bottom HUD layout.
 - Kept reload timing, weapon stats, movement speed modifiers, and combat behavior unchanged.
+
+
+## v0.0.27 -> v0.0.28
+
+- Added per-weapon projectile damage loaded from `res/config/weapons.json`.
+- Added enemy health, projectile-enemy collision, enemy death, and consumed projectiles on hit.
+- Added short-lived enemy hit feedback markers distinct from wall impacts.
+- Updated enemy and weapon diagnostics with hit, kill, damage, and hit-marker counters.
+- Kept enemy AI, enemy movement, player damage, score, pickups, sound, particles, recoil, and overheating out of scope.

@@ -51,6 +51,7 @@ def _spawn_default(
         max_distance_px=64.0,
         lifetime_seconds=10.0,
         radius_px=3.0,
+        damage=25.0,
     )
 
 
@@ -71,6 +72,8 @@ def test_projectile_system_spawns_and_moves_projectile() -> None:
     assert projectile.position == WorldCoord(16.0, 24.0)
     assert projectile.distance_traveled_px == 8.0
     assert projectile.radius_px == 3.0
+    assert projectile.damage == 25.0
+    assert projectile.previous_position == WorldCoord(8.0, 24.0)
 
 
 def test_projectile_system_ignores_zero_direction() -> None:

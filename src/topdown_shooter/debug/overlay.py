@@ -299,6 +299,7 @@ class DebugOverlay:
                 DebugOverlayRow("Reload time", f"{weapon_stats.reload_time_seconds:.3f}s"),
                 DebugOverlayRow("Reload left", f"{weapon_stats.reload_remaining_seconds:.3f}s"),
                 DebugOverlayRow("Reload prog", f"{weapon_stats.reload_progress:.2f}"),
+                DebugOverlayRow("Damage", f"{weapon_stats.damage:.1f}"),
                 DebugOverlayRow(
                     "Move mult",
                     f"{weapon_stats.active_movement_speed_multiplier:.2f}x",
@@ -315,7 +316,11 @@ class DebugOverlay:
             rows=(
                 DebugOverlayRow("Active", str(enemy_stats.active_enemies)),
                 DebugOverlayRow("Spawned", str(enemy_stats.spawned_enemies)),
+                DebugOverlayRow("Killed", str(enemy_stats.killed_enemies)),
+                DebugOverlayRow("Hits", str(enemy_stats.total_hits)),
+                DebugOverlayRow("Hit markers", str(enemy_stats.active_hit_markers)),
                 DebugOverlayRow("Source spawns", str(enemy_stats.source_spawn_zones)),
+                DebugOverlayRow("Health", f"{self._config.enemies.max_health:.1f}"),
                 DebugOverlayRow("Marker radius", f"{self._config.enemies.marker_radius_px}px"),
             ),
         )

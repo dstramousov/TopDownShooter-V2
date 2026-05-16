@@ -126,13 +126,19 @@ class ProjectileImpactConfig:
 
 @dataclass(frozen=True, slots=True)
 class EnemyConfig:
-    """Enemy marker display settings.
+    """Enemy display and health settings.
 
     Attributes:
         marker_radius_px: Enemy marker radius in world pixels.
+        max_health: Initial and maximum health for static enemies.
+        hit_marker_lifetime_seconds: Enemy hit marker lifetime in seconds.
+        hit_marker_radius_px: Enemy hit marker radius in world pixels.
     """
 
     marker_radius_px: int
+    max_health: float
+    hit_marker_lifetime_seconds: float
+    hit_marker_radius_px: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -383,6 +389,15 @@ class RuntimeConfigLoader:
             ),
             enemies=EnemyConfig(
                 marker_radius_px=self._require_positive_int(enemies, "marker_radius_px"),
+                max_health=self._require_positive_float(enemies, "max_health"),
+                hit_marker_lifetime_seconds=self._require_positive_float(
+                    enemies,
+                    "hit_marker_lifetime_seconds",
+                ),
+                hit_marker_radius_px=self._require_positive_float(
+                    enemies,
+                    "hit_marker_radius_px",
+                ),
             ),
             debug_overlay=DebugOverlayConfig(
                 enabled_by_default=self._require_bool(debug_overlay, "enabled_by_default"),

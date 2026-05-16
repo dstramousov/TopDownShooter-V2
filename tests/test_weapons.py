@@ -54,6 +54,7 @@ def _write_weapon_database(path: Path) -> None:
                         "projectile_lifetime_seconds": 10.0,
                         "projectile_radius_px": 3.0,
                         "spread_degrees": 0.0,
+                        "damage": 35.0,
                         "shots_per_fire": 1,
                         "magazine_size": 8,
                         "initial_reserve_ammo": "infinite",
@@ -82,6 +83,7 @@ def test_weapon_config_loader_loads_default_weapon(tmp_path: Path) -> None:
     assert database.default_weapon.initial_reserve_ammo is None
     assert database.default_weapon.reload_time_seconds == 0.9
     assert database.default_weapon.active_movement_speed_multiplier == 1.0
+    assert database.default_weapon.damage == 35.0
 
 
 def test_weapon_controller_continuously_fires_while_button_is_held(tmp_path: Path) -> None:
@@ -144,6 +146,7 @@ def _write_two_weapon_database(path: Path) -> None:
                         "projectile_lifetime_seconds": 10.0,
                         "projectile_radius_px": 3.0,
                         "spread_degrees": 0.0,
+                        "damage": 35.0,
                         "shots_per_fire": 1,
                         "magazine_size": 8,
                         "initial_reserve_ammo": "infinite",
@@ -160,6 +163,7 @@ def _write_two_weapon_database(path: Path) -> None:
                         "projectile_lifetime_seconds": 10.0,
                         "projectile_radius_px": 3.0,
                         "spread_degrees": 4.0,
+                        "damage": 24.0,
                         "shots_per_fire": 1,
                         "magazine_size": 30,
                         "initial_reserve_ammo": 90,
@@ -191,6 +195,7 @@ def test_weapon_controller_switches_weapon_slots(tmp_path: Path) -> None:
     assert controller.stats.reserve_ammo == 90
     assert controller.stats.reload_time_seconds == 1.7
     assert controller.stats.active_movement_speed_multiplier == 0.96
+    assert controller.stats.damage == 24.0
 
 
 def test_weapon_controller_reloads_from_infinite_reserve(tmp_path: Path) -> None:
@@ -295,3 +300,4 @@ def test_packaged_weapon_database_includes_minigun() -> None:
     assert minigun.initial_reserve_ammo == 2000
     assert minigun.reload_time_seconds == 4.5
     assert minigun.active_movement_speed_multiplier == 0.75
+    assert minigun.damage == 12.0

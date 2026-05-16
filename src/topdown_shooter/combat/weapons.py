@@ -32,6 +32,7 @@ class WeaponDefinition:
         projectile_lifetime_seconds: Maximum projectile lifetime in seconds.
         projectile_radius_px: Projectile visual/collision radius in world pixels.
         spread_degrees: Maximum angular spread cone in degrees.
+        damage: Damage applied by each spawned projectile.
         shots_per_fire: Number of projectiles spawned per fire event.
         magazine_size: Number of fire events available before reload.
         initial_reserve_ammo: Initial reserve ammo, or None for infinite reserve.
@@ -48,6 +49,7 @@ class WeaponDefinition:
     projectile_lifetime_seconds: float
     projectile_radius_px: float
     spread_degrees: float
+    damage: float
     shots_per_fire: int
     magazine_size: int
     initial_reserve_ammo: int | None
@@ -141,6 +143,7 @@ class WeaponStats:
         fire_rate_rpm: Current weapon fire rate in rounds per minute.
         fire_interval_seconds: Current delay between fire events.
         spread_degrees: Current weapon spread cone in degrees.
+        damage: Damage applied by each spawned projectile.
         shots_per_fire: Current projectile count per fire event.
         projectile_speed_px_per_second: Current projectile speed.
         projectile_range_px: Current projectile range.
@@ -162,6 +165,7 @@ class WeaponStats:
     fire_rate_rpm: float
     fire_interval_seconds: float
     spread_degrees: float
+    damage: float
     shots_per_fire: int
     projectile_speed_px_per_second: float
     projectile_range_px: float
@@ -286,6 +290,7 @@ class WeaponConfigLoader:
             ),
             projectile_radius_px=self._require_positive_float(raw_weapon, "projectile_radius_px"),
             spread_degrees=self._require_non_negative_float(raw_weapon, "spread_degrees"),
+            damage=self._require_positive_float(raw_weapon, "damage"),
             shots_per_fire=self._require_positive_int(raw_weapon, "shots_per_fire"),
             magazine_size=self._require_positive_int(raw_weapon, "magazine_size"),
             initial_reserve_ammo=self._require_reserve_ammo(raw_weapon, "initial_reserve_ammo"),
@@ -471,6 +476,7 @@ class WeaponController:
             fire_rate_rpm=weapon.fire_rate_rpm,
             fire_interval_seconds=weapon.fire_interval_seconds,
             spread_degrees=weapon.spread_degrees,
+            damage=weapon.damage,
             shots_per_fire=weapon.shots_per_fire,
             projectile_speed_px_per_second=weapon.projectile_speed_px_per_second,
             projectile_range_px=weapon.projectile_range_px,
@@ -617,6 +623,7 @@ class WeaponController:
                 max_distance_px=weapon.projectile_range_px,
                 lifetime_seconds=weapon.projectile_lifetime_seconds,
                 radius_px=weapon.projectile_radius_px,
+                damage=weapon.damage,
             )
         return True
 

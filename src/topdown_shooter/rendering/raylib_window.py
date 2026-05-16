@@ -124,6 +124,9 @@ class RaylibWindow:
         self._enemy_system = EnemySystem.from_tactical_map(
             tactical_map=package.tactical_map,
             runtime_map=runtime_map,
+            enemy_max_health=config.enemies.max_health,
+            hit_marker_lifetime_seconds=config.enemies.hit_marker_lifetime_seconds,
+            hit_marker_radius_px=config.enemies.hit_marker_radius_px,
         )
         self._enemy_renderer = EnemyRenderer(
             raylib=self._raylib,
@@ -175,6 +178,12 @@ class RaylibWindow:
                 self._update_player_aim(input_camera)
                 self._update_combat_controls(frame_time)
                 self._projectile_system.update(frame_time)
+                self._enemy_system.update(frame_time)
+                self._enemy_system.apply_projectile_hits(
+                    projectiles=self._projectile_system.projectiles,
+                    enemy_collision_radius_px=self._config.enemies.marker_radius_px,
+                )
+                self._projectile_system.prune_dead()
                 self._camera_rig.update_follow_target(
                     player_position=self._player.world_position,
                     frame_time=frame_time,
@@ -195,7 +204,10 @@ class RaylibWindow:
                     projectiles=self._projectile_system.projectiles,
                     impacts=self._projectile_system.impacts,
                 )
-                self._enemy_renderer.draw(self._enemy_system.enemies)
+                self._enemy_renderer.draw(
+                    enemies=self._enemy_system.enemies,
+                    hit_markers=self._enemy_system.hit_markers,
+                )
                 self._player_renderer.draw(self._player)
                 raylib.end_mode_2d()
                 self._player_hud.draw(self._player, self._weapon_controller.stats)
