@@ -1041,3 +1041,68 @@ def test_tactical_surround_assignments_keep_committed_slots() -> None:
     )
 
     assert tuple(enemy.tactical_target_position for enemy in system.enemies) == original_slots
+
+
+def test_tactical_surround_assignments_cover_multiple_quadrants() -> None:
+    """Open-ground tactical assignments should spread enemies around the player."""
+    import math
+
+    from topdown_shooter.world.collision import TileCollisionService
+    from topdown_shooter.world.pathfinding import GridPathfinder
+
+    runtime_map = _build_runtime_map_from_rows((
+        "++++++++++++",
+        "++++++++++++",
+        "++++++++++++",
+        "++++++++++++",
+        "++++++++++++",
+        "++++++++++++",
+        "++++++++++++",
+        "++++++++++++",
+    ))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {"id": "spawn_0", "position": [1, 2]},
+                {"id": "spawn_1", "position": [1, 3]},
+                {"id": "spawn_2", "position": [1, 4]},
+                {"id": "spawn_3", "position": [1, 5]},
+            ],
+        },
+        runtime_map,
+    )
+    for enemy in system.enemies:
+        enemy.alerted = True
+
+    player_position = WorldCoord(x=88.0, y=56.0)
+    system.update_chase_movement(
+        player_position=player_position,
+        collision_service=TileCollisionService(runtime_map),
+        frame_time=1.0,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+        preferred_combat_distance_px=32.0,
+        pathfinder=GridPathfinder(runtime_map),
+        pathfinding_enabled=True,
+        player_speed_px_per_second=0.0,
+        tactical_positioning_enabled=True,
+        player_stationary_speed_threshold_px_per_second=12.0,
+        player_stationary_time_seconds=0.5,
+        tactical_slot_count=16,
+        tactical_surround_distance_px=32.0,
+        tactical_reassign_interval_seconds=0.0,
+        tactical_slot_reached_distance_px=6.0,
+        tactical_min_slot_spacing_px=8.0,
+        tactical_min_slot_angle_degrees=60.0,
+        path_max_iterations=128,
+    )
+
+    assigned_slots = [enemy.tactical_target_position for enemy in system.enemies]
+    assert all(slot is not None for slot in assigned_slots)
+    quadrants = set()
+    for slot in assigned_slots:
+        assert slot is not None
+        angle = math.degrees(math.atan2(slot.y - player_position.y, slot.x - player_position.x)) % 360.0
+        quadrants.add(int(angle // 90.0))
+    assert len(quadrants) >= 3

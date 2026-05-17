@@ -307,3 +307,12 @@
 - Added tactical slot commitment timing so enemies do not constantly swap positions while surrounding a stationary player.
 - Improved tactical slot assignment with wider slot generation, angular sector spacing, stronger position separation, and firing-position scoring.
 - Added runtime config and debug overlay values for tactical sector angle, commitment time, and player reposition distance.
+
+## v0.0.40 -> v0.0.41
+
+- Reworked tactical surround slot assignment to distribute alerted enemies across dedicated sectors around the player.
+- Expanded tactical slot generation to use multiple concentric rings and denser angular candidates for better surround coverage.
+- Added stronger tactical slot scoring that prefers sector coverage and separation over clustering.
+- Added aggressive surround pressure fallback so alerted enemies keep orbiting and pressing when they do not yet hold a tactical slot.
+- Added an enemy test that checks open-ground surround assignments spread across multiple quadrants.
+
