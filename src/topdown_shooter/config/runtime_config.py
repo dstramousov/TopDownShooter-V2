@@ -165,6 +165,7 @@ class EnemyConfig:
         path_target_rebuild_distance_px: Player movement distance that forces path rebuild.
         path_max_iterations: Maximum A* iterations per enemy path query.
         path_waypoint_reach_distance_px: Distance used to advance enemy path waypoints.
+        draw_enemy_paths: Whether debug enemy A* paths are drawn.
     """
 
     marker_radius_px: int
@@ -203,6 +204,7 @@ class EnemyConfig:
     path_target_rebuild_distance_px: float
     path_max_iterations: int
     path_waypoint_reach_distance_px: float
+    draw_enemy_paths: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -560,6 +562,7 @@ class RuntimeConfigLoader:
                     enemies,
                     "path_waypoint_reach_distance_px",
                 ),
+                draw_enemy_paths=self._require_bool(enemies, "draw_enemy_paths"),
             ),
             debug_overlay=DebugOverlayConfig(
                 enabled_by_default=self._require_bool(debug_overlay, "enabled_by_default"),

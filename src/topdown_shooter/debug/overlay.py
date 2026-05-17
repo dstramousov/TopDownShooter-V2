@@ -324,6 +324,7 @@ class DebugOverlay:
                 DebugOverlayRow("Pathing", str(enemy_stats.pathing_enemies)),
                 DebugOverlayRow("Path rebuilds", str(enemy_stats.path_rebuilds)),
                 DebugOverlayRow("Path failed", str(enemy_stats.failed_path_rebuilds)),
+                DebugOverlayRow("Path waypoints", str(enemy_stats.active_path_waypoints)),
                 DebugOverlayRow("Spawned", str(enemy_stats.spawned_enemies)),
                 DebugOverlayRow("Squads", str(enemy_stats.spawned_squads)),
                 DebugOverlayRow("Killed", str(enemy_stats.killed_enemies)),
@@ -366,6 +367,7 @@ class DebugOverlay:
                     f"{self._config.enemies.strafe_switch_max_seconds:.1f}s",
                 ),
                 DebugOverlayRow("Pathfinding", str(self._config.enemies.pathfinding_enabled)),
+                DebugOverlayRow("Draw paths", str(self._config.enemies.draw_enemy_paths)),
                 DebugOverlayRow(
                     "Path interval",
                     f"{self._config.enemies.path_rebuild_interval_seconds:.2f}s",

@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 from topdown_shooter.combat.enemies import EnemyHitMarkerState, EnemyState
+from topdown_shooter.world.coordinates import tile_to_world_center
 
 
 class EnemyRenderer:
@@ -19,6 +20,8 @@ class EnemyRenderer:
         draw_view_cones: bool,
         vision_range_px: float,
         vision_angle_degrees: float,
+        draw_enemy_paths: bool,
+        tile_size_px: int,
     ) -> None:
         """Initialize the renderer.
 
@@ -30,6 +33,8 @@ class EnemyRenderer:
             draw_view_cones: Whether debug enemy vision cones are drawn.
             vision_range_px: Enemy vision cone range in world pixels.
             vision_angle_degrees: Full enemy vision cone angle in degrees.
+            draw_enemy_paths: Whether debug A* paths are drawn.
+            tile_size_px: Runtime map tile size in pixels.
         """
         self._raylib = raylib
         self._marker_radius_px = marker_radius_px
@@ -38,6 +43,8 @@ class EnemyRenderer:
         self._draw_view_cones = draw_view_cones
         self._vision_range_px = vision_range_px
         self._vision_angle_degrees = vision_angle_degrees
+        self._draw_enemy_paths = draw_enemy_paths
+        self._tile_size_px = tile_size_px
 
     def draw(
         self,
@@ -50,6 +57,10 @@ class EnemyRenderer:
             enemies: Enemy marker states to draw.
             hit_markers: Enemy hit marker states to draw.
         """
+        if self._draw_enemy_paths:
+            for enemy in enemies:
+                self._draw_enemy_path(enemy)
+
         if self._draw_view_cones:
             for enemy in enemies:
                 self._draw_view_cone(enemy)
@@ -64,6 +75,27 @@ class EnemyRenderer:
             self._raylib.draw_circle_lines(x, y, radius, self._raylib.MAGENTA)
             self._raylib.draw_line(x - int(radius), y, x + int(radius), y, self._raylib.MAGENTA)
             self._raylib.draw_line(x, y - int(radius), x, y + int(radius), self._raylib.MAGENTA)
+
+
+    def _draw_enemy_path(self, enemy: EnemyState) -> None:
+        """Draw the active A* path for one enemy.
+
+        Args:
+            enemy: Enemy marker state to draw.
+        """
+        if not enemy.alerted or not enemy.path_tiles:
+            return
+        start_index = max(0, min(enemy.path_waypoint_index, len(enemy.path_tiles) - 1))
+        previous_x = int(round(enemy.world_position.x))
+        previous_y = int(round(enemy.world_position.y))
+        for tile in enemy.path_tiles[start_index:]:
+            waypoint = tile_to_world_center(tile, self._tile_size_px)
+            x = int(round(waypoint.x))
+            y = int(round(waypoint.y))
+            self._raylib.draw_line(previous_x, previous_y, x, y, self._raylib.PURPLE)
+            self._raylib.draw_circle_lines(x, y, 3.0, self._raylib.PURPLE)
+            previous_x = x
+            previous_y = y
 
     def _draw_enemy(self, enemy: EnemyState) -> None:
         """Draw a single enemy marker with temporary damage feedback.

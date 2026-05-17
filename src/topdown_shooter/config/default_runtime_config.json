@@ -149,6 +149,7 @@
     "path_rebuild_interval_seconds": 0.35,
     "path_target_rebuild_distance_px": 48.0,
     "path_max_iterations": 2048,
-    "path_waypoint_reach_distance_px": 8.0
+    "path_waypoint_reach_distance_px": 12.0,
+    "draw_enemy_paths": true
   }
 }

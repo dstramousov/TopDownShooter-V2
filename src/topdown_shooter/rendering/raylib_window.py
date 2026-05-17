@@ -150,6 +150,8 @@ class RaylibWindow:
             draw_view_cones=config.enemies.draw_view_cones,
             vision_range_px=config.enemies.vision_range_px,
             vision_angle_degrees=config.enemies.vision_angle_degrees,
+            draw_enemy_paths=config.enemies.draw_enemy_paths,
+            tile_size_px=runtime_map.tile_size_px,
         )
         self._player_renderer = PlayerRenderer(
             raylib=self._raylib,

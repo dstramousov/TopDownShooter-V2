@@ -107,6 +107,7 @@ class EnemyStats:
         pathing_enemies: Number of active enemies following an A* path in the last update.
         path_rebuilds: Number of A* paths rebuilt in the last update.
         failed_path_rebuilds: Number of failed A* path rebuild attempts in the last update.
+        active_path_waypoints: Total remaining A* waypoints across active enemies.
         source_spawn_zones: Number of tactical spawn zones read from the map package.
         spawned_squads: Number of tactical spawn zones that produced at least one enemy.
     """
@@ -125,6 +126,7 @@ class EnemyStats:
     pathing_enemies: int
     path_rebuilds: int
     failed_path_rebuilds: int
+    active_path_waypoints: int
     source_spawn_zones: int
     spawned_squads: int
 
@@ -325,6 +327,10 @@ class EnemySystem:
             pathing_enemies=self._pathing_enemies,
             path_rebuilds=self._path_rebuilds,
             failed_path_rebuilds=self._failed_path_rebuilds,
+            active_path_waypoints=sum(
+                max(0, len(enemy.path_tiles) - enemy.path_waypoint_index)
+                for enemy in self.enemies
+            ),
             source_spawn_zones=self._source_spawn_zones,
             spawned_squads=self._spawned_squads,
         )
@@ -557,6 +563,7 @@ class EnemySystem:
                 path_target_rebuild_distance_px=path_target_rebuild_distance_px,
                 path_max_iterations=path_max_iterations,
                 path_waypoint_reach_distance_px=path_waypoint_reach_distance_px,
+                movement_direction_smoothing=movement_direction_smoothing,
             )
         if not has_line_of_sight:
             radial_weight = max(radial_weight, max(0.0, approach_weight))
@@ -629,6 +636,7 @@ class EnemySystem:
         path_target_rebuild_distance_px: float,
         path_max_iterations: int,
         path_waypoint_reach_distance_px: float,
+        movement_direction_smoothing: float,
     ) -> tuple[bool, bool, bool, bool, bool, bool, bool, bool]:
         """Move an enemy toward the player using an A* tile path.
 
@@ -645,6 +653,7 @@ class EnemySystem:
             path_target_rebuild_distance_px: Player movement distance that forces path rebuild.
             path_max_iterations: Maximum A* iterations per path rebuild.
             path_waypoint_reach_distance_px: Distance used to advance path waypoints.
+            movement_direction_smoothing: Blend factor for path movement direction.
 
         Returns:
             Tuple containing movement and navigation diagnostic flags.
@@ -679,10 +688,14 @@ class EnemySystem:
         distance = math.hypot(dx, dy)
         if distance <= 0.000001:
             return False, True, False, False, False, True, rebuilt, failed_path
-        move_x = dx / distance
-        move_y = dy / distance
-        enemy.movement_direction_x = move_x
-        enemy.movement_direction_y = move_y
+        desired_x = dx / distance
+        desired_y = dy / distance
+        move_x, move_y = EnemySystem._smooth_enemy_movement_direction(
+            enemy=enemy,
+            desired_x=desired_x,
+            desired_y=desired_y,
+            smoothing=movement_direction_smoothing,
+        )
         travel_distance = min(distance, movement_speed_px_per_second * frame_time)
         position = EnemySystem._try_move_enemy_vector(
             position=enemy.world_position,

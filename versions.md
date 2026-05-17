@@ -285,3 +285,11 @@
 - Enemies now follow tile waypoints around blocked map areas before returning to combat steering.
 - Added pathfinding runtime config values and debug overlay diagnostics for pathing/rebuild failures.
 - Kept attacks, player damage, squad tactics, and flanking out of scope.
+
+
+## v0.0.37 -> v0.0.38
+
+- Added configurable debug rendering for active enemy A* paths.
+- Smoothed enemy path-following movement direction and increased waypoint reach distance to reduce tile-center jitter.
+- Added path waypoint diagnostics to the debug overlay.
+- Kept attacks, player damage, squad tactics, flanking, and bullet dodging out of scope.
