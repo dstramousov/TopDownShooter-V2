@@ -426,3 +426,183 @@ def test_enemy_system_respects_global_initial_enemy_cap() -> None:
 
     assert system.stats.active_enemies == 4
     assert system.stats.spawned_enemies == 4
+
+
+def test_alerted_enemy_chases_player_on_walkable_tiles() -> None:
+    """Alerted enemies should move toward the player and face the target."""
+    from topdown_shooter.world.collision import TileCollisionService
+
+    runtime_map = _build_runtime_map_from_rows(("++++", "++++", "++++"))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {
+                    "id": "spawn_0",
+                    "position": [1, 1],
+                    "facing_angle_degrees": 0.0,
+                },
+            ],
+        },
+        runtime_map,
+    )
+    system.enemies[0].alerted = True
+
+    system.update_chase_movement(
+        player_position=WorldCoord(x=56.0, y=24.0),
+        collision_service=TileCollisionService(runtime_map),
+        frame_time=0.5,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+    )
+
+    assert system.enemies[0].world_position == WorldCoord(x=32.0, y=24.0)
+    assert system.enemies[0].tile == TileCoord(x=2, y=1)
+    assert system.enemies[0].facing_angle_degrees == 0.0
+    assert system.stats.moving_enemies == 1
+
+
+def test_unalerted_enemy_does_not_chase_player() -> None:
+    """Unalerted enemies should remain stationary before detection."""
+    from topdown_shooter.world.collision import TileCollisionService
+
+    runtime_map = _build_runtime_map_from_rows(("++++", "++++", "++++"))
+    system = EnemySystem.from_tactical_map(
+        {"enemy_spawn_zones": [{"id": "spawn_0", "position": [1, 1]}]},
+        runtime_map,
+    )
+    initial_position = system.enemies[0].world_position
+
+    system.update_chase_movement(
+        player_position=WorldCoord(x=56.0, y=24.0),
+        collision_service=TileCollisionService(runtime_map),
+        frame_time=0.5,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+    )
+
+    assert system.enemies[0].world_position == initial_position
+    assert system.stats.moving_enemies == 0
+
+
+def test_alerted_enemy_chase_respects_blocked_tiles() -> None:
+    """Alerted enemy chase movement should not cross blocked tiles."""
+    from topdown_shooter.world.collision import TileCollisionService
+
+    runtime_map = _build_runtime_map_from_rows(("++++", "+#+", "++++"))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {
+                    "id": "spawn_0",
+                    "position": [0, 1],
+                    "facing_angle_degrees": 0.0,
+                },
+            ],
+        },
+        runtime_map,
+    )
+    system.enemies[0].alerted = True
+    initial_position = system.enemies[0].world_position
+
+    system.update_chase_movement(
+        player_position=WorldCoord(x=56.0, y=24.0),
+        collision_service=TileCollisionService(runtime_map),
+        frame_time=1.0,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+    )
+
+    assert system.enemies[0].world_position == initial_position
+    assert system.enemies[0].facing_angle_degrees == 0.0
+    assert system.stats.moving_enemies == 0
+
+def test_alerted_enemy_strafes_inside_combat_distance_band() -> None:
+    """Alerted enemies should strafe when already at preferred combat distance."""
+    from topdown_shooter.world.collision import TileCollisionService
+
+    runtime_map = _build_runtime_map_from_rows(("++++++", "++++++", "++++++", "++++++"))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {
+                    "id": "spawn_0",
+                    "position": [2, 2],
+                    "facing_angle_degrees": 0.0,
+                },
+            ],
+        },
+        runtime_map,
+    )
+    enemy = system.enemies[0]
+    enemy.alerted = True
+    initial_x = enemy.world_position.x
+
+    system.update_chase_movement(
+        player_position=WorldCoord(x=88.0, y=40.0),
+        collision_service=TileCollisionService(runtime_map),
+        frame_time=1.0,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+        preferred_combat_distance_px=48.0,
+        combat_distance_tolerance_px=4.0,
+        approach_weight=1.0,
+        strafe_weight=1.0,
+        retreat_weight=1.0,
+        strafe_switch_min_seconds=1.0,
+        strafe_switch_max_seconds=1.0,
+    )
+
+    assert system.enemies[0].world_position.x == initial_x
+    assert system.enemies[0].world_position.y != 40.0
+    assert system.enemies[0].facing_angle_degrees == 0.0
+    assert system.stats.moving_enemies == 1
+    assert system.stats.strafing_enemies == 1
+    assert system.stats.retreating_enemies == 0
+
+
+def test_alerted_enemy_retreats_when_too_close_to_player() -> None:
+    """Alerted enemies should back away when closer than the combat distance band."""
+    from topdown_shooter.world.collision import TileCollisionService
+
+    runtime_map = _build_runtime_map_from_rows(("++++++", "++++++", "++++++", "++++++"))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {
+                    "id": "spawn_0",
+                    "position": [2, 2],
+                    "facing_angle_degrees": 0.0,
+                },
+            ],
+        },
+        runtime_map,
+    )
+    enemy = system.enemies[0]
+    enemy.alerted = True
+    initial_x = enemy.world_position.x
+
+    system.update_chase_movement(
+        player_position=WorldCoord(x=56.0, y=40.0),
+        collision_service=TileCollisionService(runtime_map),
+        frame_time=1.0,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+        preferred_combat_distance_px=48.0,
+        combat_distance_tolerance_px=4.0,
+        approach_weight=1.0,
+        strafe_weight=0.0,
+        retreat_weight=1.0,
+        strafe_switch_min_seconds=1.0,
+        strafe_switch_max_seconds=1.0,
+    )
+
+    assert system.enemies[0].world_position.x < initial_x
+    assert system.enemies[0].facing_angle_degrees == 0.0
+    assert system.stats.moving_enemies == 1
+    assert system.stats.strafing_enemies == 0
+    assert system.stats.retreating_enemies == 1

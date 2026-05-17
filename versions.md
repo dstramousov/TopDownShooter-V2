@@ -259,3 +259,15 @@
 - Added enemy squad placement config: squad size, radius, spacing, global cap, and placement attempts.
 - Squad members are placed only on walkable positions with minimum spacing and keep smart initial facing.
 - Debug overlay now reports spawned squads and squad placement settings.
+
+## v0.0.33 -> v0.0.34
+
+- Added basic chase movement for alerted enemies.
+- Alerted enemies now face and move toward the player with blocked-tile collision.
+- Added runtime config and debug overlay values for enemy chase speed and moving enemy count.
+
+## v0.0.34 -> v0.0.35
+
+- Added combat steering for alerted enemies: approach, strafe, and retreat distance bands.
+- Added enemy movement tuning values to runtime config and debug overlay.
+- Preserved simple blocked-tile collision without adding pathfinding, attacks, or player damage.

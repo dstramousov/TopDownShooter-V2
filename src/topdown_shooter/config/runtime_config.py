@@ -150,6 +150,14 @@ class EnemyConfig:
         min_enemy_spacing_px: Minimum initial spacing between enemies.
         max_initial_enemies: Global cap for startup enemies.
         placement_attempts_per_enemy: Candidate attempts for each squad member.
+        chase_speed_px_per_second: Speed for alerted enemy combat movement.
+        preferred_combat_distance_px: Desired distance alerted enemies try to keep.
+        combat_distance_tolerance_px: Distance band around preferred combat distance.
+        approach_weight: Radial steering weight while closing distance.
+        strafe_weight: Tangential steering weight while in combat movement.
+        retreat_weight: Radial steering weight while backing away.
+        strafe_switch_min_seconds: Minimum time before changing strafe side.
+        strafe_switch_max_seconds: Maximum time before changing strafe side.
     """
 
     marker_radius_px: int
@@ -173,6 +181,14 @@ class EnemyConfig:
     min_enemy_spacing_px: float
     max_initial_enemies: int
     placement_attempts_per_enemy: int
+    chase_speed_px_per_second: float
+    preferred_combat_distance_px: float
+    combat_distance_tolerance_px: float
+    approach_weight: float
+    strafe_weight: float
+    retreat_weight: float
+    strafe_switch_min_seconds: float
+    strafe_switch_max_seconds: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -484,6 +500,29 @@ class RuntimeConfigLoader:
                 placement_attempts_per_enemy=self._require_positive_int(
                     enemies,
                     "placement_attempts_per_enemy",
+                ),
+                chase_speed_px_per_second=self._require_non_negative_float(
+                    enemies,
+                    "chase_speed_px_per_second",
+                ),
+                preferred_combat_distance_px=self._require_non_negative_float(
+                    enemies,
+                    "preferred_combat_distance_px",
+                ),
+                combat_distance_tolerance_px=self._require_non_negative_float(
+                    enemies,
+                    "combat_distance_tolerance_px",
+                ),
+                approach_weight=self._require_non_negative_float(enemies, "approach_weight"),
+                strafe_weight=self._require_non_negative_float(enemies, "strafe_weight"),
+                retreat_weight=self._require_non_negative_float(enemies, "retreat_weight"),
+                strafe_switch_min_seconds=self._require_non_negative_float(
+                    enemies,
+                    "strafe_switch_min_seconds",
+                ),
+                strafe_switch_max_seconds=self._require_non_negative_float(
+                    enemies,
+                    "strafe_switch_max_seconds",
                 ),
             ),
             debug_overlay=DebugOverlayConfig(

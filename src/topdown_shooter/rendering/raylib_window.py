@@ -209,6 +209,32 @@ class RaylibWindow:
                         self._config.enemies.line_of_sight_sample_step_px
                     ),
                 )
+                self._enemy_system.update_chase_movement(
+                    player_position=self._player.world_position,
+                    collision_service=self._collision_service,
+                    frame_time=frame_time,
+                    chase_speed_px_per_second=self._config.enemies.chase_speed_px_per_second,
+                    enemy_collision_radius_px=self._config.enemies.marker_radius_px,
+                    tile_size_px=self._runtime_map.tile_size_px,
+                    preferred_combat_distance_px=(
+                        self._config.enemies.preferred_combat_distance_px
+                    ),
+                    combat_distance_tolerance_px=(
+                        self._config.enemies.combat_distance_tolerance_px
+                    ),
+                    approach_weight=self._config.enemies.approach_weight,
+                    strafe_weight=self._config.enemies.strafe_weight,
+                    retreat_weight=self._config.enemies.retreat_weight,
+                    strafe_switch_min_seconds=(
+                        self._config.enemies.strafe_switch_min_seconds
+                    ),
+                    strafe_switch_max_seconds=(
+                        self._config.enemies.strafe_switch_max_seconds
+                    ),
+                    line_of_sight_sample_step_px=(
+                        self._config.enemies.line_of_sight_sample_step_px
+                    ),
+                )
                 self._projectile_system.prune_dead()
                 self._camera_rig.update_follow_target(
                     player_position=self._player.world_position,

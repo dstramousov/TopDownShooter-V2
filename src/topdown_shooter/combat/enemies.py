@@ -8,7 +8,12 @@ import random
 
 from topdown_shooter.combat.projectiles import ProjectileState
 from topdown_shooter.world.collision import TileCollisionService
-from topdown_shooter.world.coordinates import TileCoord, WorldCoord, tile_to_world_center, world_to_tile
+from topdown_shooter.world.coordinates import (
+    TileCoord,
+    WorldCoord,
+    tile_to_world_center,
+    world_to_tile,
+)
 from topdown_shooter.world.runtime_map import RuntimeMap
 
 
@@ -30,6 +35,8 @@ class EnemyState:
         alerted: Whether the enemy has detected the player.
         alive: Whether the enemy is still active.
         last_hit_age_seconds: Seconds elapsed since the last damaging hit.
+        strafe_direction: Current deterministic strafe side, either -1 or 1.
+        strafe_timer_seconds: Seconds left before the strafe side can change.
     """
 
     enemy_id: str
@@ -45,6 +52,8 @@ class EnemyState:
     alerted: bool = False
     alive: bool = True
     last_hit_age_seconds: float | None = None
+    strafe_direction: int = 1
+    strafe_timer_seconds: float = 0.0
 
 
 @dataclass(slots=True)
@@ -77,6 +86,9 @@ class EnemyStats:
         killed_enemies: Number of enemies killed by projectile damage.
         total_hits: Total number of projectile hits applied to enemies.
         active_hit_markers: Number of currently active enemy hit markers.
+        moving_enemies: Number of active enemies that moved during the last update.
+        strafing_enemies: Number of active enemies using strafe steering in the last update.
+        retreating_enemies: Number of active enemies backing away in the last update.
         source_spawn_zones: Number of tactical spawn zones read from the map package.
         spawned_squads: Number of tactical spawn zones that produced at least one enemy.
     """
@@ -87,6 +99,9 @@ class EnemyStats:
     killed_enemies: int
     total_hits: int
     active_hit_markers: int
+    moving_enemies: int
+    strafing_enemies: int
+    retreating_enemies: int
     source_spawn_zones: int
     spawned_squads: int
 
@@ -120,6 +135,9 @@ class EnemySystem:
         self._hit_markers: list[EnemyHitMarkerState] = []
         self._killed_enemies = 0
         self._total_hits = 0
+        self._moving_enemies = 0
+        self._strafing_enemies = 0
+        self._retreating_enemies = 0
 
     @classmethod
     def from_tactical_map(
@@ -271,6 +289,9 @@ class EnemySystem:
             killed_enemies=self._killed_enemies,
             total_hits=self._total_hits,
             active_hit_markers=len(self._hit_markers),
+            moving_enemies=self._moving_enemies,
+            strafing_enemies=self._strafing_enemies,
+            retreating_enemies=self._retreating_enemies,
             source_spawn_zones=self._source_spawn_zones,
             spawned_squads=self._spawned_squads,
         )
@@ -291,6 +312,313 @@ class EnemySystem:
             if marker.age_seconds >= marker.lifetime_seconds:
                 marker.alive = False
         self._hit_markers = [marker for marker in self._hit_markers if marker.alive]
+
+    def update_chase_movement(
+        self,
+        player_position: WorldCoord,
+        collision_service: TileCollisionService,
+        frame_time: float,
+        chase_speed_px_per_second: float,
+        enemy_collision_radius_px: float,
+        tile_size_px: int,
+        preferred_combat_distance_px: float = 0.0,
+        combat_distance_tolerance_px: float = 0.0,
+        approach_weight: float = 1.0,
+        strafe_weight: float = 0.0,
+        retreat_weight: float = 0.0,
+        strafe_switch_min_seconds: float = 1.0,
+        strafe_switch_max_seconds: float = 1.0,
+        line_of_sight_sample_step_px: float = 8.0,
+    ) -> None:
+        """Move alerted enemies using local combat steering.
+
+        Args:
+            player_position: Current player world position.
+            collision_service: Collision service used for blocked tile checks.
+            frame_time: Current frame duration in seconds.
+            chase_speed_px_per_second: Enemy movement speed in world pixels per second.
+            enemy_collision_radius_px: Enemy collision radius in world pixels.
+            tile_size_px: Runtime map tile size in pixels.
+            preferred_combat_distance_px: Desired distance from the player.
+            combat_distance_tolerance_px: Distance band around the preferred distance.
+            approach_weight: Radial steering weight used while closing distance.
+            strafe_weight: Tangential steering weight used for side movement.
+            retreat_weight: Radial steering weight used while backing away.
+            strafe_switch_min_seconds: Minimum time before changing strafe side.
+            strafe_switch_max_seconds: Maximum time before changing strafe side.
+            line_of_sight_sample_step_px: Sample step used to reduce strafing without sight.
+        """
+        self._moving_enemies = 0
+        self._strafing_enemies = 0
+        self._retreating_enemies = 0
+        if frame_time <= 0.0 or chase_speed_px_per_second <= 0.0:
+            return
+        for enemy in self._enemies:
+            if not enemy.alive or not enemy.alerted:
+                continue
+            moved, strafing, retreating = self._move_enemy_with_combat_steering(
+                enemy=enemy,
+                player_position=player_position,
+                collision_service=collision_service,
+                frame_time=frame_time,
+                movement_speed_px_per_second=chase_speed_px_per_second,
+                enemy_collision_radius_px=enemy_collision_radius_px,
+                tile_size_px=tile_size_px,
+                preferred_combat_distance_px=preferred_combat_distance_px,
+                combat_distance_tolerance_px=combat_distance_tolerance_px,
+                approach_weight=approach_weight,
+                strafe_weight=strafe_weight,
+                retreat_weight=retreat_weight,
+                strafe_switch_min_seconds=strafe_switch_min_seconds,
+                strafe_switch_max_seconds=strafe_switch_max_seconds,
+                line_of_sight_sample_step_px=line_of_sight_sample_step_px,
+            )
+            if moved:
+                self._moving_enemies += 1
+            if strafing:
+                self._strafing_enemies += 1
+            if retreating:
+                self._retreating_enemies += 1
+
+    @staticmethod
+    def _move_enemy_with_combat_steering(
+        enemy: EnemyState,
+        player_position: WorldCoord,
+        collision_service: TileCollisionService,
+        frame_time: float,
+        movement_speed_px_per_second: float,
+        enemy_collision_radius_px: float,
+        tile_size_px: int,
+        preferred_combat_distance_px: float,
+        combat_distance_tolerance_px: float,
+        approach_weight: float,
+        strafe_weight: float,
+        retreat_weight: float,
+        strafe_switch_min_seconds: float,
+        strafe_switch_max_seconds: float,
+        line_of_sight_sample_step_px: float,
+    ) -> tuple[bool, bool, bool]:
+        """Move one enemy with combat-distance and strafe steering.
+
+        Args:
+            enemy: Enemy to move.
+            player_position: Current player world position.
+            collision_service: Collision service used for blocked tile checks.
+            frame_time: Current frame duration in seconds.
+            movement_speed_px_per_second: Enemy movement speed in world pixels per second.
+            enemy_collision_radius_px: Enemy collision radius in world pixels.
+            tile_size_px: Runtime map tile size in pixels.
+            preferred_combat_distance_px: Desired distance from the player.
+            combat_distance_tolerance_px: Distance band around the preferred distance.
+            approach_weight: Radial steering weight used while closing distance.
+            strafe_weight: Tangential steering weight used for side movement.
+            retreat_weight: Radial steering weight used while backing away.
+            strafe_switch_min_seconds: Minimum time before changing strafe side.
+            strafe_switch_max_seconds: Maximum time before changing strafe side.
+            line_of_sight_sample_step_px: Sample step used to reduce strafing without sight.
+
+        Returns:
+            Tuple containing moved, strafing, and retreating flags.
+        """
+        dx = player_position.x - enemy.world_position.x
+        dy = player_position.y - enemy.world_position.y
+        distance = math.hypot(dx, dy)
+        if distance <= 0.000001:
+            return False, False, False
+
+        EnemySystem._advance_enemy_strafe_state(
+            enemy=enemy,
+            frame_time=frame_time,
+            min_seconds=strafe_switch_min_seconds,
+            max_seconds=strafe_switch_max_seconds,
+        )
+        radial_x = dx / distance
+        radial_y = dy / distance
+        strafe_x = -radial_y * float(enemy.strafe_direction)
+        strafe_y = radial_x * float(enemy.strafe_direction)
+        enemy.facing_angle_degrees = math.degrees(math.atan2(dy, dx)) % 360.0
+
+        lower_distance = max(0.0, preferred_combat_distance_px - combat_distance_tolerance_px)
+        upper_distance = max(
+            lower_distance,
+            preferred_combat_distance_px + combat_distance_tolerance_px,
+        )
+        if preferred_combat_distance_px <= 0.0 or distance > upper_distance:
+            radial_weight = max(0.0, approach_weight)
+            active_strafe_weight = max(0.0, strafe_weight)
+            retreating = False
+        elif distance < lower_distance:
+            radial_weight = -max(0.0, retreat_weight)
+            active_strafe_weight = max(0.0, strafe_weight)
+            retreating = radial_weight < 0.0
+        else:
+            radial_weight = 0.0
+            active_strafe_weight = max(0.0, strafe_weight)
+            retreating = False
+
+        has_line_of_sight = EnemySystem._has_line_of_sight(
+            start=enemy.world_position,
+            end=player_position,
+            collision_service=collision_service,
+            sample_step_px=line_of_sight_sample_step_px,
+        )
+        if not has_line_of_sight:
+            radial_weight = max(radial_weight, max(0.0, approach_weight))
+            active_strafe_weight *= 0.25
+            retreating = False
+
+        move_x = radial_x * radial_weight + strafe_x * active_strafe_weight
+        move_y = radial_y * radial_weight + strafe_y * active_strafe_weight
+        length = math.hypot(move_x, move_y)
+        if length <= 0.000001:
+            return False, False, retreating
+
+        travel_distance = movement_speed_px_per_second * frame_time
+        desired_dx = move_x / length * travel_distance
+        desired_dy = move_y / length * travel_distance
+        position = EnemySystem._try_move_enemy_vector(
+            position=enemy.world_position,
+            dx=desired_dx,
+            dy=desired_dy,
+            collision_service=collision_service,
+            enemy_collision_radius_px=enemy_collision_radius_px,
+        )
+        moved = position != enemy.world_position
+        if not moved and active_strafe_weight > 0.0:
+            alternative_position = EnemySystem._try_move_enemy_vector(
+                position=enemy.world_position,
+                dx=-strafe_x * travel_distance,
+                dy=-strafe_y * travel_distance,
+                collision_service=collision_service,
+                enemy_collision_radius_px=enemy_collision_radius_px,
+            )
+            if alternative_position != enemy.world_position:
+                enemy.strafe_direction *= -1
+                position = alternative_position
+                moved = True
+        if moved:
+            enemy.world_position = position
+            enemy.tile = world_to_tile(position, tile_size_px)
+        return moved, active_strafe_weight > 0.0, retreating
+
+    @staticmethod
+    def _try_move_enemy_vector(
+        position: WorldCoord,
+        dx: float,
+        dy: float,
+        collision_service: TileCollisionService,
+        enemy_collision_radius_px: float,
+    ) -> WorldCoord:
+        """Try enemy movement with axis-separated collision and return accepted position.
+
+        Args:
+            position: Current enemy position.
+            dx: Horizontal movement delta.
+            dy: Vertical movement delta.
+            collision_service: Collision service used for blocked tile checks.
+            enemy_collision_radius_px: Enemy collision radius in world pixels.
+
+        Returns:
+            Candidate position when walkable, otherwise the original position.
+        """
+        if dx == 0.0 and dy == 0.0:
+            return position
+        next_position = position
+        if dx != 0.0:
+            next_position = EnemySystem._try_move_enemy_axis(
+                position=next_position,
+                dx=dx,
+                dy=0.0,
+                collision_service=collision_service,
+                enemy_collision_radius_px=enemy_collision_radius_px,
+            )
+        if dy != 0.0:
+            next_position = EnemySystem._try_move_enemy_axis(
+                position=next_position,
+                dx=0.0,
+                dy=dy,
+                collision_service=collision_service,
+                enemy_collision_radius_px=enemy_collision_radius_px,
+            )
+        return next_position
+
+    @staticmethod
+    def _try_move_enemy_axis(
+        position: WorldCoord,
+        dx: float,
+        dy: float,
+        collision_service: TileCollisionService,
+        enemy_collision_radius_px: float,
+    ) -> WorldCoord:
+        """Try one enemy movement axis and return accepted position.
+
+        Args:
+            position: Current enemy position.
+            dx: Horizontal movement delta.
+            dy: Vertical movement delta.
+            collision_service: Collision service used for blocked tile checks.
+            enemy_collision_radius_px: Enemy collision radius in world pixels.
+
+        Returns:
+            Candidate position when walkable, otherwise the original position.
+        """
+        candidate = WorldCoord(x=position.x + dx, y=position.y + dy)
+        if collision_service.is_circle_walkable(candidate, enemy_collision_radius_px):
+            return candidate
+        return position
+
+    @staticmethod
+    def _advance_enemy_strafe_state(
+        enemy: EnemyState,
+        frame_time: float,
+        min_seconds: float,
+        max_seconds: float,
+    ) -> None:
+        """Advance deterministic enemy strafe side switching.
+
+        Args:
+            enemy: Enemy being updated.
+            frame_time: Current frame duration in seconds.
+            min_seconds: Minimum switch interval.
+            max_seconds: Maximum switch interval.
+        """
+        if min_seconds <= 0.0 and max_seconds <= 0.0:
+            return
+        enemy.strafe_timer_seconds -= frame_time
+        if enemy.strafe_timer_seconds > 0.0:
+            return
+        enemy.strafe_direction = -1 if enemy.strafe_direction >= 0 else 1
+        enemy.strafe_timer_seconds = EnemySystem._stable_strafe_interval(
+            enemy_id=enemy.enemy_id,
+            min_seconds=min_seconds,
+            max_seconds=max_seconds,
+        )
+
+    @staticmethod
+    def _stable_strafe_interval(
+        enemy_id: str,
+        min_seconds: float,
+        max_seconds: float,
+    ) -> float:
+        """Return a stable strafe interval for an enemy identifier.
+
+        Args:
+            enemy_id: Enemy runtime identifier.
+            min_seconds: Minimum interval.
+            max_seconds: Maximum interval.
+
+        Returns:
+            Stable interval in seconds.
+        """
+        low = max(0.0, min(min_seconds, max_seconds))
+        high = max(low, max(min_seconds, max_seconds))
+        if high <= low:
+            return low
+        seed = 0
+        for character in enemy_id:
+            seed = ((seed * 33) + ord(character)) & 0xFFFFFFFF
+        ratio = (seed % 1000) / 999.0
+        return low + (high - low) * ratio
 
     def update_perception(
         self,

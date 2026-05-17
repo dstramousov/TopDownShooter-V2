@@ -134,6 +134,14 @@
     "squad_radius_px": 72.0,
     "min_enemy_spacing_px": 28.0,
     "max_initial_enemies": 30,
-    "placement_attempts_per_enemy": 24
+    "placement_attempts_per_enemy": 24,
+    "chase_speed_px_per_second": 70.0,
+    "preferred_combat_distance_px": 180.0,
+    "combat_distance_tolerance_px": 40.0,
+    "approach_weight": 0.85,
+    "strafe_weight": 0.55,
+    "retreat_weight": 0.75,
+    "strafe_switch_min_seconds": 0.9,
+    "strafe_switch_max_seconds": 1.6
   }
 }
