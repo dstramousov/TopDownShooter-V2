@@ -325,6 +325,9 @@ class DebugOverlay:
                 DebugOverlayRow("Path rebuilds", str(enemy_stats.path_rebuilds)),
                 DebugOverlayRow("Path failed", str(enemy_stats.failed_path_rebuilds)),
                 DebugOverlayRow("Path waypoints", str(enemy_stats.active_path_waypoints)),
+                DebugOverlayRow("Stationary", str(enemy_stats.player_stationary)),
+                DebugOverlayRow("Tactical", str(enemy_stats.tactical_positioning_enemies)),
+                DebugOverlayRow("Tac slots", str(enemy_stats.tactical_slots_assigned)),
                 DebugOverlayRow("Spawned", str(enemy_stats.spawned_enemies)),
                 DebugOverlayRow("Squads", str(enemy_stats.spawned_squads)),
                 DebugOverlayRow("Killed", str(enemy_stats.killed_enemies)),
@@ -368,6 +371,20 @@ class DebugOverlay:
                 ),
                 DebugOverlayRow("Pathfinding", str(self._config.enemies.pathfinding_enabled)),
                 DebugOverlayRow("Draw paths", str(self._config.enemies.draw_enemy_paths)),
+                DebugOverlayRow("Tactics", str(self._config.enemies.tactical_positioning_enabled)),
+                DebugOverlayRow("Draw slots", str(self._config.enemies.draw_tactical_slots)),
+                DebugOverlayRow(
+                    "Still time",
+                    f"{self._config.enemies.player_stationary_time_seconds:.1f}s",
+                ),
+                DebugOverlayRow(
+                    "Tac slots",
+                    str(self._config.enemies.tactical_slot_count),
+                ),
+                DebugOverlayRow(
+                    "Tac dist",
+                    f"{self._config.enemies.tactical_surround_distance_px:.0f}px",
+                ),
                 DebugOverlayRow(
                     "Path interval",
                     f"{self._config.enemies.path_rebuild_interval_seconds:.2f}s",

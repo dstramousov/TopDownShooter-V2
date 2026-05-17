@@ -150,6 +150,15 @@
     "path_target_rebuild_distance_px": 48.0,
     "path_max_iterations": 2048,
     "path_waypoint_reach_distance_px": 12.0,
-    "draw_enemy_paths": true
+    "draw_enemy_paths": true,
+    "tactical_positioning_enabled": true,
+    "player_stationary_speed_threshold_px_per_second": 12.0,
+    "player_stationary_time_seconds": 0.7,
+    "tactical_slot_count": 10,
+    "tactical_surround_distance_px": 180.0,
+    "tactical_reassign_interval_seconds": 1.5,
+    "tactical_slot_reached_distance_px": 18.0,
+    "tactical_min_slot_spacing_px": 48.0,
+    "draw_tactical_slots": true
   }
 }

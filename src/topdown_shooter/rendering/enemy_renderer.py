@@ -21,6 +21,7 @@ class EnemyRenderer:
         vision_range_px: float,
         vision_angle_degrees: float,
         draw_enemy_paths: bool,
+        draw_tactical_slots: bool,
         tile_size_px: int,
     ) -> None:
         """Initialize the renderer.
@@ -34,6 +35,7 @@ class EnemyRenderer:
             vision_range_px: Enemy vision cone range in world pixels.
             vision_angle_degrees: Full enemy vision cone angle in degrees.
             draw_enemy_paths: Whether debug A* paths are drawn.
+            draw_tactical_slots: Whether debug tactical target slots are drawn.
             tile_size_px: Runtime map tile size in pixels.
         """
         self._raylib = raylib
@@ -44,6 +46,7 @@ class EnemyRenderer:
         self._vision_range_px = vision_range_px
         self._vision_angle_degrees = vision_angle_degrees
         self._draw_enemy_paths = draw_enemy_paths
+        self._draw_tactical_slots = draw_tactical_slots
         self._tile_size_px = tile_size_px
 
     def draw(
@@ -65,6 +68,10 @@ class EnemyRenderer:
             for enemy in enemies:
                 self._draw_view_cone(enemy)
 
+        if self._draw_tactical_slots:
+            for enemy in enemies:
+                self._draw_tactical_slot(enemy)
+
         for enemy in enemies:
             self._draw_enemy(enemy)
 
@@ -76,6 +83,21 @@ class EnemyRenderer:
             self._raylib.draw_line(x - int(radius), y, x + int(radius), y, self._raylib.MAGENTA)
             self._raylib.draw_line(x, y - int(radius), x, y + int(radius), self._raylib.MAGENTA)
 
+
+    def _draw_tactical_slot(self, enemy: EnemyState) -> None:
+        """Draw the assigned tactical target slot for one enemy.
+
+        Args:
+            enemy: Enemy marker state to draw.
+        """
+        if not enemy.alerted or enemy.tactical_target_position is None:
+            return
+        start_x = int(round(enemy.world_position.x))
+        start_y = int(round(enemy.world_position.y))
+        slot_x = int(round(enemy.tactical_target_position.x))
+        slot_y = int(round(enemy.tactical_target_position.y))
+        self._raylib.draw_line(start_x, start_y, slot_x, slot_y, self._raylib.GREEN)
+        self._raylib.draw_circle_lines(slot_x, slot_y, 5.0, self._raylib.GREEN)
 
     def _draw_enemy_path(self, enemy: EnemyState) -> None:
         """Draw the active A* path for one enemy.

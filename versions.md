@@ -293,3 +293,10 @@
 - Smoothed enemy path-following movement direction and increased waypoint reach distance to reduce tile-center jitter.
 - Added path waypoint diagnostics to the debug overlay.
 - Kept attacks, player damage, squad tactics, flanking, and bullet dodging out of scope.
+
+## v0.0.38 -> v0.0.39
+
+- Added tactical surround positioning for alerted enemies when the player stays nearly stationary.
+- Enemies now assign reachable combat slots around the player and path toward those positions.
+- Added player stationary tracking, tactical slot config values, debug slot rendering, and overlay diagnostics.
+- Kept attacks, player damage, flanking tactics, cover logic, and bullet dodging out of scope.

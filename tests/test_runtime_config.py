@@ -103,6 +103,15 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.enemies.path_max_iterations == 2048
     assert config.enemies.path_waypoint_reach_distance_px == 12.0
     assert config.enemies.draw_enemy_paths is True
+    assert config.enemies.tactical_positioning_enabled is True
+    assert config.enemies.player_stationary_speed_threshold_px_per_second == 12.0
+    assert config.enemies.player_stationary_time_seconds == 0.7
+    assert config.enemies.tactical_slot_count == 10
+    assert config.enemies.tactical_surround_distance_px == 180.0
+    assert config.enemies.tactical_reassign_interval_seconds == 1.5
+    assert config.enemies.tactical_slot_reached_distance_px == 18.0
+    assert config.enemies.tactical_min_slot_spacing_px == 48.0
+    assert config.enemies.draw_tactical_slots is True
     assert config.fps_counter.enabled is True
     assert config.fps_counter.position == "top_right"
     assert config.fps_counter.margin_x == 12

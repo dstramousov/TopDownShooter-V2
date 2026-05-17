@@ -806,3 +806,96 @@ def test_alerted_enemy_reports_failed_path_when_goal_is_unreachable() -> None:
     assert system.stats.path_rebuilds == 1
     assert system.stats.failed_path_rebuilds == 1
     assert system.stats.moving_enemies == 0
+
+
+
+def test_stationary_player_triggers_tactical_surround_assignments() -> None:
+    """Alerted enemies should get reachable surround slots around a stationary player."""
+    from topdown_shooter.world.collision import TileCollisionService
+    from topdown_shooter.world.pathfinding import GridPathfinder
+
+    runtime_map = _build_runtime_map_from_rows((
+        "++++++++",
+        "++++++++",
+        "++++++++",
+        "++++++++",
+        "++++++++",
+    ))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {"id": "spawn_0", "position": [1, 2], "facing_angle_degrees": 0.0},
+                {"id": "spawn_1", "position": [1, 3], "facing_angle_degrees": 0.0},
+            ],
+        },
+        runtime_map,
+    )
+    for enemy in system.enemies:
+        enemy.alerted = True
+
+    system.update_chase_movement(
+        player_position=WorldCoord(x=88.0, y=40.0),
+        collision_service=TileCollisionService(runtime_map),
+        frame_time=1.0,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+        preferred_combat_distance_px=32.0,
+        pathfinder=GridPathfinder(runtime_map),
+        pathfinding_enabled=True,
+        player_speed_px_per_second=0.0,
+        tactical_positioning_enabled=True,
+        player_stationary_speed_threshold_px_per_second=12.0,
+        player_stationary_time_seconds=0.5,
+        tactical_slot_count=8,
+        tactical_surround_distance_px=32.0,
+        tactical_reassign_interval_seconds=1.0,
+        tactical_slot_reached_distance_px=6.0,
+        tactical_min_slot_spacing_px=16.0,
+        path_max_iterations=128,
+    )
+
+    assert system.stats.player_stationary is True
+    assert system.stats.tactical_positioning_enemies == 2
+    assert system.stats.tactical_slots_assigned == 2
+    assert all(enemy.tactical_target_position is not None for enemy in system.enemies)
+    assert system.stats.pathing_enemies >= 1
+
+
+def test_moving_player_clears_tactical_surround_assignments() -> None:
+    """Tactical surround assignments should clear when the player starts moving."""
+    from topdown_shooter.world.collision import TileCollisionService
+    from topdown_shooter.world.pathfinding import GridPathfinder
+
+    runtime_map = _build_runtime_map_from_rows((
+        "++++++++",
+        "++++++++",
+        "++++++++",
+        "++++++++",
+        "++++++++",
+    ))
+    system = EnemySystem.from_tactical_map(
+        {"enemy_spawn_zones": [{"id": "spawn_0", "position": [1, 2]}]},
+        runtime_map,
+    )
+    system.enemies[0].alerted = True
+    system.enemies[0].tactical_target_position = WorldCoord(x=88.0, y=24.0)
+
+    system.update_chase_movement(
+        player_position=WorldCoord(x=88.0, y=40.0),
+        collision_service=TileCollisionService(runtime_map),
+        frame_time=0.1,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+        pathfinder=GridPathfinder(runtime_map),
+        pathfinding_enabled=True,
+        player_speed_px_per_second=80.0,
+        tactical_positioning_enabled=True,
+        player_stationary_speed_threshold_px_per_second=12.0,
+        player_stationary_time_seconds=0.5,
+    )
+
+    assert system.stats.player_stationary is False
+    assert system.stats.tactical_positioning_enemies == 0
+    assert system.enemies[0].tactical_target_position is None

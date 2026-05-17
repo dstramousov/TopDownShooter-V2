@@ -44,6 +44,7 @@ class EnemyState:
         path_waypoint_index: Current path waypoint index.
         path_rebuild_timer_seconds: Seconds until the path may be rebuilt.
         last_path_target_position: Last world-space path target position.
+        tactical_target_position: Assigned tactical surround position.
     """
 
     enemy_id: str
@@ -67,6 +68,7 @@ class EnemyState:
     path_waypoint_index: int = 0
     path_rebuild_timer_seconds: float = 0.0
     last_path_target_position: WorldCoord | None = None
+    tactical_target_position: WorldCoord | None = None
 
 
 @dataclass(slots=True)
@@ -108,6 +110,9 @@ class EnemyStats:
         path_rebuilds: Number of A* paths rebuilt in the last update.
         failed_path_rebuilds: Number of failed A* path rebuild attempts in the last update.
         active_path_waypoints: Total remaining A* waypoints across active enemies.
+        player_stationary: Whether the player is currently considered stationary.
+        tactical_positioning_enemies: Number of enemies assigned to surround slots.
+        tactical_slots_assigned: Number of occupied tactical surround slots.
         source_spawn_zones: Number of tactical spawn zones read from the map package.
         spawned_squads: Number of tactical spawn zones that produced at least one enemy.
     """
@@ -127,6 +132,9 @@ class EnemyStats:
     path_rebuilds: int
     failed_path_rebuilds: int
     active_path_waypoints: int
+    player_stationary: bool
+    tactical_positioning_enemies: int
+    tactical_slots_assigned: int
     source_spawn_zones: int
     spawned_squads: int
 
@@ -168,6 +176,12 @@ class EnemySystem:
         self._pathing_enemies = 0
         self._path_rebuilds = 0
         self._failed_path_rebuilds = 0
+        self._player_stationary_seconds = 0.0
+        self._player_stationary = False
+        self._tactical_reassign_timer_seconds = 0.0
+        self._last_tactical_player_position: WorldCoord | None = None
+        self._tactical_positioning_enemies = 0
+        self._tactical_slots_assigned = 0
 
     @classmethod
     def from_tactical_map(
@@ -331,6 +345,9 @@ class EnemySystem:
                 max(0, len(enemy.path_tiles) - enemy.path_waypoint_index)
                 for enemy in self.enemies
             ),
+            player_stationary=self._player_stationary,
+            tactical_positioning_enemies=self._tactical_positioning_enemies,
+            tactical_slots_assigned=self._tactical_slots_assigned,
             source_spawn_zones=self._source_spawn_zones,
             spawned_squads=self._spawned_squads,
         )
@@ -376,6 +393,15 @@ class EnemySystem:
         path_target_rebuild_distance_px: float = 48.0,
         path_max_iterations: int = 2048,
         path_waypoint_reach_distance_px: float = 8.0,
+        player_speed_px_per_second: float = 0.0,
+        tactical_positioning_enabled: bool = False,
+        player_stationary_speed_threshold_px_per_second: float = 12.0,
+        player_stationary_time_seconds: float = 0.7,
+        tactical_slot_count: int = 8,
+        tactical_surround_distance_px: float = 0.0,
+        tactical_reassign_interval_seconds: float = 1.5,
+        tactical_slot_reached_distance_px: float = 18.0,
+        tactical_min_slot_spacing_px: float = 48.0,
     ) -> None:
         """Move alerted enemies using local combat steering.
 
@@ -402,6 +428,15 @@ class EnemySystem:
             path_target_rebuild_distance_px: Player movement distance that forces path rebuild.
             path_max_iterations: Maximum A* iterations per path rebuild.
             path_waypoint_reach_distance_px: Distance used to advance path waypoints.
+            player_speed_px_per_second: Current player movement speed.
+            tactical_positioning_enabled: Whether stationary-player surround slots are used.
+            player_stationary_speed_threshold_px_per_second: Speed threshold for stationary state.
+            player_stationary_time_seconds: Delay before tactical surround positioning starts.
+            tactical_slot_count: Number of candidate surround slots around the player.
+            tactical_surround_distance_px: Distance from player to tactical surround slots.
+            tactical_reassign_interval_seconds: Minimum delay between tactical slot reassignments.
+            tactical_slot_reached_distance_px: Distance used to hold a tactical slot.
+            tactical_min_slot_spacing_px: Minimum spacing between assigned tactical slots.
         """
         self._moving_enemies = 0
         self._approaching_enemies = 0
@@ -411,8 +446,58 @@ class EnemySystem:
         self._pathing_enemies = 0
         self._path_rebuilds = 0
         self._failed_path_rebuilds = 0
+        self._tactical_positioning_enemies = 0
+        self._tactical_slots_assigned = 0
         if frame_time <= 0.0 or chase_speed_px_per_second <= 0.0:
             return
+
+        self._update_player_stationary_state(
+            frame_time=frame_time,
+            player_position=player_position,
+            player_speed_px_per_second=player_speed_px_per_second,
+            stationary_speed_threshold_px_per_second=(
+                player_stationary_speed_threshold_px_per_second
+            ),
+            stationary_time_seconds=player_stationary_time_seconds,
+        )
+        tactical_active = (
+            tactical_positioning_enabled
+            and self._player_stationary
+            and pathfinder is not None
+            and pathfinding_enabled
+        )
+        if tactical_active:
+            self._tactical_reassign_timer_seconds -= frame_time
+            if self._should_reassign_tactical_slots(
+                player_position=player_position,
+                tactical_reassign_interval_seconds=tactical_reassign_interval_seconds,
+            ):
+                self._assign_tactical_positions(
+                    player_position=player_position,
+                    collision_service=collision_service,
+                    pathfinder=pathfinder,
+                    tile_size_px=tile_size_px,
+                    preferred_combat_distance_px=preferred_combat_distance_px,
+                    tactical_slot_count=tactical_slot_count,
+                    tactical_surround_distance_px=tactical_surround_distance_px,
+                    tactical_min_slot_spacing_px=tactical_min_slot_spacing_px,
+                    path_max_iterations=path_max_iterations,
+                    enemy_collision_radius_px=enemy_collision_radius_px,
+                    line_of_sight_sample_step_px=line_of_sight_sample_step_px,
+                )
+                self._tactical_reassign_timer_seconds = max(
+                    0.0,
+                    tactical_reassign_interval_seconds,
+                )
+                self._last_tactical_player_position = player_position
+        else:
+            self._clear_tactical_positions()
+        self._tactical_positioning_enemies = sum(
+            1
+            for enemy in self._enemies
+            if enemy.alive and enemy.alerted and enemy.tactical_target_position is not None
+        )
+        self._tactical_slots_assigned = self._tactical_positioning_enemies
         for enemy in self._enemies:
             if not enemy.alive or not enemy.alerted:
                 continue
@@ -440,6 +525,7 @@ class EnemySystem:
                     path_target_rebuild_distance_px=path_target_rebuild_distance_px,
                     path_max_iterations=path_max_iterations,
                     path_waypoint_reach_distance_px=path_waypoint_reach_distance_px,
+                    tactical_slot_reached_distance_px=tactical_slot_reached_distance_px,
                 )
             )
             if moved:
@@ -458,6 +544,204 @@ class EnemySystem:
                 self._path_rebuilds += 1
             if failed_path:
                 self._failed_path_rebuilds += 1
+
+    def _update_player_stationary_state(
+        self,
+        frame_time: float,
+        player_position: WorldCoord,
+        player_speed_px_per_second: float,
+        stationary_speed_threshold_px_per_second: float,
+        stationary_time_seconds: float,
+    ) -> None:
+        """Update player stationary tracking used by tactical positioning.
+
+        Args:
+            frame_time: Current frame duration in seconds.
+            player_position: Current player world position.
+            player_speed_px_per_second: Current player movement speed.
+            stationary_speed_threshold_px_per_second: Speed threshold for stationary state.
+            stationary_time_seconds: Required time below threshold.
+        """
+        speed_threshold = max(0.0, stationary_speed_threshold_px_per_second)
+        if player_speed_px_per_second <= speed_threshold:
+            self._player_stationary_seconds += frame_time
+        else:
+            self._player_stationary_seconds = 0.0
+        self._player_stationary = (
+            self._player_stationary_seconds >= max(0.0, stationary_time_seconds)
+        )
+        if not self._player_stationary:
+            self._last_tactical_player_position = player_position
+
+    def _should_reassign_tactical_slots(
+        self,
+        player_position: WorldCoord,
+        tactical_reassign_interval_seconds: float,
+    ) -> bool:
+        """Return whether tactical surround slots should be reassigned.
+
+        Args:
+            player_position: Current player world position.
+            tactical_reassign_interval_seconds: Reassignment interval in seconds.
+
+        Returns:
+            True if slots should be rebuilt for the current player position.
+        """
+        if self._tactical_reassign_timer_seconds <= 0.0:
+            return True
+        if self._last_tactical_player_position is None:
+            return True
+        dx = player_position.x - self._last_tactical_player_position.x
+        dy = player_position.y - self._last_tactical_player_position.y
+        return math.hypot(dx, dy) >= max(16.0, tactical_reassign_interval_seconds * 16.0)
+
+    def _clear_tactical_positions(self) -> None:
+        """Clear tactical surround assignments from all enemies."""
+        for enemy in self._enemies:
+            if enemy.tactical_target_position is not None:
+                enemy.tactical_target_position = None
+                EnemySystem._clear_enemy_path(enemy)
+
+    def _assign_tactical_positions(
+        self,
+        player_position: WorldCoord,
+        collision_service: TileCollisionService,
+        pathfinder: GridPathfinder,
+        tile_size_px: int,
+        preferred_combat_distance_px: float,
+        tactical_slot_count: int,
+        tactical_surround_distance_px: float,
+        tactical_min_slot_spacing_px: float,
+        path_max_iterations: int,
+        enemy_collision_radius_px: float,
+        line_of_sight_sample_step_px: float,
+    ) -> None:
+        """Assign reachable surround slots around a stationary player.
+
+        Args:
+            player_position: Current player world position.
+            collision_service: Collision service used for slot validation.
+            pathfinder: Grid pathfinder used to validate reachability.
+            tile_size_px: Runtime map tile size in pixels.
+            preferred_combat_distance_px: Default tactical ring radius.
+            tactical_slot_count: Number of candidate slots around the player.
+            tactical_surround_distance_px: Explicit tactical ring radius.
+            tactical_min_slot_spacing_px: Minimum spacing between assigned slots.
+            path_max_iterations: Maximum A* iterations for reachability checks.
+            enemy_collision_radius_px: Enemy collision radius in world pixels.
+            line_of_sight_sample_step_px: Sample step for player line-of-sight checks.
+        """
+        active_enemies = [enemy for enemy in self._enemies if enemy.alive and enemy.alerted]
+        for enemy in active_enemies:
+            enemy.tactical_target_position = None
+        if not active_enemies:
+            return
+
+        radius = tactical_surround_distance_px
+        if radius <= 0.0:
+            radius = max(32.0, preferred_combat_distance_px)
+        slots = EnemySystem._build_tactical_slots(
+            player_position=player_position,
+            slot_count=max(tactical_slot_count, len(active_enemies)),
+            radius_px=radius,
+        )
+        assigned_slots: list[WorldCoord] = []
+        for enemy in sorted(active_enemies, key=lambda item: item.enemy_id):
+            best_slot: WorldCoord | None = None
+            best_score: float | None = None
+            for slot in slots:
+                if not EnemySystem._has_tactical_slot_spacing(
+                    slot=slot,
+                    assigned_slots=assigned_slots,
+                    min_spacing_px=tactical_min_slot_spacing_px,
+                ):
+                    continue
+                if not collision_service.is_circle_walkable(slot, enemy_collision_radius_px):
+                    continue
+                if not EnemySystem._has_line_of_sight(
+                    start=slot,
+                    end=player_position,
+                    collision_service=collision_service,
+                    sample_step_px=line_of_sight_sample_step_px,
+                ):
+                    continue
+                path = pathfinder.find_path(
+                    world_to_tile(enemy.world_position, tile_size_px),
+                    world_to_tile(slot, tile_size_px),
+                    max_iterations=path_max_iterations,
+                )
+                if not path.tiles:
+                    continue
+                distance_to_slot = math.hypot(
+                    slot.x - enemy.world_position.x,
+                    slot.y - enemy.world_position.y,
+                )
+                score = float(len(path.tiles)) * 1000.0 + distance_to_slot
+                if best_score is None or score < best_score:
+                    best_score = score
+                    best_slot = slot
+            if best_slot is None:
+                continue
+            enemy.tactical_target_position = best_slot
+            EnemySystem._clear_enemy_path(enemy)
+            assigned_slots.append(best_slot)
+        self._tactical_positioning_enemies = sum(
+            1 for enemy in active_enemies if enemy.tactical_target_position is not None
+        )
+        self._tactical_slots_assigned = len(assigned_slots)
+
+    @staticmethod
+    def _build_tactical_slots(
+        player_position: WorldCoord,
+        slot_count: int,
+        radius_px: float,
+    ) -> tuple[WorldCoord, ...]:
+        """Build candidate tactical slots on a ring around the player.
+
+        Args:
+            player_position: Current player world position.
+            slot_count: Number of slots to generate.
+            radius_px: Radius of the tactical ring in pixels.
+
+        Returns:
+            Candidate slot world positions.
+        """
+        safe_count = max(1, slot_count)
+        safe_radius = max(0.0, radius_px)
+        slots: list[WorldCoord] = []
+        for index in range(safe_count):
+            angle = math.tau * float(index) / float(safe_count)
+            slots.append(
+                WorldCoord(
+                    x=player_position.x + math.cos(angle) * safe_radius,
+                    y=player_position.y + math.sin(angle) * safe_radius,
+                ),
+            )
+        return tuple(slots)
+
+    @staticmethod
+    def _has_tactical_slot_spacing(
+        slot: WorldCoord,
+        assigned_slots: list[WorldCoord],
+        min_spacing_px: float,
+    ) -> bool:
+        """Return whether a tactical slot is far enough from assigned slots.
+
+        Args:
+            slot: Candidate slot position.
+            assigned_slots: Already assigned tactical slot positions.
+            min_spacing_px: Minimum required spacing in pixels.
+
+        Returns:
+            True when the candidate is not too close to assigned slots.
+        """
+        safe_spacing = max(0.0, min_spacing_px)
+        for assigned_slot in assigned_slots:
+            dx = slot.x - assigned_slot.x
+            dy = slot.y - assigned_slot.y
+            if math.hypot(dx, dy) < safe_spacing:
+                return False
+        return True
 
     @staticmethod
     def _move_enemy_with_combat_steering(
@@ -483,6 +767,7 @@ class EnemySystem:
         path_target_rebuild_distance_px: float,
         path_max_iterations: int,
         path_waypoint_reach_distance_px: float,
+        tactical_slot_reached_distance_px: float = 18.0,
     ) -> tuple[bool, bool, bool, bool, bool, bool, bool, bool]:
         """Move one enemy with combat-distance and strafe steering.
 
@@ -530,6 +815,28 @@ class EnemySystem:
         strafe_x = -radial_y * float(enemy.strafe_direction)
         strafe_y = radial_x * float(enemy.strafe_direction)
         enemy.facing_angle_degrees = math.degrees(math.atan2(dy, dx)) % 360.0
+
+        if enemy.tactical_target_position is not None and pathfinder is not None:
+            slot_dx = enemy.tactical_target_position.x - enemy.world_position.x
+            slot_dy = enemy.tactical_target_position.y - enemy.world_position.y
+            slot_distance = math.hypot(slot_dx, slot_dy)
+            if slot_distance <= max(0.0, tactical_slot_reached_distance_px):
+                return False, False, False, False, False, False, False, False
+            return EnemySystem._move_enemy_along_path(
+                enemy=enemy,
+                player_position=enemy.tactical_target_position,
+                pathfinder=pathfinder,
+                collision_service=collision_service,
+                frame_time=frame_time,
+                movement_speed_px_per_second=movement_speed_px_per_second,
+                enemy_collision_radius_px=enemy_collision_radius_px,
+                tile_size_px=tile_size_px,
+                path_rebuild_interval_seconds=path_rebuild_interval_seconds,
+                path_target_rebuild_distance_px=path_target_rebuild_distance_px,
+                path_max_iterations=path_max_iterations,
+                path_waypoint_reach_distance_px=path_waypoint_reach_distance_px,
+                movement_direction_smoothing=movement_direction_smoothing,
+            )
 
         radial_weight, active_strafe_weight, approaching, retreating = (
             EnemySystem._calculate_combat_steering_weights(

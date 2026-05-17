@@ -166,6 +166,15 @@ class EnemyConfig:
         path_max_iterations: Maximum A* iterations per enemy path query.
         path_waypoint_reach_distance_px: Distance used to advance enemy path waypoints.
         draw_enemy_paths: Whether debug enemy A* paths are drawn.
+        tactical_positioning_enabled: Whether stationary-player tactical slots are used.
+        player_stationary_speed_threshold_px_per_second: Speed threshold for stationary player.
+        player_stationary_time_seconds: Required stationary time before tactical positioning.
+        tactical_slot_count: Number of surround candidate slots around the player.
+        tactical_surround_distance_px: Distance from player to tactical slots.
+        tactical_reassign_interval_seconds: Minimum delay between tactical slot assignments.
+        tactical_slot_reached_distance_px: Distance used to hold a tactical slot.
+        tactical_min_slot_spacing_px: Minimum spacing between assigned tactical slots.
+        draw_tactical_slots: Whether debug tactical target slots are drawn.
     """
 
     marker_radius_px: int
@@ -205,6 +214,15 @@ class EnemyConfig:
     path_max_iterations: int
     path_waypoint_reach_distance_px: float
     draw_enemy_paths: bool
+    tactical_positioning_enabled: bool
+    player_stationary_speed_threshold_px_per_second: float
+    player_stationary_time_seconds: float
+    tactical_slot_count: int
+    tactical_surround_distance_px: float
+    tactical_reassign_interval_seconds: float
+    tactical_slot_reached_distance_px: float
+    tactical_min_slot_spacing_px: float
+    draw_tactical_slots: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -563,6 +581,41 @@ class RuntimeConfigLoader:
                     "path_waypoint_reach_distance_px",
                 ),
                 draw_enemy_paths=self._require_bool(enemies, "draw_enemy_paths"),
+                tactical_positioning_enabled=self._require_bool(
+                    enemies,
+                    "tactical_positioning_enabled",
+                ),
+                player_stationary_speed_threshold_px_per_second=(
+                    self._require_non_negative_float(
+                        enemies,
+                        "player_stationary_speed_threshold_px_per_second",
+                    )
+                ),
+                player_stationary_time_seconds=self._require_non_negative_float(
+                    enemies,
+                    "player_stationary_time_seconds",
+                ),
+                tactical_slot_count=self._require_positive_int(
+                    enemies,
+                    "tactical_slot_count",
+                ),
+                tactical_surround_distance_px=self._require_non_negative_float(
+                    enemies,
+                    "tactical_surround_distance_px",
+                ),
+                tactical_reassign_interval_seconds=self._require_non_negative_float(
+                    enemies,
+                    "tactical_reassign_interval_seconds",
+                ),
+                tactical_slot_reached_distance_px=self._require_non_negative_float(
+                    enemies,
+                    "tactical_slot_reached_distance_px",
+                ),
+                tactical_min_slot_spacing_px=self._require_non_negative_float(
+                    enemies,
+                    "tactical_min_slot_spacing_px",
+                ),
+                draw_tactical_slots=self._require_bool(enemies, "draw_tactical_slots"),
             ),
             debug_overlay=DebugOverlayConfig(
                 enabled_by_default=self._require_bool(debug_overlay, "enabled_by_default"),

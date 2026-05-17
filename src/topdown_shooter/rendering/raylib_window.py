@@ -105,6 +105,7 @@ class RaylibWindow:
             runtime_map,
             max_health=config.player.max_health,
         )
+        self._player_speed_px_per_second = 0.0
         self._collision_service = TileCollisionService(runtime_map)
         self._enemy_pathfinder = GridPathfinder(runtime_map)
         self._player_controller = PlayerController(
@@ -151,6 +152,7 @@ class RaylibWindow:
             vision_range_px=config.enemies.vision_range_px,
             vision_angle_degrees=config.enemies.vision_angle_degrees,
             draw_enemy_paths=config.enemies.draw_enemy_paths,
+            draw_tactical_slots=config.enemies.draw_tactical_slots,
             tile_size_px=runtime_map.tile_size_px,
         )
         self._player_renderer = PlayerRenderer(
@@ -256,6 +258,29 @@ class RaylibWindow:
                     path_waypoint_reach_distance_px=(
                         self._config.enemies.path_waypoint_reach_distance_px
                     ),
+                    player_speed_px_per_second=self._player_speed_px_per_second,
+                    tactical_positioning_enabled=(
+                        self._config.enemies.tactical_positioning_enabled
+                    ),
+                    player_stationary_speed_threshold_px_per_second=(
+                        self._config.enemies.player_stationary_speed_threshold_px_per_second
+                    ),
+                    player_stationary_time_seconds=(
+                        self._config.enemies.player_stationary_time_seconds
+                    ),
+                    tactical_slot_count=self._config.enemies.tactical_slot_count,
+                    tactical_surround_distance_px=(
+                        self._config.enemies.tactical_surround_distance_px
+                    ),
+                    tactical_reassign_interval_seconds=(
+                        self._config.enemies.tactical_reassign_interval_seconds
+                    ),
+                    tactical_slot_reached_distance_px=(
+                        self._config.enemies.tactical_slot_reached_distance_px
+                    ),
+                    tactical_min_slot_spacing_px=(
+                        self._config.enemies.tactical_min_slot_spacing_px
+                    ),
                 )
                 self._projectile_system.prune_dead()
                 self._camera_rig.update_follow_target(
@@ -354,6 +379,7 @@ class RaylibWindow:
             dy -= 1.0
         if self._is_any_key_down(self._player_down_keys):
             dy += 1.0
+        previous_position = self._player.world_position
         self._player_controller.update(
             player=self._player,
             intent=PlayerMoveIntent(x=dx, y=dy),
@@ -363,6 +389,14 @@ class RaylibWindow:
                 * self._weapon_controller.stats.active_movement_speed_multiplier
             ),
         )
+        if frame_time > 0.0:
+            moved_distance = (
+                (self._player.world_position.x - previous_position.x) ** 2
+                + (self._player.world_position.y - previous_position.y) ** 2
+            ) ** 0.5
+            self._player_speed_px_per_second = moved_distance / frame_time
+        else:
+            self._player_speed_px_per_second = 0.0
 
     def _update_camera_controls(self, frame_time: float) -> None:
         """Apply configured map-viewer camera controls for the current frame.
