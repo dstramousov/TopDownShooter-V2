@@ -14,6 +14,7 @@ from topdown_shooter.world.coordinates import (
     tile_to_world_center,
     world_to_tile,
 )
+from topdown_shooter.world.pathfinding import GridPathfinder
 from topdown_shooter.world.runtime_map import RuntimeMap
 
 
@@ -39,6 +40,10 @@ class EnemyState:
         strafe_timer_seconds: Seconds left before the strafe side can change.
         movement_direction_x: Smoothed horizontal movement direction.
         movement_direction_y: Smoothed vertical movement direction.
+        path_tiles: Current A* path tiles from enemy to target.
+        path_waypoint_index: Current path waypoint index.
+        path_rebuild_timer_seconds: Seconds until the path may be rebuilt.
+        last_path_target_position: Last world-space path target position.
     """
 
     enemy_id: str
@@ -58,6 +63,10 @@ class EnemyState:
     strafe_timer_seconds: float = 0.0
     movement_direction_x: float = 0.0
     movement_direction_y: float = 0.0
+    path_tiles: tuple[TileCoord, ...] = ()
+    path_waypoint_index: int = 0
+    path_rebuild_timer_seconds: float = 0.0
+    last_path_target_position: WorldCoord | None = None
 
 
 @dataclass(slots=True)
@@ -95,6 +104,9 @@ class EnemyStats:
         strafing_enemies: Number of active enemies using strafe steering in the last update.
         retreating_enemies: Number of active enemies backing away in the last update.
         stuck_enemies: Number of active enemies blocked by local obstacles in the last update.
+        pathing_enemies: Number of active enemies following an A* path in the last update.
+        path_rebuilds: Number of A* paths rebuilt in the last update.
+        failed_path_rebuilds: Number of failed A* path rebuild attempts in the last update.
         source_spawn_zones: Number of tactical spawn zones read from the map package.
         spawned_squads: Number of tactical spawn zones that produced at least one enemy.
     """
@@ -110,6 +122,9 @@ class EnemyStats:
     strafing_enemies: int
     retreating_enemies: int
     stuck_enemies: int
+    pathing_enemies: int
+    path_rebuilds: int
+    failed_path_rebuilds: int
     source_spawn_zones: int
     spawned_squads: int
 
@@ -148,6 +163,9 @@ class EnemySystem:
         self._strafing_enemies = 0
         self._retreating_enemies = 0
         self._stuck_enemies = 0
+        self._pathing_enemies = 0
+        self._path_rebuilds = 0
+        self._failed_path_rebuilds = 0
 
     @classmethod
     def from_tactical_map(
@@ -304,6 +322,9 @@ class EnemySystem:
             strafing_enemies=self._strafing_enemies,
             retreating_enemies=self._retreating_enemies,
             stuck_enemies=self._stuck_enemies,
+            pathing_enemies=self._pathing_enemies,
+            path_rebuilds=self._path_rebuilds,
+            failed_path_rebuilds=self._failed_path_rebuilds,
             source_spawn_zones=self._source_spawn_zones,
             spawned_squads=self._spawned_squads,
         )
@@ -343,6 +364,12 @@ class EnemySystem:
         line_of_sight_sample_step_px: float = 8.0,
         minimum_combat_distance_px: float = 0.0,
         movement_direction_smoothing: float = 1.0,
+        pathfinder: GridPathfinder | None = None,
+        pathfinding_enabled: bool = False,
+        path_rebuild_interval_seconds: float = 0.35,
+        path_target_rebuild_distance_px: float = 48.0,
+        path_max_iterations: int = 2048,
+        path_waypoint_reach_distance_px: float = 8.0,
     ) -> None:
         """Move alerted enemies using local combat steering.
 
@@ -363,18 +390,27 @@ class EnemySystem:
             line_of_sight_sample_step_px: Sample step used to reduce strafing without sight.
             minimum_combat_distance_px: Hard distance where retreat becomes more aggressive.
             movement_direction_smoothing: Blend factor for desired movement direction.
+            pathfinder: Optional grid pathfinder used when line of sight is blocked.
+            pathfinding_enabled: Whether alerted enemies may use A* navigation.
+            path_rebuild_interval_seconds: Minimum delay between path rebuilds.
+            path_target_rebuild_distance_px: Player movement distance that forces path rebuild.
+            path_max_iterations: Maximum A* iterations per path rebuild.
+            path_waypoint_reach_distance_px: Distance used to advance path waypoints.
         """
         self._moving_enemies = 0
         self._approaching_enemies = 0
         self._strafing_enemies = 0
         self._retreating_enemies = 0
         self._stuck_enemies = 0
+        self._pathing_enemies = 0
+        self._path_rebuilds = 0
+        self._failed_path_rebuilds = 0
         if frame_time <= 0.0 or chase_speed_px_per_second <= 0.0:
             return
         for enemy in self._enemies:
             if not enemy.alive or not enemy.alerted:
                 continue
-            moved, approaching, strafing, retreating, stuck = (
+            moved, approaching, strafing, retreating, stuck, pathing, rebuilt, failed_path = (
                 self._move_enemy_with_combat_steering(
                     enemy=enemy,
                     player_position=player_position,
@@ -393,6 +429,11 @@ class EnemySystem:
                     line_of_sight_sample_step_px=line_of_sight_sample_step_px,
                     minimum_combat_distance_px=minimum_combat_distance_px,
                     movement_direction_smoothing=movement_direction_smoothing,
+                    pathfinder=pathfinder if pathfinding_enabled else None,
+                    path_rebuild_interval_seconds=path_rebuild_interval_seconds,
+                    path_target_rebuild_distance_px=path_target_rebuild_distance_px,
+                    path_max_iterations=path_max_iterations,
+                    path_waypoint_reach_distance_px=path_waypoint_reach_distance_px,
                 )
             )
             if moved:
@@ -405,6 +446,12 @@ class EnemySystem:
                 self._retreating_enemies += 1
             if stuck:
                 self._stuck_enemies += 1
+            if pathing:
+                self._pathing_enemies += 1
+            if rebuilt:
+                self._path_rebuilds += 1
+            if failed_path:
+                self._failed_path_rebuilds += 1
 
     @staticmethod
     def _move_enemy_with_combat_steering(
@@ -425,7 +472,12 @@ class EnemySystem:
         line_of_sight_sample_step_px: float,
         minimum_combat_distance_px: float,
         movement_direction_smoothing: float,
-    ) -> tuple[bool, bool, bool, bool, bool]:
+        pathfinder: GridPathfinder | None,
+        path_rebuild_interval_seconds: float,
+        path_target_rebuild_distance_px: float,
+        path_max_iterations: int,
+        path_waypoint_reach_distance_px: float,
+    ) -> tuple[bool, bool, bool, bool, bool, bool, bool, bool]:
         """Move one enemy with combat-distance and strafe steering.
 
         Args:
@@ -446,15 +498,20 @@ class EnemySystem:
             line_of_sight_sample_step_px: Sample step used to reduce strafing without sight.
             minimum_combat_distance_px: Hard distance where retreat becomes more aggressive.
             movement_direction_smoothing: Blend factor for desired movement direction.
+            pathfinder: Optional grid pathfinder used when line of sight is blocked.
+            path_rebuild_interval_seconds: Minimum delay between path rebuilds.
+            path_target_rebuild_distance_px: Player movement distance that forces path rebuild.
+            path_max_iterations: Maximum A* iterations per path rebuild.
+            path_waypoint_reach_distance_px: Distance used to advance path waypoints.
 
         Returns:
-            Tuple containing moved, strafing, and retreating flags.
+            Tuple containing movement and navigation diagnostic flags.
         """
         dx = player_position.x - enemy.world_position.x
         dy = player_position.y - enemy.world_position.y
         distance = math.hypot(dx, dy)
         if distance <= 0.000001:
-            return False, False, False, False, False
+            return False, False, False, False, False, False, False, False
 
         EnemySystem._advance_enemy_strafe_state(
             enemy=enemy,
@@ -486,6 +543,21 @@ class EnemySystem:
             collision_service=collision_service,
             sample_step_px=line_of_sight_sample_step_px,
         )
+        if not has_line_of_sight and pathfinder is not None:
+            return EnemySystem._move_enemy_along_path(
+                enemy=enemy,
+                player_position=player_position,
+                pathfinder=pathfinder,
+                collision_service=collision_service,
+                frame_time=frame_time,
+                movement_speed_px_per_second=movement_speed_px_per_second,
+                enemy_collision_radius_px=enemy_collision_radius_px,
+                tile_size_px=tile_size_px,
+                path_rebuild_interval_seconds=path_rebuild_interval_seconds,
+                path_target_rebuild_distance_px=path_target_rebuild_distance_px,
+                path_max_iterations=path_max_iterations,
+                path_waypoint_reach_distance_px=path_waypoint_reach_distance_px,
+            )
         if not has_line_of_sight:
             radial_weight = max(radial_weight, max(0.0, approach_weight))
             active_strafe_weight *= 0.15
@@ -496,7 +568,7 @@ class EnemySystem:
         move_y = radial_y * radial_weight + strafe_y * active_strafe_weight
         length = math.hypot(move_x, move_y)
         if length <= 0.000001:
-            return False, approaching, False, retreating, False
+            return False, approaching, False, retreating, False, False, False, False
 
         desired_x = move_x / length
         desired_y = move_y / length
@@ -539,7 +611,188 @@ class EnemySystem:
                 enemy.strafe_direction *= -1
             enemy.world_position = position
             enemy.tile = world_to_tile(position, tile_size_px)
-        return moved, approaching, active_strafe_weight > 0.0, retreating, not moved
+        if moved:
+            EnemySystem._clear_enemy_path(enemy)
+        return moved, approaching, active_strafe_weight > 0.0, retreating, not moved, False, False, False
+
+    @staticmethod
+    def _move_enemy_along_path(
+        enemy: EnemyState,
+        player_position: WorldCoord,
+        pathfinder: GridPathfinder,
+        collision_service: TileCollisionService,
+        frame_time: float,
+        movement_speed_px_per_second: float,
+        enemy_collision_radius_px: float,
+        tile_size_px: int,
+        path_rebuild_interval_seconds: float,
+        path_target_rebuild_distance_px: float,
+        path_max_iterations: int,
+        path_waypoint_reach_distance_px: float,
+    ) -> tuple[bool, bool, bool, bool, bool, bool, bool, bool]:
+        """Move an enemy toward the player using an A* tile path.
+
+        Args:
+            enemy: Enemy to move.
+            player_position: Current player world position.
+            pathfinder: Grid pathfinder used to build navigation paths.
+            collision_service: Collision service used for final movement validation.
+            frame_time: Current frame duration in seconds.
+            movement_speed_px_per_second: Enemy movement speed in world pixels per second.
+            enemy_collision_radius_px: Enemy collision radius in world pixels.
+            tile_size_px: Runtime map tile size in pixels.
+            path_rebuild_interval_seconds: Minimum delay between path rebuilds.
+            path_target_rebuild_distance_px: Player movement distance that forces path rebuild.
+            path_max_iterations: Maximum A* iterations per path rebuild.
+            path_waypoint_reach_distance_px: Distance used to advance path waypoints.
+
+        Returns:
+            Tuple containing movement and navigation diagnostic flags.
+        """
+        enemy.path_rebuild_timer_seconds -= frame_time
+        rebuilt = False
+        failed_path = False
+        if EnemySystem._should_rebuild_enemy_path(
+            enemy=enemy,
+            player_position=player_position,
+            path_target_rebuild_distance_px=path_target_rebuild_distance_px,
+        ) or enemy.path_rebuild_timer_seconds <= 0.0:
+            rebuilt, failed_path = EnemySystem._rebuild_enemy_path(
+                enemy=enemy,
+                player_position=player_position,
+                pathfinder=pathfinder,
+                tile_size_px=tile_size_px,
+                path_rebuild_interval_seconds=path_rebuild_interval_seconds,
+                path_max_iterations=path_max_iterations,
+            )
+
+        waypoint = EnemySystem._current_path_waypoint(
+            enemy=enemy,
+            tile_size_px=tile_size_px,
+            path_waypoint_reach_distance_px=path_waypoint_reach_distance_px,
+        )
+        if waypoint is None:
+            return False, False, False, False, True, False, rebuilt, failed_path
+
+        dx = waypoint.x - enemy.world_position.x
+        dy = waypoint.y - enemy.world_position.y
+        distance = math.hypot(dx, dy)
+        if distance <= 0.000001:
+            return False, True, False, False, False, True, rebuilt, failed_path
+        move_x = dx / distance
+        move_y = dy / distance
+        enemy.movement_direction_x = move_x
+        enemy.movement_direction_y = move_y
+        travel_distance = min(distance, movement_speed_px_per_second * frame_time)
+        position = EnemySystem._try_move_enemy_vector(
+            position=enemy.world_position,
+            dx=move_x * travel_distance,
+            dy=move_y * travel_distance,
+            collision_service=collision_service,
+            enemy_collision_radius_px=enemy_collision_radius_px,
+        )
+        moved = position != enemy.world_position
+        if moved:
+            enemy.world_position = position
+            enemy.tile = world_to_tile(position, tile_size_px)
+        return moved, True, False, False, not moved, True, rebuilt, failed_path
+
+    @staticmethod
+    def _should_rebuild_enemy_path(
+        enemy: EnemyState,
+        player_position: WorldCoord,
+        path_target_rebuild_distance_px: float,
+    ) -> bool:
+        """Return whether an enemy needs a new navigation path.
+
+        Args:
+            enemy: Enemy checking path freshness.
+            player_position: Current player world position.
+            path_target_rebuild_distance_px: Player movement distance that forces path rebuild.
+
+        Returns:
+            True if the current path is missing or stale.
+        """
+        if not enemy.path_tiles:
+            return True
+        if enemy.last_path_target_position is None:
+            return True
+        dx = player_position.x - enemy.last_path_target_position.x
+        dy = player_position.y - enemy.last_path_target_position.y
+        return math.hypot(dx, dy) >= max(0.0, path_target_rebuild_distance_px)
+
+    @staticmethod
+    def _rebuild_enemy_path(
+        enemy: EnemyState,
+        player_position: WorldCoord,
+        pathfinder: GridPathfinder,
+        tile_size_px: int,
+        path_rebuild_interval_seconds: float,
+        path_max_iterations: int,
+    ) -> tuple[bool, bool]:
+        """Rebuild a path from an enemy to the player.
+
+        Args:
+            enemy: Enemy receiving the new path.
+            player_position: Current player world position.
+            pathfinder: Grid pathfinder used to query the map.
+            tile_size_px: Runtime map tile size in pixels.
+            path_rebuild_interval_seconds: Delay before another automatic rebuild.
+            path_max_iterations: Maximum A* iterations for this query.
+
+        Returns:
+            Tuple containing rebuilt and failed flags.
+        """
+        start_tile = world_to_tile(enemy.world_position, tile_size_px)
+        goal_tile = world_to_tile(player_position, tile_size_px)
+        result = pathfinder.find_path(start_tile, goal_tile, max_iterations=path_max_iterations)
+        enemy.path_rebuild_timer_seconds = max(0.0, path_rebuild_interval_seconds)
+        enemy.last_path_target_position = player_position
+        if not result.tiles:
+            EnemySystem._clear_enemy_path(enemy)
+            return True, True
+        enemy.path_tiles = result.tiles
+        enemy.path_waypoint_index = 1 if len(result.tiles) > 1 else 0
+        return True, False
+
+    @staticmethod
+    def _current_path_waypoint(
+        enemy: EnemyState,
+        tile_size_px: int,
+        path_waypoint_reach_distance_px: float,
+    ) -> WorldCoord | None:
+        """Return the current path waypoint and advance reached waypoints.
+
+        Args:
+            enemy: Enemy following the path.
+            tile_size_px: Runtime map tile size in pixels.
+            path_waypoint_reach_distance_px: Distance used to accept a waypoint.
+
+        Returns:
+            Current waypoint world position, or None if no waypoint is available.
+        """
+        safe_reach_distance = max(0.0, path_waypoint_reach_distance_px)
+        while enemy.path_tiles and enemy.path_waypoint_index < len(enemy.path_tiles):
+            waypoint = tile_to_world_center(enemy.path_tiles[enemy.path_waypoint_index], tile_size_px)
+            distance = math.hypot(
+                waypoint.x - enemy.world_position.x,
+                waypoint.y - enemy.world_position.y,
+            )
+            if distance > safe_reach_distance:
+                return waypoint
+            enemy.path_waypoint_index += 1
+        return None
+
+    @staticmethod
+    def _clear_enemy_path(enemy: EnemyState) -> None:
+        """Clear an enemy navigation path.
+
+        Args:
+            enemy: Enemy whose path should be cleared.
+        """
+        enemy.path_tiles = ()
+        enemy.path_waypoint_index = 0
+        enemy.last_path_target_position = None
 
     @staticmethod
     def _calculate_combat_steering_weights(

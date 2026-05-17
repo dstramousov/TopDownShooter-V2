@@ -17,6 +17,7 @@ from topdown_shooter.rendering.player_renderer import PlayerRenderer
 from topdown_shooter.rendering.projectile_renderer import ProjectileRenderer
 from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.coordinates import WorldCoord
+from topdown_shooter.world.pathfinding import GridPathfinder
 from topdown_shooter.world.player import PlayerState
 from topdown_shooter.world.player_aim import PlayerAimState
 from topdown_shooter.world.player_controller import PlayerController, PlayerMoveIntent
@@ -105,6 +106,7 @@ class RaylibWindow:
             max_health=config.player.max_health,
         )
         self._collision_service = TileCollisionService(runtime_map)
+        self._enemy_pathfinder = GridPathfinder(runtime_map)
         self._player_controller = PlayerController(
             collision_service=self._collision_service,
             tile_size_px=runtime_map.tile_size_px,
@@ -239,6 +241,18 @@ class RaylibWindow:
                     ),
                     line_of_sight_sample_step_px=(
                         self._config.enemies.line_of_sight_sample_step_px
+                    ),
+                    pathfinder=self._enemy_pathfinder,
+                    pathfinding_enabled=self._config.enemies.pathfinding_enabled,
+                    path_rebuild_interval_seconds=(
+                        self._config.enemies.path_rebuild_interval_seconds
+                    ),
+                    path_target_rebuild_distance_px=(
+                        self._config.enemies.path_target_rebuild_distance_px
+                    ),
+                    path_max_iterations=self._config.enemies.path_max_iterations,
+                    path_waypoint_reach_distance_px=(
+                        self._config.enemies.path_waypoint_reach_distance_px
                     ),
                 )
                 self._projectile_system.prune_dead()

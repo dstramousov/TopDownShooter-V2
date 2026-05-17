@@ -278,3 +278,10 @@
 - Added smoothed enemy movement direction to reduce abrupt steering changes.
 - Added aggressive minimum-distance retreat and local anti-stuck fallback directions.
 - Added movement diagnostics for approaching and stuck enemies.
+
+## v0.0.36 -> v0.0.37
+
+- Added grid A* pathfinding for alerted enemies when direct line of sight is blocked.
+- Enemies now follow tile waypoints around blocked map areas before returning to combat steering.
+- Added pathfinding runtime config values and debug overlay diagnostics for pathing/rebuild failures.
+- Kept attacks, player damage, squad tactics, and flanking out of scope.

@@ -717,3 +717,92 @@ def test_alerted_enemy_reports_stuck_when_no_candidate_is_walkable() -> None:
 
     assert system.stats.moving_enemies == 0
     assert system.stats.stuck_enemies == 1
+
+
+def test_alerted_enemy_uses_pathfinding_when_line_of_sight_is_blocked() -> None:
+    """Alerted enemies should route around obstacles when direct sight is blocked."""
+    from topdown_shooter.world.collision import TileCollisionService
+    from topdown_shooter.world.pathfinding import GridPathfinder
+
+    runtime_map = _build_runtime_map_from_rows(("+++++", "+###+", "+++++"))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {
+                    "id": "spawn_0",
+                    "position": [0, 1],
+                    "facing_angle_degrees": 0.0,
+                },
+            ],
+        },
+        runtime_map,
+    )
+    enemy = system.enemies[0]
+    enemy.alerted = True
+
+    system.update_chase_movement(
+        player_position=WorldCoord(x=72.0, y=24.0),
+        collision_service=TileCollisionService(runtime_map),
+        frame_time=1.0,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+        preferred_combat_distance_px=0.0,
+        approach_weight=1.0,
+        pathfinder=GridPathfinder(runtime_map),
+        pathfinding_enabled=True,
+        path_rebuild_interval_seconds=0.35,
+        path_target_rebuild_distance_px=16.0,
+        path_max_iterations=64,
+        path_waypoint_reach_distance_px=2.0,
+    )
+
+    assert system.stats.pathing_enemies == 1
+    assert system.stats.path_rebuilds == 1
+    assert system.stats.failed_path_rebuilds == 0
+    assert system.stats.moving_enemies == 1
+    assert system.enemies[0].world_position != WorldCoord(x=8.0, y=24.0)
+    assert system.enemies[0].tile != TileCoord(1, 1)
+
+
+def test_alerted_enemy_reports_failed_path_when_goal_is_unreachable() -> None:
+    """Enemy diagnostics should report failed A* path rebuilds."""
+    from topdown_shooter.world.collision import TileCollisionService
+    from topdown_shooter.world.pathfinding import GridPathfinder
+
+    runtime_map = _build_runtime_map_from_rows(("+#+", "###", "+#+"))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {
+                    "id": "spawn_0",
+                    "position": [0, 0],
+                    "facing_angle_degrees": 0.0,
+                },
+            ],
+        },
+        runtime_map,
+    )
+    enemy = system.enemies[0]
+    enemy.alerted = True
+
+    system.update_chase_movement(
+        player_position=WorldCoord(x=40.0, y=40.0),
+        collision_service=TileCollisionService(runtime_map),
+        frame_time=1.0,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+        preferred_combat_distance_px=0.0,
+        approach_weight=1.0,
+        pathfinder=GridPathfinder(runtime_map),
+        pathfinding_enabled=True,
+        path_rebuild_interval_seconds=0.35,
+        path_target_rebuild_distance_px=16.0,
+        path_max_iterations=64,
+        path_waypoint_reach_distance_px=2.0,
+    )
+
+    assert system.stats.path_rebuilds == 1
+    assert system.stats.failed_path_rebuilds == 1
+    assert system.stats.moving_enemies == 0

@@ -97,6 +97,11 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.enemies.retreat_weight == 0.75
     assert config.enemies.strafe_switch_min_seconds == 0.9
     assert config.enemies.strafe_switch_max_seconds == 1.6
+    assert config.enemies.pathfinding_enabled is True
+    assert config.enemies.path_rebuild_interval_seconds == 0.35
+    assert config.enemies.path_target_rebuild_distance_px == 48.0
+    assert config.enemies.path_max_iterations == 2048
+    assert config.enemies.path_waypoint_reach_distance_px == 8.0
     assert config.fps_counter.enabled is True
     assert config.fps_counter.position == "top_right"
     assert config.fps_counter.margin_x == 12

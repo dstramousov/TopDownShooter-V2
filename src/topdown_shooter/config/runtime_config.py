@@ -160,6 +160,11 @@ class EnemyConfig:
         retreat_weight: Radial steering weight while backing away.
         strafe_switch_min_seconds: Minimum time before changing strafe side.
         strafe_switch_max_seconds: Maximum time before changing strafe side.
+        pathfinding_enabled: Whether alerted enemies can use grid A* navigation.
+        path_rebuild_interval_seconds: Minimum delay between enemy path rebuilds.
+        path_target_rebuild_distance_px: Player movement distance that forces path rebuild.
+        path_max_iterations: Maximum A* iterations per enemy path query.
+        path_waypoint_reach_distance_px: Distance used to advance enemy path waypoints.
     """
 
     marker_radius_px: int
@@ -193,6 +198,11 @@ class EnemyConfig:
     retreat_weight: float
     strafe_switch_min_seconds: float
     strafe_switch_max_seconds: float
+    pathfinding_enabled: bool
+    path_rebuild_interval_seconds: float
+    path_target_rebuild_distance_px: float
+    path_max_iterations: int
+    path_waypoint_reach_distance_px: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -535,6 +545,20 @@ class RuntimeConfigLoader:
                 strafe_switch_max_seconds=self._require_non_negative_float(
                     enemies,
                     "strafe_switch_max_seconds",
+                ),
+                pathfinding_enabled=self._require_bool(enemies, "pathfinding_enabled"),
+                path_rebuild_interval_seconds=self._require_non_negative_float(
+                    enemies,
+                    "path_rebuild_interval_seconds",
+                ),
+                path_target_rebuild_distance_px=self._require_non_negative_float(
+                    enemies,
+                    "path_target_rebuild_distance_px",
+                ),
+                path_max_iterations=self._require_positive_int(enemies, "path_max_iterations"),
+                path_waypoint_reach_distance_px=self._require_non_negative_float(
+                    enemies,
+                    "path_waypoint_reach_distance_px",
                 ),
             ),
             debug_overlay=DebugOverlayConfig(

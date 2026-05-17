@@ -144,6 +144,11 @@
     "strafe_weight": 0.55,
     "retreat_weight": 0.75,
     "strafe_switch_min_seconds": 0.9,
-    "strafe_switch_max_seconds": 1.6
+    "strafe_switch_max_seconds": 1.6,
+    "pathfinding_enabled": true,
+    "path_rebuild_interval_seconds": 0.35,
+    "path_target_rebuild_distance_px": 48.0,
+    "path_max_iterations": 2048,
+    "path_waypoint_reach_distance_px": 8.0
   }
 }
