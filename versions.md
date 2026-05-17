@@ -300,3 +300,10 @@
 - Enemies now assign reachable combat slots around the player and path toward those positions.
 - Added player stationary tracking, tactical slot config values, debug slot rendering, and overlay diagnostics.
 - Kept attacks, player damage, flanking tactics, cover logic, and bullet dodging out of scope.
+
+## v0.0.39 -> v0.0.40
+
+- Reduced tactical slot churn by keeping assigned firing positions until the player meaningfully repositions.
+- Added tactical slot commitment timing so enemies do not constantly swap positions while surrounding a stationary player.
+- Improved tactical slot assignment with wider slot generation, angular sector spacing, stronger position separation, and firing-position scoring.
+- Added runtime config and debug overlay values for tactical sector angle, commitment time, and player reposition distance.

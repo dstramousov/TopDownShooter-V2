@@ -45,6 +45,7 @@ class EnemyState:
         path_rebuild_timer_seconds: Seconds until the path may be rebuilt.
         last_path_target_position: Last world-space path target position.
         tactical_target_position: Assigned tactical surround position.
+        tactical_target_age_seconds: Seconds elapsed since the current tactical slot assignment.
     """
 
     enemy_id: str
@@ -69,6 +70,7 @@ class EnemyState:
     path_rebuild_timer_seconds: float = 0.0
     last_path_target_position: WorldCoord | None = None
     tactical_target_position: WorldCoord | None = None
+    tactical_target_age_seconds: float = 0.0
 
 
 @dataclass(slots=True)
@@ -402,6 +404,9 @@ class EnemySystem:
         tactical_reassign_interval_seconds: float = 1.5,
         tactical_slot_reached_distance_px: float = 18.0,
         tactical_min_slot_spacing_px: float = 48.0,
+        tactical_min_slot_angle_degrees: float = 55.0,
+        tactical_slot_commitment_seconds: float = 2.5,
+        tactical_player_reposition_distance_px: float = 48.0,
     ) -> None:
         """Move alerted enemies using local combat steering.
 
@@ -437,6 +442,9 @@ class EnemySystem:
             tactical_reassign_interval_seconds: Minimum delay between tactical slot reassignments.
             tactical_slot_reached_distance_px: Distance used to hold a tactical slot.
             tactical_min_slot_spacing_px: Minimum spacing between assigned tactical slots.
+            tactical_min_slot_angle_degrees: Minimum angular gap between assigned slots.
+            tactical_slot_commitment_seconds: Minimum time a slot is held before reassignment.
+            tactical_player_reposition_distance_px: Player movement distance that forces slot reassignment.
         """
         self._moving_enemies = 0
         self._approaching_enemies = 0
@@ -468,9 +476,11 @@ class EnemySystem:
         )
         if tactical_active:
             self._tactical_reassign_timer_seconds -= frame_time
+            self._advance_tactical_target_ages(frame_time=frame_time)
             if self._should_reassign_tactical_slots(
                 player_position=player_position,
                 tactical_reassign_interval_seconds=tactical_reassign_interval_seconds,
+                tactical_player_reposition_distance_px=tactical_player_reposition_distance_px,
             ):
                 self._assign_tactical_positions(
                     player_position=player_position,
@@ -481,6 +491,8 @@ class EnemySystem:
                     tactical_slot_count=tactical_slot_count,
                     tactical_surround_distance_px=tactical_surround_distance_px,
                     tactical_min_slot_spacing_px=tactical_min_slot_spacing_px,
+                    tactical_min_slot_angle_degrees=tactical_min_slot_angle_degrees,
+                    tactical_slot_commitment_seconds=tactical_slot_commitment_seconds,
                     path_max_iterations=path_max_iterations,
                     enemy_collision_radius_px=enemy_collision_radius_px,
                     line_of_sight_sample_step_px=line_of_sight_sample_step_px,
@@ -577,29 +589,51 @@ class EnemySystem:
         self,
         player_position: WorldCoord,
         tactical_reassign_interval_seconds: float,
+        tactical_player_reposition_distance_px: float,
     ) -> bool:
         """Return whether tactical surround slots should be reassigned.
 
         Args:
             player_position: Current player world position.
             tactical_reassign_interval_seconds: Reassignment interval in seconds.
+            tactical_player_reposition_distance_px: Player movement distance that forces reassignment.
 
         Returns:
             True if slots should be rebuilt for the current player position.
         """
-        if self._tactical_reassign_timer_seconds <= 0.0:
+        if not self._has_active_tactical_positions():
             return True
+        if self._tactical_reassign_timer_seconds > 0.0:
+            return False
         if self._last_tactical_player_position is None:
             return True
         dx = player_position.x - self._last_tactical_player_position.x
         dy = player_position.y - self._last_tactical_player_position.y
-        return math.hypot(dx, dy) >= max(16.0, tactical_reassign_interval_seconds * 16.0)
+        return math.hypot(dx, dy) >= max(0.0, tactical_player_reposition_distance_px)
+
+    def _has_active_tactical_positions(self) -> bool:
+        """Return whether any alerted enemy currently owns a tactical slot."""
+        return any(
+            enemy.alive and enemy.alerted and enemy.tactical_target_position is not None
+            for enemy in self._enemies
+        )
+
+    def _advance_tactical_target_ages(self, frame_time: float) -> None:
+        """Advance tactical slot assignment ages for active assignments.
+
+        Args:
+            frame_time: Current frame duration in seconds.
+        """
+        for enemy in self._enemies:
+            if enemy.alive and enemy.alerted and enemy.tactical_target_position is not None:
+                enemy.tactical_target_age_seconds += frame_time
 
     def _clear_tactical_positions(self) -> None:
         """Clear tactical surround assignments from all enemies."""
         for enemy in self._enemies:
             if enemy.tactical_target_position is not None:
                 enemy.tactical_target_position = None
+                enemy.tactical_target_age_seconds = 0.0
                 EnemySystem._clear_enemy_path(enemy)
 
     def _assign_tactical_positions(
@@ -612,6 +646,8 @@ class EnemySystem:
         tactical_slot_count: int,
         tactical_surround_distance_px: float,
         tactical_min_slot_spacing_px: float,
+        tactical_min_slot_angle_degrees: float,
+        tactical_slot_commitment_seconds: float,
         path_max_iterations: int,
         enemy_collision_radius_px: float,
         line_of_sight_sample_step_px: float,
@@ -627,13 +663,13 @@ class EnemySystem:
             tactical_slot_count: Number of candidate slots around the player.
             tactical_surround_distance_px: Explicit tactical ring radius.
             tactical_min_slot_spacing_px: Minimum spacing between assigned slots.
+            tactical_min_slot_angle_degrees: Minimum angular gap between assigned slots.
+            tactical_slot_commitment_seconds: Minimum time a slot is held before reassignment.
             path_max_iterations: Maximum A* iterations for reachability checks.
             enemy_collision_radius_px: Enemy collision radius in world pixels.
             line_of_sight_sample_step_px: Sample step for player line-of-sight checks.
         """
         active_enemies = [enemy for enemy in self._enemies if enemy.alive and enemy.alerted]
-        for enemy in active_enemies:
-            enemy.tactical_target_position = None
         if not active_enemies:
             return
 
@@ -642,27 +678,57 @@ class EnemySystem:
             radius = max(32.0, preferred_combat_distance_px)
         slots = EnemySystem._build_tactical_slots(
             player_position=player_position,
-            slot_count=max(tactical_slot_count, len(active_enemies)),
+            slot_count=max(tactical_slot_count, len(active_enemies) * 3),
             radius_px=radius,
         )
         assigned_slots: list[WorldCoord] = []
-        for enemy in sorted(active_enemies, key=lambda item: item.enemy_id):
+        assigned_angles: list[float] = []
+        enemies_to_assign: list[EnemyState] = []
+        for enemy in active_enemies:
+            existing_slot = enemy.tactical_target_position
+            if (
+                existing_slot is not None
+                and enemy.tactical_target_age_seconds < max(0.0, tactical_slot_commitment_seconds)
+                and EnemySystem._is_tactical_slot_usable(
+                    slot=existing_slot,
+                    player_position=player_position,
+                    collision_service=collision_service,
+                    enemy_collision_radius_px=enemy_collision_radius_px,
+                    line_of_sight_sample_step_px=line_of_sight_sample_step_px,
+                )
+            ):
+                assigned_slots.append(existing_slot)
+                assigned_angles.append(EnemySystem._angle_from_player_to_slot(player_position, existing_slot))
+                continue
+            enemy.tactical_target_position = None
+            enemy.tactical_target_age_seconds = 0.0
+            EnemySystem._clear_enemy_path(enemy)
+            enemies_to_assign.append(enemy)
+
+        for enemy in sorted(enemies_to_assign, key=lambda item: item.enemy_id):
             best_slot: WorldCoord | None = None
             best_score: float | None = None
+            best_angle = 0.0
             for slot in slots:
+                slot_angle = EnemySystem._angle_from_player_to_slot(player_position, slot)
                 if not EnemySystem._has_tactical_slot_spacing(
                     slot=slot,
                     assigned_slots=assigned_slots,
                     min_spacing_px=tactical_min_slot_spacing_px,
                 ):
                     continue
-                if not collision_service.is_circle_walkable(slot, enemy_collision_radius_px):
+                if not EnemySystem._has_tactical_slot_angle_spacing(
+                    slot_angle_degrees=slot_angle,
+                    assigned_angles_degrees=assigned_angles,
+                    min_angle_degrees=tactical_min_slot_angle_degrees,
+                ):
                     continue
-                if not EnemySystem._has_line_of_sight(
-                    start=slot,
-                    end=player_position,
+                if not EnemySystem._is_tactical_slot_usable(
+                    slot=slot,
+                    player_position=player_position,
                     collision_service=collision_service,
-                    sample_step_px=line_of_sight_sample_step_px,
+                    enemy_collision_radius_px=enemy_collision_radius_px,
+                    line_of_sight_sample_step_px=line_of_sight_sample_step_px,
                 ):
                     continue
                 path = pathfinder.find_path(
@@ -672,19 +738,24 @@ class EnemySystem:
                 )
                 if not path.tiles:
                     continue
-                distance_to_slot = math.hypot(
-                    slot.x - enemy.world_position.x,
-                    slot.y - enemy.world_position.y,
+                score = EnemySystem._score_tactical_slot(
+                    enemy=enemy,
+                    slot=slot,
+                    path_length_tiles=len(path.tiles),
+                    tile_size_px=tile_size_px,
+                    assigned_slots=assigned_slots,
                 )
-                score = float(len(path.tiles)) * 1000.0 + distance_to_slot
                 if best_score is None or score < best_score:
                     best_score = score
                     best_slot = slot
+                    best_angle = slot_angle
             if best_slot is None:
                 continue
             enemy.tactical_target_position = best_slot
+            enemy.tactical_target_age_seconds = 0.0
             EnemySystem._clear_enemy_path(enemy)
             assigned_slots.append(best_slot)
+            assigned_angles.append(best_angle)
         self._tactical_positioning_enemies = sum(
             1 for enemy in active_enemies if enemy.tactical_target_position is not None
         )
@@ -742,6 +813,119 @@ class EnemySystem:
             if math.hypot(dx, dy) < safe_spacing:
                 return False
         return True
+
+    @staticmethod
+    def _has_tactical_slot_angle_spacing(
+        slot_angle_degrees: float,
+        assigned_angles_degrees: list[float],
+        min_angle_degrees: float,
+    ) -> bool:
+        """Return whether a slot is in a sufficiently distinct fire sector.
+
+        Args:
+            slot_angle_degrees: Candidate slot angle around the player.
+            assigned_angles_degrees: Already assigned slot angles around the player.
+            min_angle_degrees: Minimum angular gap in degrees.
+
+        Returns:
+            True when the candidate is not too close to an occupied sector.
+        """
+        safe_min_angle = max(0.0, min_angle_degrees)
+        for assigned_angle in assigned_angles_degrees:
+            if EnemySystem._angle_distance_degrees(slot_angle_degrees, assigned_angle) < safe_min_angle:
+                return False
+        return True
+
+    @staticmethod
+    def _is_tactical_slot_usable(
+        slot: WorldCoord,
+        player_position: WorldCoord,
+        collision_service: TileCollisionService,
+        enemy_collision_radius_px: float,
+        line_of_sight_sample_step_px: float,
+    ) -> bool:
+        """Return whether a tactical slot is a usable firing position.
+
+        Args:
+            slot: Candidate tactical slot position.
+            player_position: Current player position.
+            collision_service: Collision service used for walkability and line of sight.
+            enemy_collision_radius_px: Enemy collision radius in world pixels.
+            line_of_sight_sample_step_px: Sample step for player line-of-sight checks.
+
+        Returns:
+            True when the slot is walkable and has line of sight to the player.
+        """
+        return collision_service.is_circle_walkable(
+            slot,
+            enemy_collision_radius_px,
+        ) and EnemySystem._has_line_of_sight(
+            start=slot,
+            end=player_position,
+            collision_service=collision_service,
+            sample_step_px=line_of_sight_sample_step_px,
+        )
+
+    @staticmethod
+    def _score_tactical_slot(
+        enemy: EnemyState,
+        slot: WorldCoord,
+        path_length_tiles: int,
+        tile_size_px: int,
+        assigned_slots: list[WorldCoord],
+    ) -> float:
+        """Score a tactical firing slot for one enemy.
+
+        Args:
+            enemy: Enemy receiving the tactical slot.
+            slot: Candidate tactical slot position.
+            path_length_tiles: Length of the path to the slot in tiles.
+            tile_size_px: Runtime map tile size in pixels.
+            assigned_slots: Already assigned tactical slot positions.
+
+        Returns:
+            Lower score for better slots.
+        """
+        distance_to_slot = math.hypot(
+            slot.x - enemy.world_position.x,
+            slot.y - enemy.world_position.y,
+        )
+        nearest_assigned_distance = 9999.0
+        for assigned_slot in assigned_slots:
+            nearest_assigned_distance = min(
+                nearest_assigned_distance,
+                math.hypot(slot.x - assigned_slot.x, slot.y - assigned_slot.y),
+            )
+        separation_bonus = min(nearest_assigned_distance, 160.0) * 0.35
+        return float(path_length_tiles * max(1, tile_size_px)) + distance_to_slot * 0.35 - separation_bonus
+
+    @staticmethod
+    def _angle_from_player_to_slot(player_position: WorldCoord, slot: WorldCoord) -> float:
+        """Return the slot angle around the player in degrees.
+
+        Args:
+            player_position: Player center position.
+            slot: Tactical slot position.
+
+        Returns:
+            Angle from player to slot in degrees in the 0..360 range.
+        """
+        return math.degrees(
+            math.atan2(slot.y - player_position.y, slot.x - player_position.x),
+        ) % 360.0
+
+    @staticmethod
+    def _angle_distance_degrees(first: float, second: float) -> float:
+        """Return the shortest angular distance between two angles.
+
+        Args:
+            first: First angle in degrees.
+            second: Second angle in degrees.
+
+        Returns:
+            Absolute shortest distance in degrees.
+        """
+        return abs((first - second + 180.0) % 360.0 - 180.0)
 
     @staticmethod
     def _move_enemy_with_combat_steering(

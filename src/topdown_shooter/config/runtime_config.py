@@ -174,6 +174,9 @@ class EnemyConfig:
         tactical_reassign_interval_seconds: Minimum delay between tactical slot assignments.
         tactical_slot_reached_distance_px: Distance used to hold a tactical slot.
         tactical_min_slot_spacing_px: Minimum spacing between assigned tactical slots.
+        tactical_min_slot_angle_degrees: Minimum angular gap between assigned tactical slots.
+        tactical_slot_commitment_seconds: Minimum time tactical slots are held.
+        tactical_player_reposition_distance_px: Player movement distance that forces slot reassignment.
         draw_tactical_slots: Whether debug tactical target slots are drawn.
     """
 
@@ -222,6 +225,9 @@ class EnemyConfig:
     tactical_reassign_interval_seconds: float
     tactical_slot_reached_distance_px: float
     tactical_min_slot_spacing_px: float
+    tactical_min_slot_angle_degrees: float
+    tactical_slot_commitment_seconds: float
+    tactical_player_reposition_distance_px: float
     draw_tactical_slots: bool
 
 
@@ -614,6 +620,18 @@ class RuntimeConfigLoader:
                 tactical_min_slot_spacing_px=self._require_non_negative_float(
                     enemies,
                     "tactical_min_slot_spacing_px",
+                ),
+                tactical_min_slot_angle_degrees=self._require_angle_degrees(
+                    enemies,
+                    "tactical_min_slot_angle_degrees",
+                ),
+                tactical_slot_commitment_seconds=self._require_non_negative_float(
+                    enemies,
+                    "tactical_slot_commitment_seconds",
+                ),
+                tactical_player_reposition_distance_px=self._require_non_negative_float(
+                    enemies,
+                    "tactical_player_reposition_distance_px",
                 ),
                 draw_tactical_slots=self._require_bool(enemies, "draw_tactical_slots"),
             ),

@@ -899,3 +899,145 @@ def test_moving_player_clears_tactical_surround_assignments() -> None:
     assert system.stats.player_stationary is False
     assert system.stats.tactical_positioning_enemies == 0
     assert system.enemies[0].tactical_target_position is None
+
+
+def test_tactical_surround_assignments_use_separate_fire_sectors() -> None:
+    """Tactical slots should spread alerted enemies across distinct sectors."""
+    import math
+
+    from topdown_shooter.world.collision import TileCollisionService
+    from topdown_shooter.world.pathfinding import GridPathfinder
+
+    runtime_map = _build_runtime_map_from_rows((
+        "++++++++++",
+        "++++++++++",
+        "++++++++++",
+        "++++++++++",
+        "++++++++++",
+        "++++++++++",
+        "++++++++++",
+    ))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {"id": "spawn_0", "position": [1, 3]},
+                {"id": "spawn_1", "position": [1, 4]},
+                {"id": "spawn_2", "position": [1, 5]},
+            ],
+        },
+        runtime_map,
+    )
+    for enemy in system.enemies:
+        enemy.alerted = True
+
+    player_position = WorldCoord(x=88.0, y=56.0)
+    system.update_chase_movement(
+        player_position=player_position,
+        collision_service=TileCollisionService(runtime_map),
+        frame_time=1.0,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+        preferred_combat_distance_px=32.0,
+        pathfinder=GridPathfinder(runtime_map),
+        pathfinding_enabled=True,
+        player_speed_px_per_second=0.0,
+        tactical_positioning_enabled=True,
+        player_stationary_speed_threshold_px_per_second=12.0,
+        player_stationary_time_seconds=0.5,
+        tactical_slot_count=12,
+        tactical_surround_distance_px=32.0,
+        tactical_reassign_interval_seconds=0.0,
+        tactical_slot_reached_distance_px=6.0,
+        tactical_min_slot_spacing_px=8.0,
+        tactical_min_slot_angle_degrees=90.0,
+        path_max_iterations=128,
+    )
+
+    assigned_slots = [enemy.tactical_target_position for enemy in system.enemies]
+    assert all(slot is not None for slot in assigned_slots)
+    angles = [
+        math.degrees(math.atan2(slot.y - player_position.y, slot.x - player_position.x)) % 360.0
+        for slot in assigned_slots
+        if slot is not None
+    ]
+    for index, first_angle in enumerate(angles):
+        for second_angle in angles[index + 1:]:
+            distance = abs((first_angle - second_angle + 180.0) % 360.0 - 180.0)
+            assert distance >= 90.0
+
+
+def test_tactical_surround_assignments_keep_committed_slots() -> None:
+    """Tactical slots should not churn while their commitment timer is active."""
+    from topdown_shooter.world.collision import TileCollisionService
+    from topdown_shooter.world.pathfinding import GridPathfinder
+
+    runtime_map = _build_runtime_map_from_rows((
+        "++++++++++",
+        "++++++++++",
+        "++++++++++",
+        "++++++++++",
+        "++++++++++",
+        "++++++++++",
+        "++++++++++",
+    ))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {"id": "spawn_0", "position": [1, 3]},
+                {"id": "spawn_1", "position": [1, 4]},
+            ],
+        },
+        runtime_map,
+    )
+    for enemy in system.enemies:
+        enemy.alerted = True
+
+    collision_service = TileCollisionService(runtime_map)
+    pathfinder = GridPathfinder(runtime_map)
+    system.update_chase_movement(
+        player_position=WorldCoord(x=88.0, y=56.0),
+        collision_service=collision_service,
+        frame_time=1.0,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+        preferred_combat_distance_px=32.0,
+        pathfinder=pathfinder,
+        pathfinding_enabled=True,
+        player_speed_px_per_second=0.0,
+        tactical_positioning_enabled=True,
+        player_stationary_speed_threshold_px_per_second=12.0,
+        player_stationary_time_seconds=0.5,
+        tactical_slot_count=12,
+        tactical_surround_distance_px=32.0,
+        tactical_reassign_interval_seconds=0.0,
+        tactical_slot_commitment_seconds=2.5,
+        tactical_player_reposition_distance_px=8.0,
+        path_max_iterations=128,
+    )
+    original_slots = tuple(enemy.tactical_target_position for enemy in system.enemies)
+
+    system.update_chase_movement(
+        player_position=WorldCoord(x=104.0, y=56.0),
+        collision_service=collision_service,
+        frame_time=0.5,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+        preferred_combat_distance_px=32.0,
+        pathfinder=pathfinder,
+        pathfinding_enabled=True,
+        player_speed_px_per_second=0.0,
+        tactical_positioning_enabled=True,
+        player_stationary_speed_threshold_px_per_second=12.0,
+        player_stationary_time_seconds=0.5,
+        tactical_slot_count=12,
+        tactical_surround_distance_px=32.0,
+        tactical_reassign_interval_seconds=0.0,
+        tactical_slot_commitment_seconds=2.5,
+        tactical_player_reposition_distance_px=8.0,
+        path_max_iterations=128,
+    )
+
+    assert tuple(enemy.tactical_target_position for enemy in system.enemies) == original_slots

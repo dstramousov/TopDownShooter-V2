@@ -386,6 +386,14 @@ class DebugOverlay:
                     f"{self._config.enemies.tactical_surround_distance_px:.0f}px",
                 ),
                 DebugOverlayRow(
+                    "Tac angle",
+                    f"{self._config.enemies.tactical_min_slot_angle_degrees:.0f}deg",
+                ),
+                DebugOverlayRow(
+                    "Tac commit",
+                    f"{self._config.enemies.tactical_slot_commitment_seconds:.1f}s",
+                ),
+                DebugOverlayRow(
                     "Path interval",
                     f"{self._config.enemies.path_rebuild_interval_seconds:.2f}s",
                 ),

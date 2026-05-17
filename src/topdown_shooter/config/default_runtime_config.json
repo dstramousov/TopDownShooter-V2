@@ -154,11 +154,14 @@
     "tactical_positioning_enabled": true,
     "player_stationary_speed_threshold_px_per_second": 12.0,
     "player_stationary_time_seconds": 0.7,
-    "tactical_slot_count": 10,
+    "tactical_slot_count": 12,
     "tactical_surround_distance_px": 180.0,
     "tactical_reassign_interval_seconds": 1.5,
     "tactical_slot_reached_distance_px": 18.0,
-    "tactical_min_slot_spacing_px": 48.0,
+    "tactical_min_slot_spacing_px": 64.0,
+    "tactical_min_slot_angle_degrees": 60.0,
+    "tactical_slot_commitment_seconds": 2.5,
+    "tactical_player_reposition_distance_px": 56.0,
     "draw_tactical_slots": true
   }
 }

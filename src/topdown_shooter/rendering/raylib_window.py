@@ -281,6 +281,15 @@ class RaylibWindow:
                     tactical_min_slot_spacing_px=(
                         self._config.enemies.tactical_min_slot_spacing_px
                     ),
+                    tactical_min_slot_angle_degrees=(
+                        self._config.enemies.tactical_min_slot_angle_degrees
+                    ),
+                    tactical_slot_commitment_seconds=(
+                        self._config.enemies.tactical_slot_commitment_seconds
+                    ),
+                    tactical_player_reposition_distance_px=(
+                        self._config.enemies.tactical_player_reposition_distance_px
+                    ),
                 )
                 self._projectile_system.prune_dead()
                 self._camera_rig.update_follow_target(
