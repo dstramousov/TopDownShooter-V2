@@ -317,8 +317,10 @@ class DebugOverlay:
                 DebugOverlayRow("Active", str(enemy_stats.active_enemies)),
                 DebugOverlayRow("Alerted", str(enemy_stats.alerted_enemies)),
                 DebugOverlayRow("Moving", str(enemy_stats.moving_enemies)),
+                DebugOverlayRow("Approaching", str(enemy_stats.approaching_enemies)),
                 DebugOverlayRow("Strafing", str(enemy_stats.strafing_enemies)),
                 DebugOverlayRow("Retreating", str(enemy_stats.retreating_enemies)),
+                DebugOverlayRow("Stuck", str(enemy_stats.stuck_enemies)),
                 DebugOverlayRow("Spawned", str(enemy_stats.spawned_enemies)),
                 DebugOverlayRow("Squads", str(enemy_stats.spawned_squads)),
                 DebugOverlayRow("Killed", str(enemy_stats.killed_enemies)),
@@ -341,8 +343,16 @@ class DebugOverlay:
                     f"{self._config.enemies.preferred_combat_distance_px:.0f}px",
                 ),
                 DebugOverlayRow(
+                    "Min dist",
+                    f"{self._config.enemies.minimum_combat_distance_px:.0f}px",
+                ),
+                DebugOverlayRow(
                     "Dist tol",
                     f"{self._config.enemies.combat_distance_tolerance_px:.0f}px",
+                ),
+                DebugOverlayRow(
+                    "Move smooth",
+                    f"{self._config.enemies.movement_direction_smoothing:.2f}",
                 ),
                 DebugOverlayRow("Approach", f"{self._config.enemies.approach_weight:.2f}"),
                 DebugOverlayRow("Strafe", f"{self._config.enemies.strafe_weight:.2f}"),

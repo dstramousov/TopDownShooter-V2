@@ -152,7 +152,9 @@ class EnemyConfig:
         placement_attempts_per_enemy: Candidate attempts for each squad member.
         chase_speed_px_per_second: Speed for alerted enemy combat movement.
         preferred_combat_distance_px: Desired distance alerted enemies try to keep.
+        minimum_combat_distance_px: Hard distance where enemies retreat more aggressively.
         combat_distance_tolerance_px: Distance band around preferred combat distance.
+        movement_direction_smoothing: Blend factor for enemy movement direction changes.
         approach_weight: Radial steering weight while closing distance.
         strafe_weight: Tangential steering weight while in combat movement.
         retreat_weight: Radial steering weight while backing away.
@@ -183,7 +185,9 @@ class EnemyConfig:
     placement_attempts_per_enemy: int
     chase_speed_px_per_second: float
     preferred_combat_distance_px: float
+    minimum_combat_distance_px: float
     combat_distance_tolerance_px: float
+    movement_direction_smoothing: float
     approach_weight: float
     strafe_weight: float
     retreat_weight: float
@@ -509,9 +513,17 @@ class RuntimeConfigLoader:
                     enemies,
                     "preferred_combat_distance_px",
                 ),
+                minimum_combat_distance_px=self._require_non_negative_float(
+                    enemies,
+                    "minimum_combat_distance_px",
+                ),
                 combat_distance_tolerance_px=self._require_non_negative_float(
                     enemies,
                     "combat_distance_tolerance_px",
+                ),
+                movement_direction_smoothing=self._require_non_negative_float(
+                    enemies,
+                    "movement_direction_smoothing",
                 ),
                 approach_weight=self._require_non_negative_float(enemies, "approach_weight"),
                 strafe_weight=self._require_non_negative_float(enemies, "strafe_weight"),

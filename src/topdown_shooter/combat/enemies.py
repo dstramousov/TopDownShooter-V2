@@ -37,6 +37,8 @@ class EnemyState:
         last_hit_age_seconds: Seconds elapsed since the last damaging hit.
         strafe_direction: Current deterministic strafe side, either -1 or 1.
         strafe_timer_seconds: Seconds left before the strafe side can change.
+        movement_direction_x: Smoothed horizontal movement direction.
+        movement_direction_y: Smoothed vertical movement direction.
     """
 
     enemy_id: str
@@ -54,6 +56,8 @@ class EnemyState:
     last_hit_age_seconds: float | None = None
     strafe_direction: int = 1
     strafe_timer_seconds: float = 0.0
+    movement_direction_x: float = 0.0
+    movement_direction_y: float = 0.0
 
 
 @dataclass(slots=True)
@@ -87,8 +91,10 @@ class EnemyStats:
         total_hits: Total number of projectile hits applied to enemies.
         active_hit_markers: Number of currently active enemy hit markers.
         moving_enemies: Number of active enemies that moved during the last update.
+        approaching_enemies: Number of active enemies closing distance in the last update.
         strafing_enemies: Number of active enemies using strafe steering in the last update.
         retreating_enemies: Number of active enemies backing away in the last update.
+        stuck_enemies: Number of active enemies blocked by local obstacles in the last update.
         source_spawn_zones: Number of tactical spawn zones read from the map package.
         spawned_squads: Number of tactical spawn zones that produced at least one enemy.
     """
@@ -100,8 +106,10 @@ class EnemyStats:
     total_hits: int
     active_hit_markers: int
     moving_enemies: int
+    approaching_enemies: int
     strafing_enemies: int
     retreating_enemies: int
+    stuck_enemies: int
     source_spawn_zones: int
     spawned_squads: int
 
@@ -136,8 +144,10 @@ class EnemySystem:
         self._killed_enemies = 0
         self._total_hits = 0
         self._moving_enemies = 0
+        self._approaching_enemies = 0
         self._strafing_enemies = 0
         self._retreating_enemies = 0
+        self._stuck_enemies = 0
 
     @classmethod
     def from_tactical_map(
@@ -290,8 +300,10 @@ class EnemySystem:
             total_hits=self._total_hits,
             active_hit_markers=len(self._hit_markers),
             moving_enemies=self._moving_enemies,
+            approaching_enemies=self._approaching_enemies,
             strafing_enemies=self._strafing_enemies,
             retreating_enemies=self._retreating_enemies,
+            stuck_enemies=self._stuck_enemies,
             source_spawn_zones=self._source_spawn_zones,
             spawned_squads=self._spawned_squads,
         )
@@ -329,6 +341,8 @@ class EnemySystem:
         strafe_switch_min_seconds: float = 1.0,
         strafe_switch_max_seconds: float = 1.0,
         line_of_sight_sample_step_px: float = 8.0,
+        minimum_combat_distance_px: float = 0.0,
+        movement_direction_smoothing: float = 1.0,
     ) -> None:
         """Move alerted enemies using local combat steering.
 
@@ -347,38 +361,50 @@ class EnemySystem:
             strafe_switch_min_seconds: Minimum time before changing strafe side.
             strafe_switch_max_seconds: Maximum time before changing strafe side.
             line_of_sight_sample_step_px: Sample step used to reduce strafing without sight.
+            minimum_combat_distance_px: Hard distance where retreat becomes more aggressive.
+            movement_direction_smoothing: Blend factor for desired movement direction.
         """
         self._moving_enemies = 0
+        self._approaching_enemies = 0
         self._strafing_enemies = 0
         self._retreating_enemies = 0
+        self._stuck_enemies = 0
         if frame_time <= 0.0 or chase_speed_px_per_second <= 0.0:
             return
         for enemy in self._enemies:
             if not enemy.alive or not enemy.alerted:
                 continue
-            moved, strafing, retreating = self._move_enemy_with_combat_steering(
-                enemy=enemy,
-                player_position=player_position,
-                collision_service=collision_service,
-                frame_time=frame_time,
-                movement_speed_px_per_second=chase_speed_px_per_second,
-                enemy_collision_radius_px=enemy_collision_radius_px,
-                tile_size_px=tile_size_px,
-                preferred_combat_distance_px=preferred_combat_distance_px,
-                combat_distance_tolerance_px=combat_distance_tolerance_px,
-                approach_weight=approach_weight,
-                strafe_weight=strafe_weight,
-                retreat_weight=retreat_weight,
-                strafe_switch_min_seconds=strafe_switch_min_seconds,
-                strafe_switch_max_seconds=strafe_switch_max_seconds,
-                line_of_sight_sample_step_px=line_of_sight_sample_step_px,
+            moved, approaching, strafing, retreating, stuck = (
+                self._move_enemy_with_combat_steering(
+                    enemy=enemy,
+                    player_position=player_position,
+                    collision_service=collision_service,
+                    frame_time=frame_time,
+                    movement_speed_px_per_second=chase_speed_px_per_second,
+                    enemy_collision_radius_px=enemy_collision_radius_px,
+                    tile_size_px=tile_size_px,
+                    preferred_combat_distance_px=preferred_combat_distance_px,
+                    combat_distance_tolerance_px=combat_distance_tolerance_px,
+                    approach_weight=approach_weight,
+                    strafe_weight=strafe_weight,
+                    retreat_weight=retreat_weight,
+                    strafe_switch_min_seconds=strafe_switch_min_seconds,
+                    strafe_switch_max_seconds=strafe_switch_max_seconds,
+                    line_of_sight_sample_step_px=line_of_sight_sample_step_px,
+                    minimum_combat_distance_px=minimum_combat_distance_px,
+                    movement_direction_smoothing=movement_direction_smoothing,
+                )
             )
             if moved:
                 self._moving_enemies += 1
+            if approaching:
+                self._approaching_enemies += 1
             if strafing:
                 self._strafing_enemies += 1
             if retreating:
                 self._retreating_enemies += 1
+            if stuck:
+                self._stuck_enemies += 1
 
     @staticmethod
     def _move_enemy_with_combat_steering(
@@ -397,7 +423,9 @@ class EnemySystem:
         strafe_switch_min_seconds: float,
         strafe_switch_max_seconds: float,
         line_of_sight_sample_step_px: float,
-    ) -> tuple[bool, bool, bool]:
+        minimum_combat_distance_px: float,
+        movement_direction_smoothing: float,
+    ) -> tuple[bool, bool, bool, bool, bool]:
         """Move one enemy with combat-distance and strafe steering.
 
         Args:
@@ -416,6 +444,8 @@ class EnemySystem:
             strafe_switch_min_seconds: Minimum time before changing strafe side.
             strafe_switch_max_seconds: Maximum time before changing strafe side.
             line_of_sight_sample_step_px: Sample step used to reduce strafing without sight.
+            minimum_combat_distance_px: Hard distance where retreat becomes more aggressive.
+            movement_direction_smoothing: Blend factor for desired movement direction.
 
         Returns:
             Tuple containing moved, strafing, and retreating flags.
@@ -424,7 +454,7 @@ class EnemySystem:
         dy = player_position.y - enemy.world_position.y
         distance = math.hypot(dx, dy)
         if distance <= 0.000001:
-            return False, False, False
+            return False, False, False, False, False
 
         EnemySystem._advance_enemy_strafe_state(
             enemy=enemy,
@@ -438,23 +468,17 @@ class EnemySystem:
         strafe_y = radial_x * float(enemy.strafe_direction)
         enemy.facing_angle_degrees = math.degrees(math.atan2(dy, dx)) % 360.0
 
-        lower_distance = max(0.0, preferred_combat_distance_px - combat_distance_tolerance_px)
-        upper_distance = max(
-            lower_distance,
-            preferred_combat_distance_px + combat_distance_tolerance_px,
+        radial_weight, active_strafe_weight, approaching, retreating = (
+            EnemySystem._calculate_combat_steering_weights(
+                distance=distance,
+                preferred_combat_distance_px=preferred_combat_distance_px,
+                combat_distance_tolerance_px=combat_distance_tolerance_px,
+                minimum_combat_distance_px=minimum_combat_distance_px,
+                approach_weight=approach_weight,
+                strafe_weight=strafe_weight,
+                retreat_weight=retreat_weight,
+            )
         )
-        if preferred_combat_distance_px <= 0.0 or distance > upper_distance:
-            radial_weight = max(0.0, approach_weight)
-            active_strafe_weight = max(0.0, strafe_weight)
-            retreating = False
-        elif distance < lower_distance:
-            radial_weight = -max(0.0, retreat_weight)
-            active_strafe_weight = max(0.0, strafe_weight)
-            retreating = radial_weight < 0.0
-        else:
-            radial_weight = 0.0
-            active_strafe_weight = max(0.0, strafe_weight)
-            retreating = False
 
         has_line_of_sight = EnemySystem._has_line_of_sight(
             start=enemy.world_position,
@@ -464,42 +488,211 @@ class EnemySystem:
         )
         if not has_line_of_sight:
             radial_weight = max(radial_weight, max(0.0, approach_weight))
-            active_strafe_weight *= 0.25
+            active_strafe_weight *= 0.15
+            approaching = radial_weight > 0.0
             retreating = False
 
         move_x = radial_x * radial_weight + strafe_x * active_strafe_weight
         move_y = radial_y * radial_weight + strafe_y * active_strafe_weight
         length = math.hypot(move_x, move_y)
         if length <= 0.000001:
-            return False, False, retreating
+            return False, approaching, False, retreating, False
+
+        desired_x = move_x / length
+        desired_y = move_y / length
+        smoothed_x, smoothed_y = EnemySystem._smooth_enemy_movement_direction(
+            enemy=enemy,
+            desired_x=desired_x,
+            desired_y=desired_y,
+            smoothing=movement_direction_smoothing,
+        )
 
         travel_distance = movement_speed_px_per_second * frame_time
-        desired_dx = move_x / length * travel_distance
-        desired_dy = move_y / length * travel_distance
-        position = EnemySystem._try_move_enemy_vector(
-            position=enemy.world_position,
-            dx=desired_dx,
-            dy=desired_dy,
-            collision_service=collision_service,
-            enemy_collision_radius_px=enemy_collision_radius_px,
+        movement_candidates = EnemySystem._build_combat_movement_candidates(
+            desired_x=smoothed_x,
+            desired_y=smoothed_y,
+            radial_x=radial_x,
+            radial_y=radial_y,
+            strafe_x=strafe_x,
+            strafe_y=strafe_y,
+            radial_weight=radial_weight,
+            active_strafe_weight=active_strafe_weight,
+            retreating=retreating,
         )
-        moved = position != enemy.world_position
-        if not moved and active_strafe_weight > 0.0:
-            alternative_position = EnemySystem._try_move_enemy_vector(
+        position = enemy.world_position
+        used_flipped_strafe = False
+        for candidate_x, candidate_y, candidate_flipped_strafe in movement_candidates:
+            candidate_position = EnemySystem._try_move_enemy_vector(
                 position=enemy.world_position,
-                dx=-strafe_x * travel_distance,
-                dy=-strafe_y * travel_distance,
+                dx=candidate_x * travel_distance,
+                dy=candidate_y * travel_distance,
                 collision_service=collision_service,
                 enemy_collision_radius_px=enemy_collision_radius_px,
             )
-            if alternative_position != enemy.world_position:
-                enemy.strafe_direction *= -1
-                position = alternative_position
-                moved = True
+            if candidate_position != enemy.world_position:
+                position = candidate_position
+                used_flipped_strafe = candidate_flipped_strafe
+                break
+        moved = position != enemy.world_position
         if moved:
+            if used_flipped_strafe:
+                enemy.strafe_direction *= -1
             enemy.world_position = position
             enemy.tile = world_to_tile(position, tile_size_px)
-        return moved, active_strafe_weight > 0.0, retreating
+        return moved, approaching, active_strafe_weight > 0.0, retreating, not moved
+
+    @staticmethod
+    def _calculate_combat_steering_weights(
+        distance: float,
+        preferred_combat_distance_px: float,
+        combat_distance_tolerance_px: float,
+        minimum_combat_distance_px: float,
+        approach_weight: float,
+        strafe_weight: float,
+        retreat_weight: float,
+    ) -> tuple[float, float, bool, bool]:
+        """Calculate distance-aware combat steering weights.
+
+        Args:
+            distance: Current distance to the player.
+            preferred_combat_distance_px: Desired combat distance.
+            combat_distance_tolerance_px: Soft distance band around preferred distance.
+            minimum_combat_distance_px: Hard distance where retreat becomes stronger.
+            approach_weight: Maximum approach weight.
+            strafe_weight: Maximum strafe weight.
+            retreat_weight: Maximum retreat weight.
+
+        Returns:
+            Tuple with radial weight, strafe weight, approaching flag, and retreating flag.
+        """
+        safe_approach = max(0.0, approach_weight)
+        safe_strafe = max(0.0, strafe_weight)
+        safe_retreat = max(0.0, retreat_weight)
+        if preferred_combat_distance_px <= 0.0:
+            return safe_approach, safe_strafe, safe_approach > 0.0, False
+
+        tolerance = max(0.0, combat_distance_tolerance_px)
+        minimum_distance = max(0.0, minimum_combat_distance_px)
+        lower_distance = max(minimum_distance, preferred_combat_distance_px - tolerance)
+        upper_distance = max(lower_distance, preferred_combat_distance_px + tolerance)
+
+        if distance < lower_distance:
+            retreat_ratio = 1.0
+            if lower_distance > minimum_distance:
+                retreat_ratio = (lower_distance - distance) / (lower_distance - minimum_distance)
+                retreat_ratio = min(1.0, max(0.45, retreat_ratio))
+            if minimum_distance > 0.0 and distance < minimum_distance:
+                retreat_ratio = 1.0
+            return -safe_retreat * retreat_ratio, safe_strafe, False, safe_retreat > 0.0
+
+        if distance > upper_distance:
+            far_distance = upper_distance + max(tolerance, preferred_combat_distance_px * 0.5)
+            if far_distance <= upper_distance:
+                approach_ratio = 1.0
+            else:
+                approach_ratio = min(
+                    1.0,
+                    (distance - upper_distance) / (far_distance - upper_distance),
+                )
+            strafe_ratio = 0.25 + (1.0 - approach_ratio) * 0.75
+            return safe_approach, safe_strafe * strafe_ratio, safe_approach > 0.0, False
+
+        return 0.0, safe_strafe, False, False
+
+    @staticmethod
+    def _smooth_enemy_movement_direction(
+        enemy: EnemyState,
+        desired_x: float,
+        desired_y: float,
+        smoothing: float,
+    ) -> tuple[float, float]:
+        """Blend desired movement direction with the previous direction.
+
+        Args:
+            enemy: Enemy being moved.
+            desired_x: Desired normalized horizontal movement direction.
+            desired_y: Desired normalized vertical movement direction.
+            smoothing: Blend factor in the 0..1 range, where 1 is immediate.
+
+        Returns:
+            Normalized movement direction.
+        """
+        blend = min(1.0, max(0.0, smoothing))
+        previous_length = math.hypot(enemy.movement_direction_x, enemy.movement_direction_y)
+        if previous_length <= 0.000001 or blend >= 1.0:
+            enemy.movement_direction_x = desired_x
+            enemy.movement_direction_y = desired_y
+            return desired_x, desired_y
+        mixed_x = enemy.movement_direction_x * (1.0 - blend) + desired_x * blend
+        mixed_y = enemy.movement_direction_y * (1.0 - blend) + desired_y * blend
+        mixed_length = math.hypot(mixed_x, mixed_y)
+        if mixed_length <= 0.000001:
+            enemy.movement_direction_x = desired_x
+            enemy.movement_direction_y = desired_y
+            return desired_x, desired_y
+        enemy.movement_direction_x = mixed_x / mixed_length
+        enemy.movement_direction_y = mixed_y / mixed_length
+        return enemy.movement_direction_x, enemy.movement_direction_y
+
+    @staticmethod
+    def _build_combat_movement_candidates(
+        desired_x: float,
+        desired_y: float,
+        radial_x: float,
+        radial_y: float,
+        strafe_x: float,
+        strafe_y: float,
+        radial_weight: float,
+        active_strafe_weight: float,
+        retreating: bool,
+    ) -> tuple[tuple[float, float, bool], ...]:
+        """Build ordered local movement fallback directions.
+
+        Args:
+            desired_x: Primary normalized horizontal movement direction.
+            desired_y: Primary normalized vertical movement direction.
+            radial_x: Normalized direction from enemy to player on X.
+            radial_y: Normalized direction from enemy to player on Y.
+            strafe_x: Current strafe direction on X.
+            strafe_y: Current strafe direction on Y.
+            radial_weight: Current radial steering weight.
+            active_strafe_weight: Current strafe steering weight.
+            retreating: Whether the enemy is backing away from the player.
+
+        Returns:
+            Ordered normalized candidate directions with a flag for flipped strafe use.
+        """
+        candidates: list[tuple[float, float, bool]] = [(desired_x, desired_y, False)]
+        if active_strafe_weight > 0.0:
+            candidates.append((-strafe_x, -strafe_y, True))
+            candidates.append((strafe_x, strafe_y, False))
+        if retreating:
+            candidates.append((-radial_x, -radial_y, False))
+            if active_strafe_weight > 0.0:
+                candidates.append((-radial_x - strafe_x, -radial_y - strafe_y, True))
+                candidates.append((-radial_x + strafe_x, -radial_y + strafe_y, False))
+        elif radial_weight > 0.0:
+            candidates.append((radial_x, radial_y, False))
+            if active_strafe_weight > 0.0:
+                candidates.append((radial_x - strafe_x, radial_y - strafe_y, True))
+                candidates.append((radial_x + strafe_x, radial_y + strafe_y, False))
+        return tuple(EnemySystem._normalize_candidate(candidate) for candidate in candidates)
+
+    @staticmethod
+    def _normalize_candidate(candidate: tuple[float, float, bool]) -> tuple[float, float, bool]:
+        """Normalize one movement candidate.
+
+        Args:
+            candidate: Candidate movement direction and metadata.
+
+        Returns:
+            Normalized candidate movement direction and unchanged metadata.
+        """
+        x, y, flipped = candidate
+        length = math.hypot(x, y)
+        if length <= 0.000001:
+            return 0.0, 0.0, flipped
+        return x / length, y / length, flipped
 
     @staticmethod
     def _try_move_enemy_vector(

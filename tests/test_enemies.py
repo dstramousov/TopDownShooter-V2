@@ -606,3 +606,114 @@ def test_alerted_enemy_retreats_when_too_close_to_player() -> None:
     assert system.stats.moving_enemies == 1
     assert system.stats.strafing_enemies == 0
     assert system.stats.retreating_enemies == 1
+
+
+def test_alerted_enemy_reports_approach_when_player_is_far() -> None:
+    """Alerted enemies should report approach steering outside combat range."""
+    from topdown_shooter.world.collision import TileCollisionService
+
+    runtime_map = _build_runtime_map_from_rows(("++++++++", "++++++++", "++++++++", "++++++++"))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {
+                    "id": "spawn_0",
+                    "position": [1, 2],
+                    "facing_angle_degrees": 0.0,
+                },
+            ],
+        },
+        runtime_map,
+    )
+    enemy = system.enemies[0]
+    enemy.alerted = True
+
+    system.update_chase_movement(
+        player_position=WorldCoord(x=120.0, y=40.0),
+        collision_service=TileCollisionService(runtime_map),
+        frame_time=1.0,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+        preferred_combat_distance_px=48.0,
+        combat_distance_tolerance_px=4.0,
+        approach_weight=1.0,
+        strafe_weight=0.5,
+        retreat_weight=1.0,
+    )
+
+    assert system.stats.approaching_enemies == 1
+    assert system.stats.stuck_enemies == 0
+
+
+def test_alerted_enemy_uses_smoothed_movement_direction() -> None:
+    """Movement smoothing should retain some previous direction across steering changes."""
+    from topdown_shooter.world.collision import TileCollisionService
+
+    runtime_map = _build_runtime_map_from_rows(("++++++++", "++++++++", "++++++++", "++++++++"))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {
+                    "id": "spawn_0",
+                    "position": [2, 2],
+                    "facing_angle_degrees": 0.0,
+                },
+            ],
+        },
+        runtime_map,
+    )
+    enemy = system.enemies[0]
+    enemy.alerted = True
+    enemy.movement_direction_x = 1.0
+    enemy.movement_direction_y = 0.0
+
+    system.update_chase_movement(
+        player_position=WorldCoord(x=40.0, y=88.0),
+        collision_service=TileCollisionService(runtime_map),
+        frame_time=1.0,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+        preferred_combat_distance_px=0.0,
+        approach_weight=1.0,
+        movement_direction_smoothing=0.25,
+    )
+
+    assert system.enemies[0].movement_direction_x > 0.0
+    assert system.enemies[0].movement_direction_y > 0.0
+
+
+def test_alerted_enemy_reports_stuck_when_no_candidate_is_walkable() -> None:
+    """Blocked local candidates should be reported as stuck movement."""
+    from topdown_shooter.world.collision import TileCollisionService
+
+    runtime_map = _build_runtime_map_from_rows(("###", "#+#", "###"))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {
+                    "id": "spawn_0",
+                    "position": [1, 1],
+                    "facing_angle_degrees": 0.0,
+                },
+            ],
+        },
+        runtime_map,
+    )
+    enemy = system.enemies[0]
+    enemy.alerted = True
+
+    system.update_chase_movement(
+        player_position=WorldCoord(x=40.0, y=24.0),
+        collision_service=TileCollisionService(runtime_map),
+        frame_time=1.0,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+        preferred_combat_distance_px=0.0,
+        approach_weight=1.0,
+    )
+
+    assert system.stats.moving_enemies == 0
+    assert system.stats.stuck_enemies == 1

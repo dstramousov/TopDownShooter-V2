@@ -222,6 +222,12 @@ class RaylibWindow:
                     combat_distance_tolerance_px=(
                         self._config.enemies.combat_distance_tolerance_px
                     ),
+                    minimum_combat_distance_px=(
+                        self._config.enemies.minimum_combat_distance_px
+                    ),
+                    movement_direction_smoothing=(
+                        self._config.enemies.movement_direction_smoothing
+                    ),
                     approach_weight=self._config.enemies.approach_weight,
                     strafe_weight=self._config.enemies.strafe_weight,
                     retreat_weight=self._config.enemies.retreat_weight,

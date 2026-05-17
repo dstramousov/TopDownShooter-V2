@@ -89,7 +89,9 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.enemies.placement_attempts_per_enemy == 24
     assert config.enemies.chase_speed_px_per_second == 70.0
     assert config.enemies.preferred_combat_distance_px == 180.0
+    assert config.enemies.minimum_combat_distance_px == 96.0
     assert config.enemies.combat_distance_tolerance_px == 40.0
+    assert config.enemies.movement_direction_smoothing == 0.35
     assert config.enemies.approach_weight == 0.85
     assert config.enemies.strafe_weight == 0.55
     assert config.enemies.retreat_weight == 0.75

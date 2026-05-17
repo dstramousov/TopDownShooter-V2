@@ -271,3 +271,10 @@
 - Added combat steering for alerted enemies: approach, strafe, and retreat distance bands.
 - Added enemy movement tuning values to runtime config and debug overlay.
 - Preserved simple blocked-tile collision without adding pathfinding, attacks, or player damage.
+
+## v0.0.35 -> v0.0.36
+
+- Improved alerted enemy combat movement with distance-aware approach/strafe/retreat weights.
+- Added smoothed enemy movement direction to reduce abrupt steering changes.
+- Added aggressive minimum-distance retreat and local anti-stuck fallback directions.
+- Added movement diagnostics for approaching and stuck enemies.
