@@ -81,6 +81,12 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.enemies.facing_probe_side_angle_degrees == 25.0
     assert config.enemies.facing_wall_penalty_distance_px == 48.0
     assert config.enemies.facing_probe_step_px == 8.0
+    assert config.enemies.min_squad_size == 3
+    assert config.enemies.max_squad_size == 5
+    assert config.enemies.squad_radius_px == 72.0
+    assert config.enemies.min_enemy_spacing_px == 28.0
+    assert config.enemies.max_initial_enemies == 30
+    assert config.enemies.placement_attempts_per_enemy == 24
     assert config.fps_counter.enabled is True
     assert config.fps_counter.position == "top_right"
     assert config.fps_counter.margin_x == 12

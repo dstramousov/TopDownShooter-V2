@@ -317,10 +317,18 @@ class DebugOverlay:
                 DebugOverlayRow("Active", str(enemy_stats.active_enemies)),
                 DebugOverlayRow("Alerted", str(enemy_stats.alerted_enemies)),
                 DebugOverlayRow("Spawned", str(enemy_stats.spawned_enemies)),
+                DebugOverlayRow("Squads", str(enemy_stats.spawned_squads)),
                 DebugOverlayRow("Killed", str(enemy_stats.killed_enemies)),
                 DebugOverlayRow("Hits", str(enemy_stats.total_hits)),
                 DebugOverlayRow("Hit markers", str(enemy_stats.active_hit_markers)),
                 DebugOverlayRow("Source spawns", str(enemy_stats.source_spawn_zones)),
+                DebugOverlayRow(
+                    "Squad size",
+                    f"{self._config.enemies.min_squad_size}-{self._config.enemies.max_squad_size}",
+                ),
+                DebugOverlayRow("Squad radius", f"{self._config.enemies.squad_radius_px:.0f}px"),
+                DebugOverlayRow("Max initial", str(self._config.enemies.max_initial_enemies)),
+                DebugOverlayRow("Min spacing", f"{self._config.enemies.min_enemy_spacing_px:.0f}px"),
                 DebugOverlayRow("Health", f"{self._config.enemies.max_health:.1f}"),
                 DebugOverlayRow(
                     "HP bar",

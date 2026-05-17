@@ -252,3 +252,10 @@
 - Scored candidate facing directions by open walkable space and penalized near-wall directions.
 - Added runtime config and debug overlay fields for smart facing probe parameters.
 - Kept enemy count, squad spawning, movement, chase AI, patrol routes, and player damage out of scope.
+
+## v0.0.32 -> v0.0.33
+
+- Spawn zones now create deterministic enemy squads instead of a single enemy.
+- Added enemy squad placement config: squad size, radius, spacing, global cap, and placement attempts.
+- Squad members are placed only on walkable positions with minimum spacing and keep smart initial facing.
+- Debug overlay now reports spawned squads and squad placement settings.

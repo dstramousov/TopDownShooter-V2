@@ -144,6 +144,12 @@ class EnemyConfig:
         facing_probe_side_angle_degrees: Side probe angle for smart facing scoring.
         facing_wall_penalty_distance_px: Distance threshold for near-wall facing penalties.
         facing_probe_step_px: Sampling step for smart facing probe rays.
+        min_squad_size: Minimum enemies generated from one spawn zone.
+        max_squad_size: Maximum enemies generated from one spawn zone.
+        squad_radius_px: Radius around a spawn zone used for squad placement.
+        min_enemy_spacing_px: Minimum initial spacing between enemies.
+        max_initial_enemies: Global cap for startup enemies.
+        placement_attempts_per_enemy: Candidate attempts for each squad member.
     """
 
     marker_radius_px: int
@@ -161,6 +167,12 @@ class EnemyConfig:
     facing_probe_side_angle_degrees: float
     facing_wall_penalty_distance_px: float
     facing_probe_step_px: float
+    min_squad_size: int
+    max_squad_size: int
+    squad_radius_px: float
+    min_enemy_spacing_px: float
+    max_initial_enemies: int
+    placement_attempts_per_enemy: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -454,6 +466,24 @@ class RuntimeConfigLoader:
                 facing_probe_step_px=self._require_positive_float(
                     enemies,
                     "facing_probe_step_px",
+                ),
+                min_squad_size=self._require_positive_int(enemies, "min_squad_size"),
+                max_squad_size=self._require_positive_int(enemies, "max_squad_size"),
+                squad_radius_px=self._require_non_negative_float(
+                    enemies,
+                    "squad_radius_px",
+                ),
+                min_enemy_spacing_px=self._require_non_negative_float(
+                    enemies,
+                    "min_enemy_spacing_px",
+                ),
+                max_initial_enemies=self._require_non_negative_int(
+                    enemies,
+                    "max_initial_enemies",
+                ),
+                placement_attempts_per_enemy=self._require_positive_int(
+                    enemies,
+                    "placement_attempts_per_enemy",
                 ),
             ),
             debug_overlay=DebugOverlayConfig(

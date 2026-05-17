@@ -128,6 +128,12 @@
     "facing_candidate_step_degrees": 30.0,
     "facing_probe_side_angle_degrees": 25.0,
     "facing_wall_penalty_distance_px": 48.0,
-    "facing_probe_step_px": 8.0
+    "facing_probe_step_px": 8.0,
+    "min_squad_size": 3,
+    "max_squad_size": 5,
+    "squad_radius_px": 72.0,
+    "min_enemy_spacing_px": 28.0,
+    "max_initial_enemies": 30,
+    "placement_attempts_per_enemy": 24
   }
 }

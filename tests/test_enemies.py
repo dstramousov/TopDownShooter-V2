@@ -367,3 +367,62 @@ def test_enemy_system_alerts_enemy_when_projectile_hits() -> None:
 
     assert system.enemies[0].alerted is True
     assert system.stats.alerted_enemies == 1
+
+
+def test_enemy_system_spawns_squad_members_around_spawn_anchor() -> None:
+    """Enemy system should expand one spawn zone into a local squad."""
+    runtime_map = _build_runtime_map_from_rows(("++++++++", "++++++++", "++++++++", "++++++++"))
+    tactical_map: dict[str, object] = {
+        "enemy_spawn_zones": [
+            {
+                "id": "spawn_0",
+                "position": [3, 1],
+                "facing_angle_degrees": 0.0,
+            },
+        ],
+    }
+
+    system = EnemySystem.from_tactical_map(
+        tactical_map,
+        runtime_map,
+        min_squad_size=3,
+        max_squad_size=3,
+        squad_radius_px=32.0,
+        min_enemy_spacing_px=8.0,
+        max_initial_enemies=10,
+        placement_attempts_per_enemy=24,
+        spawn_collision_radius_px=2.0,
+    )
+
+    assert system.stats.source_spawn_zones == 1
+    assert system.stats.spawned_squads == 1
+    assert system.stats.spawned_enemies == 3
+    assert system.stats.active_enemies == 3
+    assert {enemy.spawn_id for enemy in system.enemies} == {"spawn_0"}
+    assert len({enemy.world_position for enemy in system.enemies}) == 3
+
+
+def test_enemy_system_respects_global_initial_enemy_cap() -> None:
+    """Enemy system should cap initial enemies across all spawn zones."""
+    runtime_map = _build_runtime_map_from_rows(("++++++++", "++++++++", "++++++++", "++++++++"))
+    tactical_map: dict[str, object] = {
+        "enemy_spawn_zones": [
+            {"id": "spawn_0", "position": [2, 1]},
+            {"id": "spawn_1", "position": [5, 1]},
+        ],
+    }
+
+    system = EnemySystem.from_tactical_map(
+        tactical_map,
+        runtime_map,
+        min_squad_size=3,
+        max_squad_size=3,
+        squad_radius_px=24.0,
+        min_enemy_spacing_px=4.0,
+        max_initial_enemies=4,
+        placement_attempts_per_enemy=24,
+        spawn_collision_radius_px=2.0,
+    )
+
+    assert system.stats.active_enemies == 4
+    assert system.stats.spawned_enemies == 4

@@ -132,6 +132,13 @@ class RaylibWindow:
             facing_probe_side_angle_degrees=config.enemies.facing_probe_side_angle_degrees,
             facing_wall_penalty_distance_px=config.enemies.facing_wall_penalty_distance_px,
             facing_probe_step_px=config.enemies.facing_probe_step_px,
+            min_squad_size=config.enemies.min_squad_size,
+            max_squad_size=config.enemies.max_squad_size,
+            squad_radius_px=config.enemies.squad_radius_px,
+            min_enemy_spacing_px=config.enemies.min_enemy_spacing_px,
+            max_initial_enemies=config.enemies.max_initial_enemies,
+            placement_attempts_per_enemy=config.enemies.placement_attempts_per_enemy,
+            spawn_collision_radius_px=config.enemies.marker_radius_px,
         )
         self._enemy_renderer = EnemyRenderer(
             raylib=self._raylib,
