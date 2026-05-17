@@ -201,6 +201,55 @@ def _build_runtime_map_from_rows(rows: tuple[str, ...]) -> RuntimeMap:
     )
 
 
+
+
+def test_enemy_system_chooses_open_initial_facing_when_spawn_has_no_angle() -> None:
+    """Enemy system should face open space instead of a nearby wall."""
+    runtime_map = _build_runtime_map_from_rows(("#####", "#++++", "#####"))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {
+                    "id": "spawn_0",
+                    "position": [1, 1],
+                },
+            ],
+        },
+        runtime_map,
+        smart_facing_enabled=True,
+        facing_candidate_step_degrees=90.0,
+        facing_probe_side_angle_degrees=0.0,
+        facing_wall_penalty_distance_px=16.0,
+        facing_probe_step_px=4.0,
+    )
+
+    assert system.enemies[0].facing_angle_degrees == 0.0
+
+
+def test_enemy_system_preserves_explicit_tactical_facing_angle() -> None:
+    """Enemy system should keep map-authored facing angles when present."""
+    runtime_map = _build_runtime_map_from_rows(("#####", "#++++", "#####"))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {
+                    "id": "spawn_0",
+                    "position": [1, 1],
+                    "facing_angle_degrees": 180.0,
+                },
+            ],
+        },
+        runtime_map,
+        smart_facing_enabled=True,
+        facing_candidate_step_degrees=90.0,
+        facing_probe_side_angle_degrees=0.0,
+        facing_wall_penalty_distance_px=16.0,
+        facing_probe_step_px=4.0,
+    )
+
+    assert system.enemies[0].facing_angle_degrees == 180.0
+
+
 def test_enemy_system_alerts_enemy_when_player_is_inside_view_cone() -> None:
     """Enemy perception should alert enemies that see the player."""
     from topdown_shooter.world.collision import TileCollisionService

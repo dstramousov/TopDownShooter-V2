@@ -127,6 +127,11 @@ class RaylibWindow:
             enemy_max_health=config.enemies.max_health,
             hit_marker_lifetime_seconds=config.enemies.hit_marker_lifetime_seconds,
             hit_marker_radius_px=config.enemies.hit_marker_radius_px,
+            smart_facing_enabled=config.enemies.smart_initial_facing,
+            facing_candidate_step_degrees=config.enemies.facing_candidate_step_degrees,
+            facing_probe_side_angle_degrees=config.enemies.facing_probe_side_angle_degrees,
+            facing_wall_penalty_distance_px=config.enemies.facing_wall_penalty_distance_px,
+            facing_probe_step_px=config.enemies.facing_probe_step_px,
         )
         self._enemy_renderer = EnemyRenderer(
             raylib=self._raylib,

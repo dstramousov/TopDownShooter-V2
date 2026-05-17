@@ -245,3 +245,10 @@
 
 - Fixed the enemy perception runtime crash caused by passing an out-of-scope collision service variable from the raylib loop.
 - Kept enemy behavior, perception rules, weapon behavior, rendering, and gameplay balance unchanged.
+
+## v0.0.31 -> v0.0.32
+
+- Added map-aware smart initial facing for enemies without explicit tactical facing angles.
+- Scored candidate facing directions by open walkable space and penalized near-wall directions.
+- Added runtime config and debug overlay fields for smart facing probe parameters.
+- Kept enemy count, squad spawning, movement, chase AI, patrol routes, and player damage out of scope.

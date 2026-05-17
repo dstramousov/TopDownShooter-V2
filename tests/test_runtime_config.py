@@ -76,6 +76,11 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.enemies.vision_range_px == 320.0
     assert config.enemies.vision_angle_degrees == 80.0
     assert config.enemies.line_of_sight_sample_step_px == 8.0
+    assert config.enemies.smart_initial_facing is True
+    assert config.enemies.facing_candidate_step_degrees == 30.0
+    assert config.enemies.facing_probe_side_angle_degrees == 25.0
+    assert config.enemies.facing_wall_penalty_distance_px == 48.0
+    assert config.enemies.facing_probe_step_px == 8.0
     assert config.fps_counter.enabled is True
     assert config.fps_counter.position == "top_right"
     assert config.fps_counter.margin_x == 12

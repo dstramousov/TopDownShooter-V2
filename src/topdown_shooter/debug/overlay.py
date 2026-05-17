@@ -335,6 +335,15 @@ class DebugOverlay:
                     "LOS step",
                     f"{self._config.enemies.line_of_sight_sample_step_px:.0f}px",
                 ),
+                DebugOverlayRow("Smart facing", str(self._config.enemies.smart_initial_facing)),
+                DebugOverlayRow(
+                    "Facing step",
+                    f"{self._config.enemies.facing_candidate_step_degrees:.0f}deg",
+                ),
+                DebugOverlayRow(
+                    "Facing side",
+                    f"{self._config.enemies.facing_probe_side_angle_degrees:.0f}deg",
+                ),
             ),
         )
         projectile_section = DebugOverlaySection(

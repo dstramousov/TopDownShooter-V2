@@ -123,6 +123,11 @@ class EnemySystem:
         enemy_max_health: float = 100.0,
         hit_marker_lifetime_seconds: float = 0.14,
         hit_marker_radius_px: float = 8.0,
+        smart_facing_enabled: bool = True,
+        facing_candidate_step_degrees: float = 30.0,
+        facing_probe_side_angle_degrees: float = 25.0,
+        facing_wall_penalty_distance_px: float = 48.0,
+        facing_probe_step_px: float = 8.0,
     ) -> EnemySystem:
         """Create static enemies from tactical enemy spawn zones.
 
@@ -132,6 +137,11 @@ class EnemySystem:
             enemy_max_health: Initial and maximum health for spawned enemies.
             hit_marker_lifetime_seconds: Enemy hit marker lifetime in seconds.
             hit_marker_radius_px: Enemy hit marker radius in world pixels.
+            smart_facing_enabled: Whether missing spawn facing uses map-aware scoring.
+            facing_candidate_step_degrees: Angle step for candidate facing directions.
+            facing_probe_side_angle_degrees: Side probe angle from the candidate center ray.
+            facing_wall_penalty_distance_px: Distance used to penalize near-wall facing.
+            facing_probe_step_px: Sampling step for facing probe rays.
 
         Returns:
             Enemy system populated with one enemy per valid spawn zone.
@@ -145,6 +155,7 @@ class EnemySystem:
                 hit_marker_radius_px=hit_marker_radius_px,
             )
 
+        collision_service = TileCollisionService(runtime_map)
         enemies: list[EnemyState] = []
         for spawn_index, raw_spawn in enumerate(raw_spawn_zones):
             if not isinstance(raw_spawn, dict):
@@ -152,6 +163,7 @@ class EnemySystem:
             tile = cls._read_spawn_tile(raw_spawn)
             if tile is None or not cls._is_tile_inside_map(tile, runtime_map):
                 continue
+            world_position = tile_to_world_center(tile, runtime_map.tile_size_px)
             enemies.append(
                 EnemyState(
                     enemy_id=f"enemy_{len(enemies)}",
@@ -160,10 +172,21 @@ class EnemySystem:
                     spawn_type=cls._read_string(raw_spawn, "spawn_type", "unknown"),
                     role=cls._read_preferred_role(raw_spawn),
                     tile=tile,
-                    world_position=tile_to_world_center(tile, runtime_map.tile_size_px),
+                    world_position=world_position,
                     max_health=enemy_max_health,
                     health=enemy_max_health,
-                    facing_angle_degrees=cls._read_facing_angle(raw_spawn, spawn_index),
+                    facing_angle_degrees=cls._resolve_initial_facing_angle(
+                        raw_spawn=raw_spawn,
+                        spawn_index=spawn_index,
+                        world_position=world_position,
+                        collision_service=collision_service,
+                        vision_range_px=runtime_map.tile_size_px * 10.0,
+                        smart_facing_enabled=smart_facing_enabled,
+                        facing_candidate_step_degrees=facing_candidate_step_degrees,
+                        facing_probe_side_angle_degrees=facing_probe_side_angle_degrees,
+                        facing_wall_penalty_distance_px=facing_wall_penalty_distance_px,
+                        facing_probe_step_px=facing_probe_step_px,
+                    ),
                 ),
             )
         return cls(
@@ -474,21 +497,198 @@ class EnemySystem:
         return 0 <= tile.x < runtime_map.width_tiles and 0 <= tile.y < runtime_map.height_tiles
 
     @staticmethod
-    def _read_facing_angle(raw_spawn: dict[object, object], spawn_index: int) -> float:
-        """Read enemy facing angle from tactical data or create a fallback.
+    def _resolve_initial_facing_angle(
+        raw_spawn: dict[object, object],
+        spawn_index: int,
+        world_position: WorldCoord,
+        collision_service: TileCollisionService,
+        vision_range_px: float,
+        smart_facing_enabled: bool,
+        facing_candidate_step_degrees: float,
+        facing_probe_side_angle_degrees: float,
+        facing_wall_penalty_distance_px: float,
+        facing_probe_step_px: float,
+    ) -> float:
+        """Resolve the initial enemy facing angle.
 
         Args:
             raw_spawn: Raw spawn object.
             spawn_index: Source spawn index used for deterministic fallback.
+            world_position: Enemy world position.
+            collision_service: Collision service used for map-aware facing probes.
+            vision_range_px: Maximum probe range in world pixels.
+            smart_facing_enabled: Whether map-aware facing is enabled.
+            facing_candidate_step_degrees: Angle step for candidate directions.
+            facing_probe_side_angle_degrees: Side probe angle from candidate center.
+            facing_wall_penalty_distance_px: Near-wall penalty distance.
+            facing_probe_step_px: Probe ray sample step.
 
         Returns:
             Normalized facing angle in degrees.
+        """
+        explicit_angle = EnemySystem._read_explicit_facing_angle(raw_spawn)
+        if explicit_angle is not None:
+            return explicit_angle
+        if not smart_facing_enabled:
+            return float((spawn_index * 97) % 360)
+        return EnemySystem._choose_smart_facing_angle(
+            world_position=world_position,
+            collision_service=collision_service,
+            vision_range_px=vision_range_px,
+            candidate_step_degrees=facing_candidate_step_degrees,
+            side_angle_degrees=facing_probe_side_angle_degrees,
+            wall_penalty_distance_px=facing_wall_penalty_distance_px,
+            probe_step_px=facing_probe_step_px,
+        )
+
+    @staticmethod
+    def _read_explicit_facing_angle(raw_spawn: dict[object, object]) -> float | None:
+        """Read an explicit enemy facing angle from tactical data.
+
+        Args:
+            raw_spawn: Raw spawn object.
+
+        Returns:
+            Normalized angle in degrees, or None when no explicit angle is present.
         """
         for key in ("facing_angle_degrees", "facing_degrees", "facing_angle"):
             value = raw_spawn.get(key)
             if isinstance(value, int | float) and not isinstance(value, bool):
                 return float(value) % 360.0
-        return float((spawn_index * 97) % 360)
+        return None
+
+    @staticmethod
+    def _choose_smart_facing_angle(
+        world_position: WorldCoord,
+        collision_service: TileCollisionService,
+        vision_range_px: float,
+        candidate_step_degrees: float,
+        side_angle_degrees: float,
+        wall_penalty_distance_px: float,
+        probe_step_px: float,
+    ) -> float:
+        """Choose the most open initial facing angle around an enemy.
+
+        Args:
+            world_position: Enemy world position.
+            collision_service: Collision service for blocked tile checks.
+            vision_range_px: Maximum probe range in world pixels.
+            candidate_step_degrees: Angle step for candidate directions.
+            side_angle_degrees: Side probe angle from candidate center.
+            wall_penalty_distance_px: Near-wall penalty distance.
+            probe_step_px: Probe ray sample step.
+
+        Returns:
+            Candidate angle with the highest open-space score.
+        """
+        safe_step_degrees = max(1.0, candidate_step_degrees)
+        candidate_count = max(1, int(math.ceil(360.0 / safe_step_degrees)))
+        best_angle = 0.0
+        best_score = -1.0
+        for index in range(candidate_count):
+            angle = (index * safe_step_degrees) % 360.0
+            score = EnemySystem._score_facing_angle(
+                world_position=world_position,
+                angle_degrees=angle,
+                collision_service=collision_service,
+                vision_range_px=vision_range_px,
+                side_angle_degrees=side_angle_degrees,
+                wall_penalty_distance_px=wall_penalty_distance_px,
+                probe_step_px=probe_step_px,
+            )
+            if score > best_score:
+                best_score = score
+                best_angle = angle
+        return best_angle % 360.0
+
+    @staticmethod
+    def _score_facing_angle(
+        world_position: WorldCoord,
+        angle_degrees: float,
+        collision_service: TileCollisionService,
+        vision_range_px: float,
+        side_angle_degrees: float,
+        wall_penalty_distance_px: float,
+        probe_step_px: float,
+    ) -> float:
+        """Score a candidate facing angle by open space in front of it.
+
+        Args:
+            world_position: Enemy world position.
+            angle_degrees: Candidate center angle in degrees.
+            collision_service: Collision service for blocked tile checks.
+            vision_range_px: Maximum probe range in world pixels.
+            side_angle_degrees: Side probe angle from candidate center.
+            wall_penalty_distance_px: Near-wall penalty distance.
+            probe_step_px: Probe ray sample step.
+
+        Returns:
+            Weighted open-space score for the candidate angle.
+        """
+        center_distance = EnemySystem._ray_clear_distance(
+            start=world_position,
+            angle_degrees=angle_degrees,
+            collision_service=collision_service,
+            max_distance_px=vision_range_px,
+            sample_step_px=probe_step_px,
+        )
+        left_distance = EnemySystem._ray_clear_distance(
+            start=world_position,
+            angle_degrees=angle_degrees - side_angle_degrees,
+            collision_service=collision_service,
+            max_distance_px=vision_range_px,
+            sample_step_px=probe_step_px,
+        )
+        right_distance = EnemySystem._ray_clear_distance(
+            start=world_position,
+            angle_degrees=angle_degrees + side_angle_degrees,
+            collision_service=collision_service,
+            max_distance_px=vision_range_px,
+            sample_step_px=probe_step_px,
+        )
+        score = center_distance + left_distance * 0.5 + right_distance * 0.5
+        if center_distance < wall_penalty_distance_px:
+            score -= wall_penalty_distance_px - center_distance
+        return score
+
+    @staticmethod
+    def _ray_clear_distance(
+        start: WorldCoord,
+        angle_degrees: float,
+        collision_service: TileCollisionService,
+        max_distance_px: float,
+        sample_step_px: float,
+    ) -> float:
+        """Return clear walkable distance along a ray.
+
+        Args:
+            start: Ray start point.
+            angle_degrees: Ray direction angle in degrees.
+            collision_service: Collision service for blocked tile checks.
+            max_distance_px: Maximum ray length in world pixels.
+            sample_step_px: Desired sample distance in world pixels.
+
+        Returns:
+            Clear distance before a blocked or out-of-map point.
+        """
+        if max_distance_px <= 0.0:
+            return 0.0
+        angle_radians = math.radians(angle_degrees)
+        direction_x = math.cos(angle_radians)
+        direction_y = math.sin(angle_radians)
+        safe_step = max(1.0, sample_step_px)
+        steps = max(1, int(math.ceil(max_distance_px / safe_step)))
+        last_clear_distance = 0.0
+        for index in range(1, steps + 1):
+            distance = min(max_distance_px, index * safe_step)
+            point = WorldCoord(
+                x=start.x + direction_x * distance,
+                y=start.y + direction_y * distance,
+            )
+            if not collision_service.is_point_walkable(point):
+                return last_clear_distance
+            last_clear_distance = distance
+        return last_clear_distance
 
     @staticmethod
     def _read_string(raw_spawn: dict[object, object], key: str, default: str) -> str:

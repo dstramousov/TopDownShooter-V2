@@ -123,6 +123,11 @@
     "draw_view_cones": true,
     "vision_range_px": 320.0,
     "vision_angle_degrees": 80.0,
-    "line_of_sight_sample_step_px": 8.0
+    "line_of_sight_sample_step_px": 8.0,
+    "smart_initial_facing": true,
+    "facing_candidate_step_degrees": 30.0,
+    "facing_probe_side_angle_degrees": 25.0,
+    "facing_wall_penalty_distance_px": 48.0,
+    "facing_probe_step_px": 8.0
   }
 }

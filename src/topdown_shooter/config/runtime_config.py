@@ -139,6 +139,11 @@ class EnemyConfig:
         vision_range_px: Enemy vision range in world pixels.
         vision_angle_degrees: Full enemy vision cone angle in degrees.
         line_of_sight_sample_step_px: Sampling step for vision blocked tile checks.
+        smart_initial_facing: Whether missing spawn facing is chosen from map geometry.
+        facing_candidate_step_degrees: Angle step for smart facing candidates.
+        facing_probe_side_angle_degrees: Side probe angle for smart facing scoring.
+        facing_wall_penalty_distance_px: Distance threshold for near-wall facing penalties.
+        facing_probe_step_px: Sampling step for smart facing probe rays.
     """
 
     marker_radius_px: int
@@ -151,6 +156,11 @@ class EnemyConfig:
     vision_range_px: float
     vision_angle_degrees: float
     line_of_sight_sample_step_px: float
+    smart_initial_facing: bool
+    facing_candidate_step_degrees: float
+    facing_probe_side_angle_degrees: float
+    facing_wall_penalty_distance_px: float
+    facing_probe_step_px: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -427,6 +437,23 @@ class RuntimeConfigLoader:
                 line_of_sight_sample_step_px=self._require_positive_float(
                     enemies,
                     "line_of_sight_sample_step_px",
+                ),
+                smart_initial_facing=self._require_bool(enemies, "smart_initial_facing"),
+                facing_candidate_step_degrees=self._require_angle_degrees(
+                    enemies,
+                    "facing_candidate_step_degrees",
+                ),
+                facing_probe_side_angle_degrees=self._require_angle_degrees(
+                    enemies,
+                    "facing_probe_side_angle_degrees",
+                ),
+                facing_wall_penalty_distance_px=self._require_positive_float(
+                    enemies,
+                    "facing_wall_penalty_distance_px",
+                ),
+                facing_probe_step_px=self._require_positive_float(
+                    enemies,
+                    "facing_probe_step_px",
                 ),
             ),
             debug_overlay=DebugOverlayConfig(
