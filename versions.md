@@ -395,3 +395,28 @@
 - Debug overlay показывает количество противников, завершивших возврат домой за последний update.
 - Добавлены regression-тесты для движения домой и восстановления стартового facing.
 
+## v0.0.51 -> v0.0.52
+
+- Added `res/map_3d_viewer.py`, a standalone pyray-based 3D flyover viewer for generated `tactical_map.json` files.
+- The viewer renders ASCII map tiles as simple 3D primitives and shows start, goal, and enemy spawn markers.
+- Added free-fly camera controls and an on-screen help overlay for map inspection.
+
+## v0.0.52 -> v0.0.53
+
+- Added an FPS counter to the top-right corner of `res/map_3d_viewer.py`.
+- The counter uses pyray frame statistics and follows the current window size.
+
+## v0.0.53 -> v0.0.54
+
+- Optimized `res/map_3d_viewer.py` by rendering base grass as one ground slab instead of thousands of individual tiles.
+- Added horizontal run merging for same-type tiles to cut the sample map from thousands of tile draw calls to far fewer primitives.
+- Added a `G` toggle for the expensive 3D debug grid and wire overlays, disabled by default.
+- Added HUD render statistics for primitive count, skipped base grass tiles, and grid state.
+
+
+## v0.0.54 -> v0.0.55
+
+- Fixed inverted A/D strafing in `res/map_3d_viewer.py` so A moves left and D moves right.
+- Added Q/E vertical camera controls alongside Ctrl/Space.
+- Added mouse wheel height control for quick approach/retreat during 3D map flyover.
+- Updated the viewer HUD controls hint.
