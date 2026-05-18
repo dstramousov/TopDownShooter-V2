@@ -345,6 +345,9 @@ class DebugOverlay:
             rows=(
                 DebugOverlayRow("Active", str(enemy_stats.active_enemies)),
                 DebugOverlayRow("Alerted", str(enemy_stats.alerted_enemies)),
+                DebugOverlayRow("Engaged", str(enemy_stats.engaged_enemies)),
+                DebugOverlayRow("Searching", str(enemy_stats.searching_enemies)),
+                DebugOverlayRow("Returning", str(enemy_stats.returning_enemies)),
                 DebugOverlayRow("Moving", str(enemy_stats.moving_enemies)),
                 DebugOverlayRow("Approaching", str(enemy_stats.approaching_enemies)),
                 DebugOverlayRow("Strafing", str(enemy_stats.strafing_enemies)),
@@ -380,6 +383,14 @@ class DebugOverlay:
                 DebugOverlayRow(
                     "Alert radius",
                     f"{self._config.enemies.squad_alert_broadcast_radius_px:.0f}px",
+                ),
+                DebugOverlayRow(
+                    "Lost sight",
+                    f"{self._config.enemies.lost_sight_timeout_seconds:.1f}s",
+                ),
+                DebugOverlayRow(
+                    "Home reach",
+                    f"{self._config.enemies.return_home_reached_distance_px:.0f}px",
                 ),
                 DebugOverlayRow(
                     "Move speed",

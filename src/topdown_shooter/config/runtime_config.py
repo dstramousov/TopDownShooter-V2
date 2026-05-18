@@ -153,6 +153,8 @@ class EnemyConfig:
         placement_attempts_per_enemy: Candidate attempts for each squad member.
         squad_alert_broadcast_delay_seconds: Delay before a squad alert propagates.
         squad_alert_broadcast_radius_px: Nearby fallback radius for squad alert propagation.
+        lost_sight_timeout_seconds: Time before searching enemies return home.
+        return_home_reached_distance_px: Distance used to finish return-home behavior.
         chase_speed_px_per_second: Speed for alerted enemy combat movement.
         preferred_combat_distance_px: Desired distance alerted enemies try to keep.
         minimum_combat_distance_px: Hard distance where enemies retreat more aggressively.
@@ -210,6 +212,8 @@ class EnemyConfig:
     placement_attempts_per_enemy: int
     squad_alert_broadcast_delay_seconds: float
     squad_alert_broadcast_radius_px: float
+    lost_sight_timeout_seconds: float
+    return_home_reached_distance_px: float
     chase_speed_px_per_second: float
     preferred_combat_distance_px: float
     minimum_combat_distance_px: float
@@ -591,6 +595,14 @@ class RuntimeConfigLoader:
                 squad_alert_broadcast_radius_px=self._require_non_negative_float(
                     enemies,
                     "squad_alert_broadcast_radius_px",
+                ),
+                lost_sight_timeout_seconds=self._require_non_negative_float(
+                    enemies,
+                    "lost_sight_timeout_seconds",
+                ),
+                return_home_reached_distance_px=self._require_non_negative_float(
+                    enemies,
+                    "return_home_reached_distance_px",
                 ),
                 chase_speed_px_per_second=self._require_non_negative_float(
                     enemies,

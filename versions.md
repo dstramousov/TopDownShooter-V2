@@ -377,3 +377,11 @@
 - Updated debug overlay diagnostics and Russian documentation for gunshot hearing.
 - Added tests for weapon noise configuration and sound-triggered enemy alerts.
 
+## v0.0.49 -> v0.0.50
+
+- Added enemy awareness states: `idle`, `engaged`, `searching`, and `returning`.
+- Enemies now mark direct vision as `engaged`, switch to `searching` after losing line of sight, and return home after the configured timeout.
+- Added `lost_sight_timeout_seconds` and `return_home_reached_distance_px` to enemy runtime config.
+- Updated enemy debug colors so cones/markers communicate idle, engaged, searching, and returning states.
+- Updated debug overlay diagnostics with engaged/searching/returning counts.
+- Added regression tests for vision loss, searching, return-home, and idle reset behavior.

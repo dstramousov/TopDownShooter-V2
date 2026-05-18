@@ -141,6 +141,8 @@
     "placement_attempts_per_enemy": 24,
     "squad_alert_broadcast_delay_seconds": 0.25,
     "squad_alert_broadcast_radius_px": 200.0,
+    "lost_sight_timeout_seconds": 10.0,
+    "return_home_reached_distance_px": 18.0,
     "chase_speed_px_per_second": 70.0,
     "preferred_combat_distance_px": 180.0,
     "minimum_combat_distance_px": 96.0,

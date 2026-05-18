@@ -244,9 +244,7 @@ class EnemyRenderer:
             enemy.world_position.x,
             enemy.world_position.y,
         )
-        color = self._raylib.RED
-        if enemy.alerted:
-            color = self._raylib.YELLOW
+        color = self._enemy_awareness_color(enemy)
         if self._should_flash(enemy):
             color = self._raylib.ORANGE
         self._raylib.draw_circle_v(position, self._marker_radius_px, color)
@@ -258,6 +256,24 @@ class EnemyRenderer:
         )
         if self._should_draw_health_bar(enemy):
             self._draw_health_bar(enemy)
+
+
+    def _enemy_awareness_color(self, enemy: EnemyState) -> object:
+        """Return a debug color for an enemy awareness state.
+
+        Args:
+            enemy: Enemy marker state to draw.
+
+        Returns:
+            Raylib color object for the current awareness state.
+        """
+        if enemy.awareness_state == "engaged":
+            return self._raylib.RED
+        if enemy.awareness_state == "searching":
+            return self._raylib.GOLD
+        if enemy.awareness_state == "returning":
+            return self._raylib.GREEN
+        return self._raylib.LIME
 
     def _draw_view_cone(self, enemy: EnemyState) -> None:
         """Draw a debug view cone for a single enemy.
@@ -272,7 +288,7 @@ class EnemyRenderer:
         center_y = int(round(enemy.world_position.y))
         left = self._cone_endpoint(enemy, -half_angle)
         right = self._cone_endpoint(enemy, half_angle)
-        color = self._raylib.SKYBLUE if not enemy.alerted else self._raylib.GOLD
+        color = self._enemy_awareness_color(enemy)
         self._raylib.draw_line(center_x, center_y, int(round(left.x)), int(round(left.y)), color)
         self._raylib.draw_line(center_x, center_y, int(round(right.x)), int(round(right.y)), color)
         self._draw_cone_arc(enemy, color)

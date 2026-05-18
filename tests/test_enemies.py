@@ -2,7 +2,7 @@
 
 from topdown_shooter.combat.enemies import EnemySystem
 from topdown_shooter.combat.projectiles import ProjectileState
-from topdown_shooter.world.coordinates import TileCoord, WorldCoord
+from topdown_shooter.world.coordinates import TileCoord, WorldCoord, world_to_tile
 from topdown_shooter.world.runtime_map import RuntimeMap, TacticalRuntimeSummary
 from topdown_shooter.world.tile import RuntimeTile
 
@@ -1294,3 +1294,101 @@ def test_gunshot_sound_alerts_nearby_enemies_only() -> None:
     assert system.enemies[0].alerted is True
     assert system.enemies[1].alerted is False
     assert system.stats.pending_squad_alerts == 0
+
+
+def test_enemy_awareness_switches_from_engaged_to_searching_when_los_is_lost() -> None:
+    """Enemies should become searching after losing direct player visibility."""
+    from topdown_shooter.world.collision import TileCollisionService
+
+    runtime_map = _build_runtime_map_from_rows((
+        "+++++",
+        "+++++",
+        "+++++",
+    ))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {"id": "spawn_0", "position": [1, 1], "facing_angle_degrees": 0.0},
+            ],
+        },
+        runtime_map,
+    )
+    collision_service = TileCollisionService(runtime_map)
+
+    system.update_perception(
+        player_position=WorldCoord(x=56.0, y=24.0),
+        collision_service=collision_service,
+        vision_range_px=96.0,
+        vision_angle_degrees=90.0,
+        line_of_sight_sample_step_px=4.0,
+    )
+
+    assert system.enemies[0].awareness_state == "engaged"
+    assert system.stats.engaged_enemies == 1
+
+    system.update_perception(
+        player_position=WorldCoord(x=8.0, y=24.0),
+        collision_service=collision_service,
+        vision_range_px=96.0,
+        vision_angle_degrees=90.0,
+        line_of_sight_sample_step_px=4.0,
+    )
+
+    assert system.enemies[0].awareness_state == "searching"
+    assert system.stats.searching_enemies == 1
+
+
+def test_searching_enemy_returns_home_after_lost_sight_timeout() -> None:
+    """Searching enemies should return home and reset to idle after timeout."""
+    from topdown_shooter.world.collision import TileCollisionService
+
+    runtime_map = _build_runtime_map_from_rows((
+        "+++++",
+        "+++++",
+        "+++++",
+    ))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {"id": "spawn_0", "position": [1, 1], "facing_angle_degrees": 0.0},
+            ],
+        },
+        runtime_map,
+    )
+    enemy = system.enemies[0]
+    enemy.alerted = True
+    enemy.awareness_state = "searching"
+    enemy.world_position = WorldCoord(x=56.0, y=24.0)
+    enemy.tile = world_to_tile(enemy.world_position, runtime_map.tile_size_px)
+    enemy.last_seen_player_position = WorldCoord(x=72.0, y=24.0)
+
+    system.update_chase_movement(
+        player_position=WorldCoord(x=88.0, y=24.0),
+        collision_service=TileCollisionService(runtime_map),
+        frame_time=1.1,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+        lost_sight_timeout_seconds=1.0,
+    )
+
+    assert enemy.awareness_state == "returning"
+    assert system.stats.returning_enemies == 1
+
+    assert enemy.home_position is not None
+    enemy.world_position = enemy.home_position
+    enemy.tile = world_to_tile(enemy.world_position, runtime_map.tile_size_px)
+
+    system.update_chase_movement(
+        player_position=WorldCoord(x=88.0, y=24.0),
+        collision_service=TileCollisionService(runtime_map),
+        frame_time=0.1,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+        return_home_reached_distance_px=3.0,
+    )
+
+    assert enemy.alerted is False
+    assert enemy.awareness_state == "idle"
+    assert system.stats.alerted_enemies == 0

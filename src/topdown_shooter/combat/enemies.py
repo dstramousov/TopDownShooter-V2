@@ -34,6 +34,10 @@ class EnemyState:
         health: Current enemy health points.
         facing_angle_degrees: Direction the enemy is looking at in degrees.
         alerted: Whether the enemy has detected the player.
+        awareness_state: Current awareness state: idle, engaged, searching, or returning.
+        home_position: Position the enemy returns to after losing the player.
+        last_seen_player_position: Last known player position used for searching.
+        time_since_player_seen_seconds: Time elapsed since the player was last visible.
         alive: Whether the enemy is still active.
         last_hit_age_seconds: Seconds elapsed since the last damaging hit.
         strafe_direction: Current deterministic strafe side, either -1 or 1.
@@ -59,6 +63,10 @@ class EnemyState:
     health: float
     facing_angle_degrees: float
     alerted: bool = False
+    awareness_state: str = "idle"
+    home_position: WorldCoord | None = None
+    last_seen_player_position: WorldCoord | None = None
+    time_since_player_seen_seconds: float = 0.0
     alive: bool = True
     last_hit_age_seconds: float | None = None
     strafe_direction: int = 1
@@ -99,6 +107,9 @@ class EnemyStats:
     Attributes:
         active_enemies: Number of currently active enemy markers.
         alerted_enemies: Number of active enemies that have detected the player.
+        engaged_enemies: Number of enemies currently seeing the player.
+        searching_enemies: Number of alerted enemies searching for the player.
+        returning_enemies: Number of enemies returning to their home positions.
         spawned_enemies: Number of enemy markers created at startup.
         killed_enemies: Number of enemies killed by projectile damage.
         total_hits: Total number of projectile hits applied to enemies.
@@ -124,6 +135,9 @@ class EnemyStats:
 
     active_enemies: int
     alerted_enemies: int
+    engaged_enemies: int
+    searching_enemies: int
+    returning_enemies: int
     spawned_enemies: int
     killed_enemies: int
     total_hits: int
@@ -297,6 +311,7 @@ class EnemySystem:
                         role=cls._read_preferred_role(raw_spawn),
                         tile=tile,
                         world_position=world_position,
+                        home_position=world_position,
                         max_health=enemy_max_health,
                         health=enemy_max_health,
                         facing_angle_degrees=cls._resolve_initial_facing_angle(
@@ -340,6 +355,15 @@ class EnemySystem:
         return EnemyStats(
             active_enemies=len(self.enemies),
             alerted_enemies=sum(1 for enemy in self.enemies if enemy.alerted),
+            engaged_enemies=sum(
+                1 for enemy in self.enemies if enemy.awareness_state == "engaged"
+            ),
+            searching_enemies=sum(
+                1 for enemy in self.enemies if enemy.awareness_state == "searching"
+            ),
+            returning_enemies=sum(
+                1 for enemy in self.enemies if enemy.awareness_state == "returning"
+            ),
             spawned_enemies=self._spawned_enemies,
             killed_enemies=self._killed_enemies,
             total_hits=self._total_hits,
@@ -433,6 +457,8 @@ class EnemySystem:
         tactical_min_slot_angle_degrees: float = 55.0,
         tactical_slot_commitment_seconds: float = 2.5,
         tactical_player_reposition_distance_px: float = 48.0,
+        lost_sight_timeout_seconds: float = 10.0,
+        return_home_reached_distance_px: float = 18.0,
     ) -> None:
         """Move alerted enemies using local combat steering.
 
@@ -471,6 +497,8 @@ class EnemySystem:
             tactical_min_slot_angle_degrees: Minimum angular gap between assigned slots.
             tactical_slot_commitment_seconds: Minimum time a slot is held before reassignment.
             tactical_player_reposition_distance_px: Player movement distance that forces slot reassignment.
+            lost_sight_timeout_seconds: Time before searching enemies return home.
+            return_home_reached_distance_px: Distance used to finish returning home.
         """
         self._moving_enemies = 0
         self._approaching_enemies = 0
@@ -539,10 +567,23 @@ class EnemySystem:
         for enemy in self._enemies:
             if not enemy.alive or not enemy.alerted:
                 continue
+            EnemySystem._advance_enemy_awareness(
+                enemy=enemy,
+                frame_time=frame_time,
+                lost_sight_timeout_seconds=lost_sight_timeout_seconds,
+            )
+            target_position = EnemySystem._enemy_movement_target(enemy, player_position)
+            if enemy.awareness_state == "returning" and enemy.home_position is not None:
+                if EnemySystem._distance(enemy.world_position, enemy.home_position) <= max(
+                    0.0,
+                    return_home_reached_distance_px,
+                ):
+                    EnemySystem._reset_enemy_to_idle(enemy)
+                    continue
             moved, approaching, strafing, retreating, stuck, pathing, rebuilt, failed_path = (
                 self._move_enemy_with_combat_steering(
                     enemy=enemy,
-                    player_position=player_position,
+                    player_position=target_position,
                     collision_service=collision_service,
                     frame_time=frame_time,
                     movement_speed_px_per_second=chase_speed_px_per_second,
@@ -564,7 +605,9 @@ class EnemySystem:
                     path_max_iterations=path_max_iterations,
                     path_waypoint_reach_distance_px=path_waypoint_reach_distance_px,
                     tactical_slot_reached_distance_px=tactical_slot_reached_distance_px,
-                    tactical_pressure_active=tactical_active,
+                    tactical_pressure_active=(
+                        tactical_active and enemy.awareness_state == "engaged"
+                    ),
                 )
             )
             if moved:
@@ -696,7 +739,11 @@ class EnemySystem:
             enemy_collision_radius_px: Enemy collision radius in world pixels.
             line_of_sight_sample_step_px: Sample step for player line-of-sight checks.
         """
-        active_enemies = [enemy for enemy in self._enemies if enemy.alive and enemy.alerted]
+        active_enemies = [
+            enemy
+            for enemy in self._enemies
+            if enemy.alive and enemy.alerted and enemy.awareness_state != "returning"
+        ]
         if not active_enemies:
             return
 
@@ -1754,21 +1801,27 @@ class EnemySystem:
         if vision_range_px <= 0.0 or vision_angle_degrees <= 0.0:
             return
         for enemy in self._enemies:
-            if not enemy.alive or enemy.alerted:
+            if not enemy.alive:
                 continue
-            if self._can_see_player(
+            sees_player = self._can_see_player(
                 enemy=enemy,
                 player_position=player_position,
                 collision_service=collision_service,
                 vision_range_px=vision_range_px,
                 vision_angle_degrees=vision_angle_degrees,
                 line_of_sight_sample_step_px=line_of_sight_sample_step_px,
-            ):
+            )
+            if sees_player:
                 self._alert_enemy(
                     enemy,
                     squad_alert_broadcast_delay_seconds=squad_alert_broadcast_delay_seconds,
                     squad_alert_broadcast_radius_px=squad_alert_broadcast_radius_px,
+                    awareness_state="engaged",
+                    last_seen_player_position=player_position,
                 )
+                EnemySystem._set_enemy_engaged(enemy, player_position)
+            elif enemy.alerted and enemy.awareness_state == "engaged":
+                EnemySystem._set_enemy_searching(enemy, enemy.last_seen_player_position)
 
     def alert_enemies_by_sound(
         self,
@@ -1802,6 +1855,8 @@ class EnemySystem:
                 enemy,
                 squad_alert_broadcast_delay_seconds=squad_alert_broadcast_delay_seconds,
                 squad_alert_broadcast_radius_px=squad_alert_broadcast_radius_px,
+                awareness_state="searching",
+                last_seen_player_position=origin,
             )
             alerted_count += 1
         self._sound_alerts_triggered += alerted_count
@@ -1863,6 +1918,8 @@ class EnemySystem:
             enemy,
             squad_alert_broadcast_delay_seconds=squad_alert_broadcast_delay_seconds,
             squad_alert_broadcast_radius_px=squad_alert_broadcast_radius_px,
+            awareness_state="searching",
+            last_seen_player_position=enemy.world_position,
         )
         enemy.health = max(0.0, enemy.health - damage)
         enemy.last_hit_age_seconds = 0.0
@@ -1876,6 +1933,8 @@ class EnemySystem:
         enemy: EnemyState,
         squad_alert_broadcast_delay_seconds: float,
         squad_alert_broadcast_radius_px: float = 0.0,
+        awareness_state: str = "searching",
+        last_seen_player_position: WorldCoord | None = None,
     ) -> None:
         """Set one enemy alerted and schedule squad alert propagation.
 
@@ -1883,10 +1942,20 @@ class EnemySystem:
             enemy: Enemy that detected the player or received damage.
             squad_alert_broadcast_delay_seconds: Delay before squadmates are alerted.
             squad_alert_broadcast_radius_px: Radius for nearby squad alert fallback.
+            awareness_state: Awareness state assigned to the alerted enemy.
+            last_seen_player_position: Last known player position for searching.
         """
-        if not enemy.alive or enemy.alerted:
+        if not enemy.alive:
             return
+        was_alerted = enemy.alerted
         enemy.alerted = True
+        EnemySystem._set_enemy_awareness(
+            enemy,
+            awareness_state,
+            last_seen_player_position,
+        )
+        if was_alerted:
+            return
         self._schedule_squad_alert(
             spawn_id=enemy.spawn_id,
             origin_position=enemy.world_position,
@@ -1990,6 +2059,7 @@ class EnemySystem:
             if not self._is_squad_alert_target(squadmate, spawn_id, origin_position, radius_px):
                 continue
             squadmate.alerted = True
+            EnemySystem._set_enemy_searching(squadmate, origin_position)
             alerted_count += 1
         return alerted_count
 
@@ -2042,6 +2112,95 @@ class EnemySystem:
         dx = enemy.world_position.x - origin_position.x
         dy = enemy.world_position.y - origin_position.y
         return math.hypot(dx, dy) <= safe_radius
+
+
+    @staticmethod
+    def _set_enemy_awareness(
+        enemy: EnemyState,
+        awareness_state: str,
+        last_seen_player_position: WorldCoord | None,
+    ) -> None:
+        """Set enemy awareness state and optional last known player position."""
+        if awareness_state == "engaged":
+            EnemySystem._set_enemy_engaged(
+                enemy,
+                last_seen_player_position or enemy.world_position,
+            )
+        elif awareness_state == "returning":
+            EnemySystem._set_enemy_returning(enemy)
+        elif awareness_state == "idle":
+            EnemySystem._reset_enemy_to_idle(enemy)
+        else:
+            EnemySystem._set_enemy_searching(enemy, last_seen_player_position)
+
+    @staticmethod
+    def _set_enemy_engaged(enemy: EnemyState, player_position: WorldCoord) -> None:
+        """Mark an enemy as directly seeing the player."""
+        enemy.alerted = True
+        enemy.awareness_state = "engaged"
+        enemy.last_seen_player_position = player_position
+        enemy.time_since_player_seen_seconds = 0.0
+
+    @staticmethod
+    def _set_enemy_searching(
+        enemy: EnemyState,
+        last_seen_player_position: WorldCoord | None,
+    ) -> None:
+        """Mark an enemy as searching for the last known player position."""
+        enemy.alerted = True
+        enemy.awareness_state = "searching"
+        if last_seen_player_position is not None:
+            enemy.last_seen_player_position = last_seen_player_position
+        enemy.time_since_player_seen_seconds = max(0.0, enemy.time_since_player_seen_seconds)
+        enemy.tactical_target_position = None
+        enemy.tactical_target_age_seconds = 0.0
+
+    @staticmethod
+    def _set_enemy_returning(enemy: EnemyState) -> None:
+        """Mark an enemy as returning to its home position."""
+        enemy.alerted = True
+        enemy.awareness_state = "returning"
+        enemy.tactical_target_position = None
+        enemy.tactical_target_age_seconds = 0.0
+        EnemySystem._clear_enemy_path(enemy)
+
+    @staticmethod
+    def _reset_enemy_to_idle(enemy: EnemyState) -> None:
+        """Reset an enemy after it returned to its home position."""
+        enemy.alerted = False
+        enemy.awareness_state = "idle"
+        enemy.last_seen_player_position = None
+        enemy.time_since_player_seen_seconds = 0.0
+        enemy.tactical_target_position = None
+        enemy.tactical_target_age_seconds = 0.0
+        EnemySystem._clear_enemy_path(enemy)
+
+    @staticmethod
+    def _advance_enemy_awareness(
+        enemy: EnemyState,
+        frame_time: float,
+        lost_sight_timeout_seconds: float,
+    ) -> None:
+        """Advance searching timer and switch stale searches to return-home."""
+        if enemy.awareness_state != "searching":
+            return
+        enemy.time_since_player_seen_seconds += max(0.0, frame_time)
+        if enemy.time_since_player_seen_seconds >= max(0.0, lost_sight_timeout_seconds):
+            EnemySystem._set_enemy_returning(enemy)
+
+    @staticmethod
+    def _enemy_movement_target(enemy: EnemyState, player_position: WorldCoord) -> WorldCoord:
+        """Return the current movement target for an enemy awareness state."""
+        if enemy.awareness_state == "returning" and enemy.home_position is not None:
+            return enemy.home_position
+        if enemy.awareness_state == "searching" and enemy.last_seen_player_position is not None:
+            return enemy.last_seen_player_position
+        return player_position
+
+    @staticmethod
+    def _distance(first: WorldCoord, second: WorldCoord) -> float:
+        """Return Euclidean distance between two world points."""
+        return math.hypot(first.x - second.x, first.y - second.y)
 
     def _spawn_hit_marker(self, position: WorldCoord) -> None:
         """Create a short-lived enemy hit marker.

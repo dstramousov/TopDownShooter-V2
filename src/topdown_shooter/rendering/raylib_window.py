@@ -326,6 +326,12 @@ class RaylibWindow:
                     tactical_player_reposition_distance_px=(
                         self._config.enemies.tactical_player_reposition_distance_px
                     ),
+                    lost_sight_timeout_seconds=(
+                        self._config.enemies.lost_sight_timeout_seconds
+                    ),
+                    return_home_reached_distance_px=(
+                        self._config.enemies.return_home_reached_distance_px
+                    ),
                 )
                 self._projectile_system.prune_dead()
                 self._camera_rig.update_follow_target(
