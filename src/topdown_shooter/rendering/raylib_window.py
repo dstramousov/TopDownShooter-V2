@@ -434,7 +434,9 @@ class RaylibWindow:
             self._camera_rig.zoom_by(-self._config.camera.zoom_step)
         if self._camera_zoom_mouse_wheel_enabled:
             wheel_delta = self._raylib.get_mouse_wheel_move()
-            if wheel_delta != 0.0:
+            if wheel_delta != 0.0 and self._debug_overlay_enabled and self._debug_overlay.is_mouse_over_panel():
+                self._debug_overlay.scroll_by_wheel_delta(wheel_delta)
+            elif wheel_delta != 0.0:
                 self._camera_rig.zoom_by(wheel_delta * self._config.camera.zoom_step)
         if self._raylib.is_key_pressed(self._camera_reset_key):
             self._camera_rig.reset_to_start()

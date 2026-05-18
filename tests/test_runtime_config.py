@@ -53,8 +53,11 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.controls.weapon_slot_2 == "KEY_TWO"
     assert config.controls.weapon_slot_3 == "KEY_THREE"
     assert config.weapons.database_path == "res/config/weapons.json"
-    assert config.debug_overlay.enabled_by_default is False
+    assert config.debug_overlay.enabled_by_default is True
+    assert config.debug_overlay.layout == "right_panel"
     assert config.debug_overlay.panel_width == 1200
+    assert config.debug_overlay.side_panel_width == 420
+    assert config.debug_overlay.scroll_step_px == 36
     assert config.debug_overlay.font_path == "res/fonts/PressStart2P-Regular.ttf"
     assert config.debug_overlay.font_size == 8
     assert config.debug_overlay.font_spacing == 0.0

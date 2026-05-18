@@ -92,6 +92,7 @@ class DebugOverlay:
             font_path=config.debug_overlay.font_path,
             font_spacing=config.debug_overlay.font_spacing,
         )
+        self._scroll_offset_px = 0
 
     def draw(
         self,
@@ -125,9 +126,36 @@ class DebugOverlay:
             weapon_stats=weapon_stats,
             enemy_stats=enemy_stats,
         )
+        if overlay_config.layout == "right_panel":
+            self._clamp_scroll_offset(overlay_config, columns)
+            self._draw_right_panel(overlay_config, columns)
+            return
+
         panel_height = self._calculate_panel_height(overlay_config, columns)
         self._draw_panel(overlay_config, panel_height)
         self._draw_columns(overlay_config, columns)
+
+    def scroll_by_wheel_delta(self, wheel_delta: float) -> None:
+        """Scroll the right-side debug panel by a mouse wheel delta.
+
+        Args:
+            wheel_delta: Mouse wheel movement for the current frame.
+        """
+        if wheel_delta == 0.0:
+            return
+        step_px = self._config.debug_overlay.scroll_step_px
+        self._scroll_offset_px = max(
+            0,
+            self._scroll_offset_px - int(wheel_delta * step_px),
+        )
+
+    def is_mouse_over_panel(self) -> bool:
+        """Return whether the mouse cursor is over the right-side debug panel."""
+        config = self._config.debug_overlay
+        if config.layout != "right_panel":
+            return False
+        mouse_position = self._raylib.get_mouse_position()
+        return float(mouse_position.x) >= float(self._right_panel_x(config))
 
     def unload(self) -> None:
         """Unload optional raylib resources owned by the overlay."""
@@ -561,6 +589,132 @@ class DebugOverlay:
         if tile.x >= self._runtime_map.width_tiles or tile.y >= self._runtime_map.height_tiles:
             return None
         return self._runtime_map.tiles[tile.y][tile.x]
+
+    def _draw_right_panel(
+        self,
+        config: DebugOverlayConfig,
+        columns: tuple[tuple[DebugOverlaySection, ...], tuple[DebugOverlaySection, ...]],
+    ) -> None:
+        """Draw the right-side debug panel.
+
+        Args:
+            config: Debug overlay configuration.
+            columns: Debug sections built for the current frame.
+        """
+        x = self._right_panel_x(config)
+        panel_color = self._raylib.Color(0, 0, 0, config.background_alpha)
+        self._raylib.draw_rectangle(
+            x,
+            0,
+            config.side_panel_width,
+            self._config.window.height,
+            panel_color,
+        )
+        sections = self._flatten_columns(columns)
+        self._draw_side_panel_sections(config=config, sections=sections, x=x + config.padding)
+
+    def _draw_side_panel_sections(
+        self,
+        config: DebugOverlayConfig,
+        sections: tuple[DebugOverlaySection, ...],
+        x: int,
+    ) -> None:
+        """Draw vertically scrollable debug sections in the side panel.
+
+        Args:
+            config: Debug overlay configuration.
+            sections: Sections to draw.
+            x: Text left edge in pixels.
+        """
+        y = config.padding - self._scroll_offset_px
+        line_height = config.font_size + config.line_spacing
+        value_x = x + config.label_width
+        label_color = self._raylib.RAYWHITE
+        value_color = self._raylib.ORANGE
+        panel_height = self._config.window.height
+
+        for section in sections:
+            if self._is_line_visible(y, line_height, panel_height):
+                self._draw_text(section.title, x, y, config.font_size, label_color)
+            y += line_height
+            for row in section.rows:
+                if self._is_line_visible(y, line_height, panel_height):
+                    self._draw_text(
+                        f"{row.label}:",
+                        x,
+                        y,
+                        config.font_size,
+                        label_color,
+                    )
+                    self._draw_text(row.value, value_x, y, config.font_size, value_color)
+                y += line_height
+            y += config.section_spacing
+
+    def _right_panel_x(self, config: DebugOverlayConfig) -> int:
+        """Return the left edge of the right-side debug panel."""
+        return max(0, self._config.window.width - config.side_panel_width)
+
+    @staticmethod
+    def _flatten_columns(
+        columns: tuple[tuple[DebugOverlaySection, ...], tuple[DebugOverlaySection, ...]],
+    ) -> tuple[DebugOverlaySection, ...]:
+        """Flatten debug columns into one vertical section list.
+
+        Args:
+            columns: Two debug overlay columns.
+
+        Returns:
+            Single ordered section tuple.
+        """
+        return columns[0] + columns[1]
+
+    @staticmethod
+    def _is_line_visible(y: int, line_height: int, panel_height: int) -> bool:
+        """Return whether a text line intersects the visible panel area.
+
+        Args:
+            y: Text top position in pixels.
+            line_height: Text line height in pixels.
+            panel_height: Panel height in pixels.
+
+        Returns:
+            True when the line should be drawn.
+        """
+        return y + line_height >= 0 and y <= panel_height
+
+    def _clamp_scroll_offset(
+        self,
+        config: DebugOverlayConfig,
+        columns: tuple[tuple[DebugOverlaySection, ...], tuple[DebugOverlaySection, ...]],
+    ) -> None:
+        """Clamp the side panel scroll offset to the current content height.
+
+        Args:
+            config: Debug overlay configuration.
+            columns: Current debug columns.
+        """
+        max_scroll = self._calculate_max_scroll_offset(config, columns)
+        self._scroll_offset_px = min(max(0, self._scroll_offset_px), max_scroll)
+
+    def _calculate_max_scroll_offset(
+        self,
+        config: DebugOverlayConfig,
+        columns: tuple[tuple[DebugOverlaySection, ...], tuple[DebugOverlaySection, ...]],
+    ) -> int:
+        """Calculate maximum side panel scroll offset.
+
+        Args:
+            config: Debug overlay configuration.
+            columns: Current debug columns.
+
+        Returns:
+            Maximum scroll offset in pixels.
+        """
+        sections = self._flatten_columns(columns)
+        line_height = config.font_size + config.line_spacing
+        content_height = self._calculate_column_height(config, sections, line_height)
+        visible_height = max(0, self._config.window.height - config.padding * 2)
+        return max(0, content_height - visible_height)
 
     def _draw_panel(self, config: DebugOverlayConfig, panel_height: int) -> None:
         """Draw the translucent overlay panel.

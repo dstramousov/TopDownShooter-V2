@@ -316,3 +316,10 @@
 - Added aggressive surround pressure fallback so alerted enemies keep orbiting and pressing when they do not yet hold a tactical slot.
 - Added an enemy test that checks open-ground surround assignments spread across multiple quadrants.
 
+## v0.0.41 -> v0.0.42
+
+- Added a configurable right-side debug panel layout inside the main raylib window.
+- Enabled the debug panel by default and added side panel width and mouse-wheel scroll settings to runtime config.
+- Routed mouse wheel input over the debug panel to scroll diagnostics instead of zooming the camera.
+- Kept the classic overlay layout available through the debug overlay layout setting.
+

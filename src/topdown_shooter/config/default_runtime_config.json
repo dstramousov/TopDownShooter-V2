@@ -27,7 +27,7 @@
     "max_health": 100
   },
   "debug_overlay": {
-    "enabled_by_default": false,
+    "enabled_by_default": true,
     "panel_width": 1200,
     "padding": 18,
     "font_size": 8,
@@ -37,7 +37,10 @@
     "label_width": 128,
     "background_alpha": 120,
     "font_path": "res/fonts/PressStart2P-Regular.ttf",
-    "font_spacing": 0.0
+    "font_spacing": 0.0,
+    "layout": "right_panel",
+    "side_panel_width": 420,
+    "scroll_step_px": 36
   },
   "controls": {
     "quit": "KEY_ESCAPE",

@@ -237,7 +237,10 @@ class DebugOverlayConfig:
 
     Attributes:
         enabled_by_default: Whether the overlay starts enabled.
-        panel_width: Overlay panel width in pixels.
+        layout: Overlay layout mode. Supported values are ``overlay`` and ``right_panel``.
+        panel_width: Overlay panel width in pixels for the classic overlay layout.
+        side_panel_width: Right-side debug panel width in pixels.
+        scroll_step_px: Scroll distance applied per mouse wheel tick in the right panel.
         padding: Inner panel padding in pixels.
         font_path: Relative or absolute path to the optional overlay TTF font.
         font_size: Text font size in pixels.
@@ -250,7 +253,10 @@ class DebugOverlayConfig:
     """
 
     enabled_by_default: bool
+    layout: str
     panel_width: int
+    side_panel_width: int
+    scroll_step_px: int
     padding: int
     font_path: str
     font_size: int
@@ -637,7 +643,10 @@ class RuntimeConfigLoader:
             ),
             debug_overlay=DebugOverlayConfig(
                 enabled_by_default=self._require_bool(debug_overlay, "enabled_by_default"),
+                layout=self._require_debug_overlay_layout(debug_overlay, "layout"),
                 panel_width=self._require_positive_int(debug_overlay, "panel_width"),
+                side_panel_width=self._require_positive_int(debug_overlay, "side_panel_width"),
+                scroll_step_px=self._require_positive_int(debug_overlay, "scroll_step_px"),
                 padding=self._require_non_negative_int(debug_overlay, "padding"),
                 font_path=self._require_str(debug_overlay, "font_path"),
                 font_size=self._require_positive_int(debug_overlay, "font_size"),
@@ -693,6 +702,26 @@ class RuntimeConfigLoader:
                 weapon_slot_3=self._require_str(controls, "weapon_slot_3"),
             ),
         )
+
+    def _require_debug_overlay_layout(self, data: dict[str, Any], field: str) -> str:
+        """Read and validate a debug overlay layout value.
+
+        Args:
+            data: Source mapping.
+            field: Field name to read.
+
+        Returns:
+            Validated debug overlay layout.
+
+        Raises:
+            RuntimeConfigError: If the layout value is unsupported.
+        """
+        value = self._require_str(data, field)
+        if value not in {"overlay", "right_panel"}:
+            raise RuntimeConfigError(
+                f"Runtime config field '{field}' must be 'overlay' or 'right_panel'.",
+            )
+        return value
 
     def _build_camera_config(self, camera: dict[str, Any]) -> CameraConfig:
         """Build typed camera config from raw data.
