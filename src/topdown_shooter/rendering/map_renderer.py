@@ -10,7 +10,6 @@ from topdown_shooter.rendering.camera import RuntimeCamera
 from topdown_shooter.rendering.colors import build_tile_palette
 from topdown_shooter.world.runtime_map import RuntimeMap
 
-
 _VISIBLE_TILE_MARGIN = 2
 
 

@@ -1106,3 +1106,63 @@ def test_tactical_surround_assignments_cover_multiple_quadrants() -> None:
         angle = math.degrees(math.atan2(slot.y - player_position.y, slot.x - player_position.x)) % 360.0
         quadrants.add(int(angle // 90.0))
     assert len(quadrants) >= 3
+
+
+def test_enemy_squad_alert_propagates_after_configured_delay() -> None:
+    """Alerting one squad member should alert its squadmates after a delay."""
+    runtime_map = _build_runtime_map()
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {"id": "spawn_0", "position": [1, 1]},
+                {"id": "spawn_1", "position": [3, 1]},
+            ],
+        },
+        runtime_map,
+        min_squad_size=2,
+        max_squad_size=2,
+        squad_radius_px=8.0,
+        min_enemy_spacing_px=1.0,
+        placement_attempts_per_enemy=8,
+        enemy_max_health=100.0,
+    )
+    spawn_zero_enemies = [enemy for enemy in system.enemies if enemy.spawn_id == "spawn_0"]
+    spawn_one_enemies = [enemy for enemy in system.enemies if enemy.spawn_id == "spawn_1"]
+    assert len(spawn_zero_enemies) == 2
+    assert len(spawn_one_enemies) == 2
+
+    hit_enemy = spawn_zero_enemies[0]
+    projectile = ProjectileState(
+        position=hit_enemy.world_position,
+        previous_position=hit_enemy.world_position,
+        direction_x=1.0,
+        direction_y=0.0,
+        speed_px_per_second=16.0,
+        max_distance_px=64.0,
+        lifetime_seconds=10.0,
+        radius_px=3.0,
+        damage=10.0,
+    )
+
+    system.apply_projectile_hits(
+        (projectile,),
+        enemy_collision_radius_px=8.0,
+        squad_alert_broadcast_delay_seconds=0.5,
+    )
+
+    assert hit_enemy.alerted is True
+    assert spawn_zero_enemies[1].alerted is False
+    assert all(not enemy.alerted for enemy in spawn_one_enemies)
+    assert system.stats.pending_squad_alerts == 1
+
+    system.update(0.25, squad_alert_broadcast_delay_seconds=0.5)
+
+    assert spawn_zero_enemies[1].alerted is False
+    assert system.stats.pending_squad_alerts == 1
+
+    system.update(0.25, squad_alert_broadcast_delay_seconds=0.5)
+
+    assert spawn_zero_enemies[1].alerted is True
+    assert all(not enemy.alerted for enemy in spawn_one_enemies)
+    assert system.stats.pending_squad_alerts == 0
+    assert system.stats.squad_alerts_triggered == 1

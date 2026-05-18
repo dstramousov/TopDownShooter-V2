@@ -138,6 +138,7 @@
     "min_enemy_spacing_px": 28.0,
     "max_initial_enemies": 30,
     "placement_attempts_per_enemy": 24,
+    "squad_alert_broadcast_delay_seconds": 0.25,
     "chase_speed_px_per_second": 70.0,
     "preferred_combat_distance_px": 180.0,
     "minimum_combat_distance_px": 96.0,

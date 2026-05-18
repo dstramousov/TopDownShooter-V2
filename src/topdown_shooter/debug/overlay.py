@@ -358,6 +358,8 @@ class DebugOverlay:
                 DebugOverlayRow("Tac slots", str(enemy_stats.tactical_slots_assigned)),
                 DebugOverlayRow("Spawned", str(enemy_stats.spawned_enemies)),
                 DebugOverlayRow("Squads", str(enemy_stats.spawned_squads)),
+                DebugOverlayRow("Squad pending", str(enemy_stats.pending_squad_alerts)),
+                DebugOverlayRow("Squad alerts", str(enemy_stats.squad_alerts_triggered)),
                 DebugOverlayRow("Killed", str(enemy_stats.killed_enemies)),
                 DebugOverlayRow("Hits", str(enemy_stats.total_hits)),
                 DebugOverlayRow("Hit markers", str(enemy_stats.active_hit_markers)),
@@ -369,6 +371,10 @@ class DebugOverlay:
                 DebugOverlayRow("Squad radius", f"{self._config.enemies.squad_radius_px:.0f}px"),
                 DebugOverlayRow("Max initial", str(self._config.enemies.max_initial_enemies)),
                 DebugOverlayRow("Min spacing", f"{self._config.enemies.min_enemy_spacing_px:.0f}px"),
+                DebugOverlayRow(
+                    "Squad alert",
+                    f"{self._config.enemies.squad_alert_broadcast_delay_seconds:.2f}s",
+                ),
                 DebugOverlayRow(
                     "Move speed",
                     f"{self._config.enemies.chase_speed_px_per_second:.1f}px/s",

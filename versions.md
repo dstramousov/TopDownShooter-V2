@@ -323,3 +323,26 @@
 - Routed mouse wheel input over the debug panel to scroll diagnostics instead of zooming the camera.
 - Kept the classic overlay layout available through the debug overlay layout setting.
 
+## v0.0.42 -> v0.0.43
+
+- Moved the default runtime JSON config from `src/topdown_shooter/config/` to `res/config/` so project configs live in one resource directory.
+- Updated runtime config loading to read `res/config/default_runtime_config.json` through a project-root relative path.
+- Added Russian documentation for all config files and their parameters under `docs/`.
+- Added Russian documentation for enemy pursuit, pathfinding, combat steering, and tactical surround positioning.
+- Updated README references to the new runtime config location.
+
+## v0.0.43 -> v0.0.44
+
+- Reworked Russian documentation formatting to avoid wide Markdown tables that are hard to read in terminals.
+- Reformatted `docs/configuration_ru.md` into section-based parameter descriptions.
+- Reformatted `docs/enemy_tactics_ru.md` into numbered, readable sections without wide tables.
+- Kept gameplay, config values, and runtime behavior unchanged.
+
+## v0.0.44 -> v0.0.45
+
+- Added delayed squad alert propagation for enemies spawned from the same tactical spawn zone.
+- Added `squad_alert_broadcast_delay_seconds` to the enemy runtime config.
+- Updated debug overlay enemy diagnostics with pending and triggered squad alerts.
+- Updated Russian documentation for the new squad alert behavior.
+- Added a test for delayed squadmate alert propagation.
+

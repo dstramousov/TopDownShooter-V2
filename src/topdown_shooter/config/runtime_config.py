@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from importlib import resources
+from pathlib import Path
 from typing import Any
 
 
@@ -150,6 +150,7 @@ class EnemyConfig:
         min_enemy_spacing_px: Minimum initial spacing between enemies.
         max_initial_enemies: Global cap for startup enemies.
         placement_attempts_per_enemy: Candidate attempts for each squad member.
+        squad_alert_broadcast_delay_seconds: Delay before a squad alert propagates.
         chase_speed_px_per_second: Speed for alerted enemy combat movement.
         preferred_combat_distance_px: Desired distance alerted enemies try to keep.
         minimum_combat_distance_px: Hard distance where enemies retreat more aggressively.
@@ -201,6 +202,7 @@ class EnemyConfig:
     min_enemy_spacing_px: float
     max_initial_enemies: int
     placement_attempts_per_enemy: int
+    squad_alert_broadcast_delay_seconds: float
     chase_speed_px_per_second: float
     preferred_combat_distance_px: float
     minimum_combat_distance_px: float
@@ -409,19 +411,40 @@ class RuntimeConfigLoader:
     """Load runtime configuration files."""
 
     def load_default(self) -> RuntimeConfig:
-        """Load the packaged default runtime configuration.
+        """Load the default runtime configuration from ``res/config``.
 
         Returns:
             Runtime configuration.
         """
-        config_resource = resources.files("topdown_shooter.config").joinpath(
-            "default_runtime_config.json",
-        )
-        with config_resource.open("r", encoding="utf-8") as config_file:
-            raw_config = json.load(config_file)
+        config_path = self._default_config_path()
+        try:
+            with config_path.open("r", encoding="utf-8") as config_file:
+                raw_config = json.load(config_file)
+        except OSError as exc:
+            raise RuntimeConfigError(
+                f"Default runtime config cannot be read: {config_path}",
+            ) from exc
+        except json.JSONDecodeError as exc:
+            raise RuntimeConfigError(
+                f"Default runtime config contains invalid JSON: {config_path}",
+            ) from exc
         if not isinstance(raw_config, dict):
             raise RuntimeConfigError("Default runtime config root must be an object.")
         return self._build_config(raw_config)
+
+    @staticmethod
+    def _default_config_path() -> Path:
+        """Return the project default runtime config path.
+
+        Returns:
+            Path to ``res/config/default_runtime_config.json``.
+        """
+        return (
+            Path(__file__).resolve().parents[3]
+            / "res"
+            / "config"
+            / "default_runtime_config.json"
+        )
 
     def _build_config(self, raw_config: dict[str, Any]) -> RuntimeConfig:
         """Build typed runtime config from raw data.
@@ -546,6 +569,10 @@ class RuntimeConfigLoader:
                 placement_attempts_per_enemy=self._require_positive_int(
                     enemies,
                     "placement_attempts_per_enemy",
+                ),
+                squad_alert_broadcast_delay_seconds=self._require_non_negative_float(
+                    enemies,
+                    "squad_alert_broadcast_delay_seconds",
                 ),
                 chase_speed_px_per_second=self._require_non_negative_float(
                     enemies,

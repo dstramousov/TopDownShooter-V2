@@ -201,10 +201,18 @@ class RaylibWindow:
                 self._update_player_aim(input_camera)
                 self._update_combat_controls(frame_time)
                 self._projectile_system.update(frame_time)
-                self._enemy_system.update(frame_time)
+                self._enemy_system.update(
+                    frame_time,
+                    squad_alert_broadcast_delay_seconds=(
+                        self._config.enemies.squad_alert_broadcast_delay_seconds
+                    ),
+                )
                 self._enemy_system.apply_projectile_hits(
                     projectiles=self._projectile_system.projectiles,
                     enemy_collision_radius_px=self._config.enemies.marker_radius_px,
+                    squad_alert_broadcast_delay_seconds=(
+                        self._config.enemies.squad_alert_broadcast_delay_seconds
+                    ),
                 )
                 self._enemy_system.update_perception(
                     player_position=self._player.world_position,
@@ -213,6 +221,9 @@ class RaylibWindow:
                     vision_angle_degrees=self._config.enemies.vision_angle_degrees,
                     line_of_sight_sample_step_px=(
                         self._config.enemies.line_of_sight_sample_step_px
+                    ),
+                    squad_alert_broadcast_delay_seconds=(
+                        self._config.enemies.squad_alert_broadcast_delay_seconds
                     ),
                 )
                 self._enemy_system.update_chase_movement(
