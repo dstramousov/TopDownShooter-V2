@@ -4,9 +4,6 @@ TopDownShooter V2 — прототип 2D top-down shooter на Python с исп
 
 <img width="1277" height="741" alt="Screenshot from 2026-05-18 14-04-17" src="https://github.com/user-attachments/assets/449eee4c-d2df-4bec-8613-6cbaea7bfe33" />
 
-<img width="3840" height="1080" alt="Screenshot from 2026-05-18 14-04-11" src="https://github.com/user-attachments/assets/882ab440-66cc-4d54-af06-b829153d1067" />
-
-
 Основная цель текущей версии — собрать техническую базу для тактического top-down shooter-а, где игрок перемещается по тайловой карте, использует разное оружие, а противники не просто бегут по прямой, а замечают игрока, реагируют на выстрелы, преследуют, окружают, теряют цель и возвращаются на свои позиции.
 
 ## Текущий статус
