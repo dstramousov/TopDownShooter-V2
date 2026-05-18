@@ -76,6 +76,7 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.enemies.health_bar_visible_seconds == 1.6
     assert config.enemies.hit_flash_seconds == 0.12
     assert config.enemies.draw_view_cones is True
+    assert config.enemies.max_debug_view_cones == 12
     assert config.enemies.vision_range_px == 320.0
     assert config.enemies.vision_angle_degrees == 80.0
     assert config.enemies.line_of_sight_sample_step_px == 8.0
@@ -105,7 +106,9 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.enemies.path_target_rebuild_distance_px == 48.0
     assert config.enemies.path_max_iterations == 2048
     assert config.enemies.path_waypoint_reach_distance_px == 12.0
-    assert config.enemies.draw_enemy_paths is True
+    assert config.enemies.draw_enemy_paths is False
+    assert config.enemies.max_debug_enemy_paths == 6
+    assert config.enemies.debug_enemy_render_distance_px == 900.0
     assert config.enemies.tactical_positioning_enabled is True
     assert config.enemies.player_stationary_speed_threshold_px_per_second == 12.0
     assert config.enemies.player_stationary_time_seconds == 0.7
@@ -117,7 +120,8 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.enemies.tactical_min_slot_angle_degrees == 60.0
     assert config.enemies.tactical_slot_commitment_seconds == 2.5
     assert config.enemies.tactical_player_reposition_distance_px == 56.0
-    assert config.enemies.draw_tactical_slots is True
+    assert config.enemies.draw_tactical_slots is False
+    assert config.enemies.max_debug_tactical_slots == 8
     assert config.fps_counter.enabled is True
     assert config.fps_counter.position == "top_right"
     assert config.fps_counter.margin_x == 12

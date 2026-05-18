@@ -136,6 +136,7 @@ class EnemyConfig:
         health_bar_visible_seconds: Duration for temporary enemy health bars.
         hit_flash_seconds: Duration for enemy hit flash feedback.
         draw_view_cones: Whether debug enemy vision cones are drawn.
+        max_debug_view_cones: Maximum enemy view cones drawn per frame. Zero disables them.
         vision_range_px: Enemy vision range in world pixels.
         vision_angle_degrees: Full enemy vision cone angle in degrees.
         line_of_sight_sample_step_px: Sampling step for vision blocked tile checks.
@@ -168,6 +169,8 @@ class EnemyConfig:
         path_max_iterations: Maximum A* iterations per enemy path query.
         path_waypoint_reach_distance_px: Distance used to advance enemy path waypoints.
         draw_enemy_paths: Whether debug enemy A* paths are drawn.
+        max_debug_enemy_paths: Maximum enemy A* paths drawn per frame. Zero disables them.
+        debug_enemy_render_distance_px: Maximum distance for heavy enemy debug rendering.
         tactical_positioning_enabled: Whether stationary-player tactical slots are used.
         player_stationary_speed_threshold_px_per_second: Speed threshold for stationary player.
         player_stationary_time_seconds: Required stationary time before tactical positioning.
@@ -180,6 +183,7 @@ class EnemyConfig:
         tactical_slot_commitment_seconds: Minimum time tactical slots are held.
         tactical_player_reposition_distance_px: Player movement distance that forces slot reassignment.
         draw_tactical_slots: Whether debug tactical target slots are drawn.
+        max_debug_tactical_slots: Maximum tactical slot markers drawn per frame. Zero disables them.
     """
 
     marker_radius_px: int
@@ -189,6 +193,7 @@ class EnemyConfig:
     health_bar_visible_seconds: float
     hit_flash_seconds: float
     draw_view_cones: bool
+    max_debug_view_cones: int
     vision_range_px: float
     vision_angle_degrees: float
     line_of_sight_sample_step_px: float
@@ -221,6 +226,8 @@ class EnemyConfig:
     path_max_iterations: int
     path_waypoint_reach_distance_px: float
     draw_enemy_paths: bool
+    max_debug_enemy_paths: int
+    debug_enemy_render_distance_px: float
     tactical_positioning_enabled: bool
     player_stationary_speed_threshold_px_per_second: float
     player_stationary_time_seconds: float
@@ -233,6 +240,7 @@ class EnemyConfig:
     tactical_slot_commitment_seconds: float
     tactical_player_reposition_distance_px: float
     draw_tactical_slots: bool
+    max_debug_tactical_slots: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -528,6 +536,10 @@ class RuntimeConfigLoader:
                     "hit_flash_seconds",
                 ),
                 draw_view_cones=self._require_bool(enemies, "draw_view_cones"),
+                max_debug_view_cones=self._require_non_negative_int(
+                    enemies,
+                    "max_debug_view_cones",
+                ),
                 vision_range_px=self._require_positive_float(enemies, "vision_range_px"),
                 vision_angle_degrees=self._require_angle_degrees(
                     enemies,
@@ -626,6 +638,14 @@ class RuntimeConfigLoader:
                     "path_waypoint_reach_distance_px",
                 ),
                 draw_enemy_paths=self._require_bool(enemies, "draw_enemy_paths"),
+                max_debug_enemy_paths=self._require_non_negative_int(
+                    enemies,
+                    "max_debug_enemy_paths",
+                ),
+                debug_enemy_render_distance_px=self._require_non_negative_float(
+                    enemies,
+                    "debug_enemy_render_distance_px",
+                ),
                 tactical_positioning_enabled=self._require_bool(
                     enemies,
                     "tactical_positioning_enabled",
@@ -673,6 +693,10 @@ class RuntimeConfigLoader:
                     "tactical_player_reposition_distance_px",
                 ),
                 draw_tactical_slots=self._require_bool(enemies, "draw_tactical_slots"),
+                max_debug_tactical_slots=self._require_non_negative_int(
+                    enemies,
+                    "max_debug_tactical_slots",
+                ),
             ),
             debug_overlay=DebugOverlayConfig(
                 enabled_by_default=self._require_bool(debug_overlay, "enabled_by_default"),

@@ -359,3 +359,11 @@
 - Fixed delayed squad alert propagation being cleared by enemy chase movement before it could trigger.
 - Kept vision-triggered and hit-triggered squad alerts queued until the enemy system update applies them.
 - Added a regression test that verifies chase movement does not discard pending squad alerts.
+
+## v0.0.47 -> v0.0.48
+
+- Added configurable budgets for heavy enemy debug rendering layers.
+- Added per-frame limits for debug view cones, enemy A* paths, and tactical slot markers.
+- Added distance culling for heavy enemy debug layers around the player.
+- Updated the default runtime config to keep costly path and tactical-slot debug drawing disabled by default.
+- Updated Russian configuration and enemy tactics documentation for the new debug rendering budget settings.

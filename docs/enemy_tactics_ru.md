@@ -107,6 +107,8 @@ enemy_spawn_zone
 Полезные параметры:
 
 - `draw_view_cones`;
+- `max_debug_view_cones`;
+- `debug_enemy_render_distance_px`;
 - `vision_range_px`;
 - `vision_angle_degrees`;
 - `line_of_sight_sample_step_px`.
@@ -165,6 +167,11 @@ enemy_spawn_zone
 
 Debug-пути можно включить через `draw_enemy_paths`.
 
+Чтобы не просаживать FPS при массовом агре, отрисовка путей ограничивается:
+
+- `max_debug_enemy_paths`;
+- `debug_enemy_render_distance_px`.
+
 ---
 
 ## 6. Тактическое окружение стоящего игрока
@@ -197,7 +204,8 @@ Debug-пути можно включить через `draw_enemy_paths`.
 - `tactical_min_slot_angle_degrees`;
 - `tactical_slot_commitment_seconds`;
 - `tactical_player_reposition_distance_px`;
-- `draw_tactical_slots`.
+- `draw_tactical_slots`;
+- `max_debug_tactical_slots`.
 
 ---
 

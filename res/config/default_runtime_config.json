@@ -123,7 +123,8 @@
     "hit_marker_radius_px": 8.0,
     "health_bar_visible_seconds": 1.6,
     "hit_flash_seconds": 0.12,
-    "draw_view_cones": false,
+    "draw_view_cones": true,
+    "max_debug_view_cones": 12,
     "vision_range_px": 320.0,
     "vision_angle_degrees": 80.0,
     "line_of_sight_sample_step_px": 8.0,
@@ -156,6 +157,8 @@
     "path_max_iterations": 2048,
     "path_waypoint_reach_distance_px": 12.0,
     "draw_enemy_paths": false,
+    "max_debug_enemy_paths": 6,
+    "debug_enemy_render_distance_px": 900.0,
     "tactical_positioning_enabled": true,
     "player_stationary_speed_threshold_px_per_second": 12.0,
     "player_stationary_time_seconds": 0.7,
@@ -167,6 +170,7 @@
     "tactical_min_slot_angle_degrees": 60.0,
     "tactical_slot_commitment_seconds": 2.5,
     "tactical_player_reposition_distance_px": 56.0,
-    "draw_tactical_slots": false
+    "draw_tactical_slots": false,
+    "max_debug_tactical_slots": 8
   }
 }

@@ -407,10 +407,28 @@ class DebugOverlay:
                     f"{self._config.enemies.strafe_switch_min_seconds:.1f}-"
                     f"{self._config.enemies.strafe_switch_max_seconds:.1f}s",
                 ),
-                DebugOverlayRow("Pathfinding", str(self._config.enemies.pathfinding_enabled)),
+                DebugOverlayRow(
+                    "Pathfinding",
+                    str(self._config.enemies.pathfinding_enabled),
+                ),
                 DebugOverlayRow("Draw paths", str(self._config.enemies.draw_enemy_paths)),
-                DebugOverlayRow("Tactics", str(self._config.enemies.tactical_positioning_enabled)),
+                DebugOverlayRow(
+                    "Max paths",
+                    str(self._config.enemies.max_debug_enemy_paths),
+                ),
+                DebugOverlayRow(
+                    "Debug dist",
+                    f"{self._config.enemies.debug_enemy_render_distance_px:.0f}px",
+                ),
+                DebugOverlayRow(
+                    "Tactics",
+                    str(self._config.enemies.tactical_positioning_enabled),
+                ),
                 DebugOverlayRow("Draw slots", str(self._config.enemies.draw_tactical_slots)),
+                DebugOverlayRow(
+                    "Max slots",
+                    str(self._config.enemies.max_debug_tactical_slots),
+                ),
                 DebugOverlayRow(
                     "Still time",
                     f"{self._config.enemies.player_stationary_time_seconds:.1f}s",
@@ -448,8 +466,15 @@ class DebugOverlay:
                 DebugOverlayRow("Flash", f"{self._config.enemies.hit_flash_seconds:.2f}s"),
                 DebugOverlayRow("Marker radius", f"{self._config.enemies.marker_radius_px}px"),
                 DebugOverlayRow("View cones", str(self._config.enemies.draw_view_cones)),
+                DebugOverlayRow(
+                    "Max cones",
+                    str(self._config.enemies.max_debug_view_cones),
+                ),
                 DebugOverlayRow("Vision", f"{self._config.enemies.vision_range_px:.0f}px"),
-                DebugOverlayRow("Vision angle", f"{self._config.enemies.vision_angle_degrees:.0f}deg"),
+                DebugOverlayRow(
+                    "Vision angle",
+                    f"{self._config.enemies.vision_angle_degrees:.0f}deg",
+                ),
                 DebugOverlayRow(
                     "LOS step",
                     f"{self._config.enemies.line_of_sight_sample_step_px:.0f}px",

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "topdown-shooter"
-version = "0.0.47"
+version = "0.0.48"
 description = "Runtime foundation for TopDownShooter V.2."
 readme = "README.md"
 requires-python = ">=3.12"

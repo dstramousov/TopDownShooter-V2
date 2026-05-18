@@ -149,10 +149,14 @@ class RaylibWindow:
             health_bar_visible_seconds=config.enemies.health_bar_visible_seconds,
             hit_flash_seconds=config.enemies.hit_flash_seconds,
             draw_view_cones=config.enemies.draw_view_cones,
+            max_debug_view_cones=config.enemies.max_debug_view_cones,
             vision_range_px=config.enemies.vision_range_px,
             vision_angle_degrees=config.enemies.vision_angle_degrees,
             draw_enemy_paths=config.enemies.draw_enemy_paths,
+            max_debug_enemy_paths=config.enemies.max_debug_enemy_paths,
             draw_tactical_slots=config.enemies.draw_tactical_slots,
+            max_debug_tactical_slots=config.enemies.max_debug_tactical_slots,
+            debug_enemy_render_distance_px=config.enemies.debug_enemy_render_distance_px,
             tile_size_px=runtime_map.tile_size_px,
         )
         self._player_renderer = PlayerRenderer(
@@ -335,6 +339,7 @@ class RaylibWindow:
                 self._enemy_renderer.draw(
                     enemies=self._enemy_system.enemies,
                     hit_markers=self._enemy_system.hit_markers,
+                    focus_position=self._player.world_position,
                 )
                 self._player_renderer.draw(self._player)
                 raylib.end_mode_2d()

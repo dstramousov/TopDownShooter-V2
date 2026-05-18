@@ -323,6 +323,11 @@ res/config/weapons.json
 #### draw_view_cones
 Рисовать debug-конусы обзора.
 
+#### max_debug_view_cones
+Максимальное количество debug-конусов обзора, которое можно рисовать за кадр.
+
+`0` полностью запрещает отрисовку конусов даже при включённом `draw_view_cones`.
+
 #### vision_range_px
 Дальность обзора врага.
 
@@ -432,6 +437,22 @@ res/config/weapons.json
 #### draw_enemy_paths
 Рисовать debug-пути врагов.
 
+#### max_debug_enemy_paths
+Максимальное количество A* debug-путей врагов, которое можно рисовать за кадр.
+
+`0` полностью запрещает отрисовку путей даже при включённом `draw_enemy_paths`.
+
+#### debug_enemy_render_distance_px
+Максимальная дистанция от игрока, на которой тяжёлые enemy debug-слои рисуются.
+
+К тяжёлым слоям относятся:
+
+- view cones;
+- enemy paths;
+- tactical slots.
+
+Если значение равно `0`, дистанционный фильтр отключён, и работает только лимит по количеству.
+
 ### Тактическое окружение игрока
 
 #### tactical_positioning_enabled
@@ -469,6 +490,11 @@ res/config/weapons.json
 
 #### draw_tactical_slots
 Рисовать debug tactical slots.
+
+#### max_debug_tactical_slots
+Максимальное количество tactical slot markers, которое можно рисовать за кадр.
+
+`0` полностью запрещает отрисовку слотов даже при включённом `draw_tactical_slots`.
 
 ---
 

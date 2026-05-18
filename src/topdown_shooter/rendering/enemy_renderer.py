@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 
 from topdown_shooter.combat.enemies import EnemyHitMarkerState, EnemyState
-from topdown_shooter.world.coordinates import tile_to_world_center
+from topdown_shooter.world.coordinates import WorldCoord, tile_to_world_center
 
 
 class EnemyRenderer:
@@ -18,10 +18,14 @@ class EnemyRenderer:
         health_bar_visible_seconds: float,
         hit_flash_seconds: float,
         draw_view_cones: bool,
+        max_debug_view_cones: int,
         vision_range_px: float,
         vision_angle_degrees: float,
         draw_enemy_paths: bool,
+        max_debug_enemy_paths: int,
         draw_tactical_slots: bool,
+        max_debug_tactical_slots: int,
+        debug_enemy_render_distance_px: float,
         tile_size_px: int,
     ) -> None:
         """Initialize the renderer.
@@ -32,10 +36,14 @@ class EnemyRenderer:
             health_bar_visible_seconds: Duration for temporary enemy health bars.
             hit_flash_seconds: Duration for enemy hit flash feedback.
             draw_view_cones: Whether debug enemy vision cones are drawn.
+            max_debug_view_cones: Maximum enemy view cones drawn per frame.
             vision_range_px: Enemy vision cone range in world pixels.
             vision_angle_degrees: Full enemy vision cone angle in degrees.
             draw_enemy_paths: Whether debug A* paths are drawn.
+            max_debug_enemy_paths: Maximum enemy paths drawn per frame.
             draw_tactical_slots: Whether debug tactical target slots are drawn.
+            max_debug_tactical_slots: Maximum tactical slot markers drawn per frame.
+            debug_enemy_render_distance_px: Maximum distance for heavy debug layers.
             tile_size_px: Runtime map tile size in pixels.
         """
         self._raylib = raylib
@@ -43,33 +51,53 @@ class EnemyRenderer:
         self._health_bar_visible_seconds = health_bar_visible_seconds
         self._hit_flash_seconds = hit_flash_seconds
         self._draw_view_cones = draw_view_cones
+        self._max_debug_view_cones = max(0, max_debug_view_cones)
         self._vision_range_px = vision_range_px
         self._vision_angle_degrees = vision_angle_degrees
         self._draw_enemy_paths = draw_enemy_paths
+        self._max_debug_enemy_paths = max(0, max_debug_enemy_paths)
         self._draw_tactical_slots = draw_tactical_slots
+        self._max_debug_tactical_slots = max(0, max_debug_tactical_slots)
+        self._debug_enemy_render_distance_px = max(0.0, debug_enemy_render_distance_px)
         self._tile_size_px = tile_size_px
 
     def draw(
         self,
         enemies: tuple[EnemyState, ...],
         hit_markers: tuple[EnemyHitMarkerState, ...],
+        focus_position: WorldCoord | None = None,
     ) -> None:
         """Draw enemy markers and enemy hit feedback.
 
         Args:
             enemies: Enemy marker states to draw.
             hit_markers: Enemy hit marker states to draw.
+            focus_position: Optional world position used to budget heavy debug layers.
         """
         if self._draw_enemy_paths:
-            for enemy in enemies:
+            for enemy in self._budget_debug_enemies(
+                enemies=enemies,
+                focus_position=focus_position,
+                max_items=self._max_debug_enemy_paths,
+                require_path=True,
+            ):
                 self._draw_enemy_path(enemy)
 
         if self._draw_view_cones:
-            for enemy in enemies:
+            for enemy in self._budget_debug_enemies(
+                enemies=enemies,
+                focus_position=focus_position,
+                max_items=self._max_debug_view_cones,
+            ):
                 self._draw_view_cone(enemy)
 
         if self._draw_tactical_slots:
-            for enemy in enemies:
+            for enemy in self._budget_debug_enemies(
+                enemies=enemies,
+                focus_position=focus_position,
+                max_items=self._max_debug_tactical_slots,
+                require_tactical_slot=True,
+            ):
                 self._draw_tactical_slot(enemy)
 
         for enemy in enemies:
@@ -83,6 +111,93 @@ class EnemyRenderer:
             self._raylib.draw_line(x - int(radius), y, x + int(radius), y, self._raylib.MAGENTA)
             self._raylib.draw_line(x, y - int(radius), x, y + int(radius), self._raylib.MAGENTA)
 
+    def _budget_debug_enemies(
+        self,
+        enemies: tuple[EnemyState, ...],
+        focus_position: WorldCoord | None,
+        max_items: int,
+        require_path: bool = False,
+        require_tactical_slot: bool = False,
+    ) -> tuple[EnemyState, ...]:
+        """Return enemies allowed to draw heavy debug layers this frame.
+
+        Args:
+            enemies: Candidate enemy states.
+            focus_position: Optional world position used for distance sorting and culling.
+            max_items: Maximum number of enemies to return.
+            require_path: Whether enemies without active path tiles are skipped.
+            require_tactical_slot: Whether enemies without tactical slots are skipped.
+
+        Returns:
+            Budgeted enemy states.
+        """
+        if max_items <= 0:
+            return ()
+        candidates = [
+            enemy
+            for enemy in enemies
+            if self._is_debug_enemy_candidate(
+                enemy=enemy,
+                focus_position=focus_position,
+                require_path=require_path,
+                require_tactical_slot=require_tactical_slot,
+            )
+        ]
+        if focus_position is not None:
+            candidates.sort(
+                key=lambda enemy: EnemyRenderer._distance_squared(
+                    enemy.world_position,
+                    focus_position,
+                ),
+            )
+        return tuple(candidates[:max_items])
+
+    def _is_debug_enemy_candidate(
+        self,
+        enemy: EnemyState,
+        focus_position: WorldCoord | None,
+        require_path: bool,
+        require_tactical_slot: bool,
+    ) -> bool:
+        """Return whether an enemy may draw a heavy debug layer.
+
+        Args:
+            enemy: Enemy marker state to inspect.
+            focus_position: Optional world position used for distance culling.
+            require_path: Whether active path tiles are required.
+            require_tactical_slot: Whether a tactical target is required.
+
+        Returns:
+            True if the enemy is eligible for the requested debug layer.
+        """
+        if require_path and (not enemy.alerted or not enemy.path_tiles):
+            return False
+        if require_tactical_slot and (
+            not enemy.alerted or enemy.tactical_target_position is None
+        ):
+            return False
+        if focus_position is None or self._debug_enemy_render_distance_px <= 0.0:
+            return True
+        distance_squared = EnemyRenderer._distance_squared(
+            enemy.world_position,
+            focus_position,
+        )
+        return distance_squared <= self._debug_enemy_render_distance_px**2
+
+    @staticmethod
+    def _distance_squared(first: WorldCoord, second: WorldCoord) -> float:
+        """Return squared distance between two world positions.
+
+        Args:
+            first: First world position.
+            second: Second world position.
+
+        Returns:
+            Squared distance in pixels.
+        """
+        dx = first.x - second.x
+        dy = first.y - second.y
+        return dx * dx + dy * dy
 
     def _draw_tactical_slot(self, enemy: EnemyState) -> None:
         """Draw the assigned tactical target slot for one enemy.
