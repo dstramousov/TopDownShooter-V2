@@ -188,7 +188,7 @@ class EnemySystem:
         self._last_tactical_player_position: WorldCoord | None = None
         self._tactical_positioning_enemies = 0
         self._tactical_slots_assigned = 0
-        self._pending_squad_alerts: dict[str, float] = {}
+        self._pending_squad_alerts: dict[str, tuple[float, WorldCoord, float]] = {}
         self._squad_alerts_triggered = 0
 
     @classmethod
@@ -366,12 +366,14 @@ class EnemySystem:
         self,
         frame_time: float,
         squad_alert_broadcast_delay_seconds: float = 0.0,
+        squad_alert_broadcast_radius_px: float = 0.0,
     ) -> None:
         """Advance enemy-only runtime state.
 
         Args:
             frame_time: Current frame duration in seconds.
             squad_alert_broadcast_delay_seconds: Delay used for queued squad alerts.
+            squad_alert_broadcast_radius_px: Radius used for nearby squad alert fallback.
         """
         self._squad_alerts_triggered = 0
         if frame_time <= 0.0:
@@ -379,6 +381,7 @@ class EnemySystem:
         self._update_pending_squad_alerts(
             frame_time=frame_time,
             squad_alert_broadcast_delay_seconds=squad_alert_broadcast_delay_seconds,
+            squad_alert_broadcast_radius_px=squad_alert_broadcast_radius_px,
         )
         for enemy in self._enemies:
             if enemy.alive and enemy.last_hit_age_seconds is not None:
@@ -474,8 +477,6 @@ class EnemySystem:
         self._failed_path_rebuilds = 0
         self._tactical_positioning_enemies = 0
         self._tactical_slots_assigned = 0
-        self._pending_squad_alerts: dict[str, float] = {}
-        self._squad_alerts_triggered = 0
         if frame_time <= 0.0 or chase_speed_px_per_second <= 0.0:
             return
 
@@ -1732,6 +1733,7 @@ class EnemySystem:
         vision_angle_degrees: float,
         line_of_sight_sample_step_px: float,
         squad_alert_broadcast_delay_seconds: float = 0.0,
+        squad_alert_broadcast_radius_px: float = 0.0,
     ) -> None:
         """Update enemy player detection from vision cones.
 
@@ -1742,6 +1744,7 @@ class EnemySystem:
             vision_angle_degrees: Full vision cone angle in degrees.
             line_of_sight_sample_step_px: Sampling step for blocking tile checks.
             squad_alert_broadcast_delay_seconds: Delay before squadmates are alerted.
+            squad_alert_broadcast_radius_px: Radius for nearby squad alert fallback.
         """
         if vision_range_px <= 0.0 or vision_angle_degrees <= 0.0:
             return
@@ -1759,6 +1762,7 @@ class EnemySystem:
                 self._alert_enemy(
                     enemy,
                     squad_alert_broadcast_delay_seconds=squad_alert_broadcast_delay_seconds,
+                    squad_alert_broadcast_radius_px=squad_alert_broadcast_radius_px,
                 )
 
     def apply_projectile_hits(
@@ -1766,6 +1770,7 @@ class EnemySystem:
         projectiles: tuple[ProjectileState, ...],
         enemy_collision_radius_px: float,
         squad_alert_broadcast_delay_seconds: float = 0.0,
+        squad_alert_broadcast_radius_px: float = 0.0,
     ) -> None:
         """Apply projectile damage to enemies and kill consumed projectiles.
 
@@ -1773,6 +1778,7 @@ class EnemySystem:
             projectiles: Active projectile states to test against enemies.
             enemy_collision_radius_px: Enemy collision radius in world pixels.
             squad_alert_broadcast_delay_seconds: Delay before squadmates are alerted.
+            squad_alert_broadcast_radius_px: Radius for nearby squad alert fallback.
         """
         if enemy_collision_radius_px <= 0.0:
             return
@@ -1787,6 +1793,7 @@ class EnemySystem:
                         enemy,
                         projectile.damage,
                         squad_alert_broadcast_delay_seconds=squad_alert_broadcast_delay_seconds,
+                        squad_alert_broadcast_radius_px=squad_alert_broadcast_radius_px,
                     )
                     projectile.alive = False
                     self._spawn_hit_marker(enemy.world_position)
@@ -1798,6 +1805,7 @@ class EnemySystem:
         enemy: EnemyState,
         damage: float,
         squad_alert_broadcast_delay_seconds: float = 0.0,
+        squad_alert_broadcast_radius_px: float = 0.0,
     ) -> None:
         """Apply damage to a single enemy.
 
@@ -1805,12 +1813,14 @@ class EnemySystem:
             enemy: Enemy receiving damage.
             damage: Damage amount.
             squad_alert_broadcast_delay_seconds: Delay before squadmates are alerted.
+            squad_alert_broadcast_radius_px: Radius for nearby squad alert fallback.
         """
         if damage <= 0.0:
             return
         self._alert_enemy(
             enemy,
             squad_alert_broadcast_delay_seconds=squad_alert_broadcast_delay_seconds,
+            squad_alert_broadcast_radius_px=squad_alert_broadcast_radius_px,
         )
         enemy.health = max(0.0, enemy.health - damage)
         enemy.last_hit_age_seconds = 0.0
@@ -1823,93 +1833,173 @@ class EnemySystem:
         self,
         enemy: EnemyState,
         squad_alert_broadcast_delay_seconds: float,
+        squad_alert_broadcast_radius_px: float = 0.0,
     ) -> None:
         """Set one enemy alerted and schedule squad alert propagation.
 
         Args:
             enemy: Enemy that detected the player or received damage.
             squad_alert_broadcast_delay_seconds: Delay before squadmates are alerted.
+            squad_alert_broadcast_radius_px: Radius for nearby squad alert fallback.
         """
         if not enemy.alive or enemy.alerted:
             return
         enemy.alerted = True
         self._schedule_squad_alert(
             spawn_id=enemy.spawn_id,
+            origin_position=enemy.world_position,
             delay_seconds=squad_alert_broadcast_delay_seconds,
+            radius_px=squad_alert_broadcast_radius_px,
         )
 
-    def _schedule_squad_alert(self, spawn_id: str, delay_seconds: float) -> None:
-        """Schedule or trigger alert propagation for one squad.
+    def _schedule_squad_alert(
+        self,
+        spawn_id: str,
+        origin_position: WorldCoord,
+        delay_seconds: float,
+        radius_px: float,
+    ) -> None:
+        """Schedule or trigger alert propagation for one squad or nearby group.
 
         Args:
             spawn_id: Source spawn id shared by squad members.
+            origin_position: Position of the enemy that raised the alert.
             delay_seconds: Broadcast delay in seconds.
+            radius_px: Nearby-enemy fallback radius in world pixels.
         """
-        if not spawn_id or not self._has_unalerted_squadmates(spawn_id):
+        if not self._has_unalerted_squadmates(spawn_id, origin_position, radius_px):
             return
         safe_delay = max(0.0, delay_seconds)
+        safe_radius = max(0.0, radius_px)
         if safe_delay <= 0.0:
-            self._squad_alerts_triggered += self._alert_squad(spawn_id)
+            self._squad_alerts_triggered += self._alert_squad(
+                spawn_id,
+                origin_position,
+                safe_radius,
+            )
             return
-        previous_delay = self._pending_squad_alerts.get(spawn_id)
-        if previous_delay is None or safe_delay < previous_delay:
-            self._pending_squad_alerts[spawn_id] = safe_delay
+        previous_alert = self._pending_squad_alerts.get(spawn_id)
+        if previous_alert is None or safe_delay < previous_alert[0]:
+            self._pending_squad_alerts[spawn_id] = (
+                safe_delay,
+                origin_position,
+                safe_radius,
+            )
 
     def _update_pending_squad_alerts(
         self,
         frame_time: float,
         squad_alert_broadcast_delay_seconds: float,
+        squad_alert_broadcast_radius_px: float,
     ) -> None:
         """Advance scheduled squad alert broadcasts.
 
         Args:
             frame_time: Current frame duration in seconds.
             squad_alert_broadcast_delay_seconds: Delay used to sanitize queued timers.
+            squad_alert_broadcast_radius_px: Radius used to sanitize queued broadcasts.
         """
         if not self._pending_squad_alerts:
             return
         max_delay = max(0.0, squad_alert_broadcast_delay_seconds)
-        ready_spawn_ids: list[str] = []
-        for spawn_id, timer_seconds in tuple(self._pending_squad_alerts.items()):
+        max_radius = max(0.0, squad_alert_broadcast_radius_px)
+        ready_alerts: list[tuple[str, WorldCoord, float]] = []
+        for spawn_id, (timer_seconds, origin_position, radius_px) in tuple(
+            self._pending_squad_alerts.items(),
+        ):
             next_timer = min(timer_seconds, max_delay) - frame_time if max_delay > 0.0 else 0.0
+            next_radius = max(radius_px, max_radius)
             if next_timer <= 0.0:
-                ready_spawn_ids.append(spawn_id)
+                ready_alerts.append((spawn_id, origin_position, next_radius))
                 continue
-            self._pending_squad_alerts[spawn_id] = next_timer
-        for spawn_id in ready_spawn_ids:
+            self._pending_squad_alerts[spawn_id] = (
+                next_timer,
+                origin_position,
+                next_radius,
+            )
+        for spawn_id, origin_position, radius_px in ready_alerts:
             self._pending_squad_alerts.pop(spawn_id, None)
-            self._squad_alerts_triggered += self._alert_squad(spawn_id)
+            self._squad_alerts_triggered += self._alert_squad(
+                spawn_id,
+                origin_position,
+                radius_px,
+            )
 
-    def _alert_squad(self, spawn_id: str) -> int:
-        """Alert every alive squadmate that shares a spawn id.
+    def _alert_squad(
+        self,
+        spawn_id: str,
+        origin_position: WorldCoord,
+        radius_px: float,
+    ) -> int:
+        """Alert every alive squadmate or nearby enemy in broadcast range.
 
         Args:
             spawn_id: Source spawn id shared by squad members.
+            origin_position: Position of the enemy that raised the alert.
+            radius_px: Nearby-enemy fallback radius in world pixels.
 
         Returns:
-            Number of newly alerted squadmates.
+            Number of newly alerted enemies.
         """
         alerted_count = 0
         for squadmate in self._enemies:
-            if not squadmate.alive or squadmate.alerted or squadmate.spawn_id != spawn_id:
+            if not squadmate.alive or squadmate.alerted:
+                continue
+            if not self._is_squad_alert_target(squadmate, spawn_id, origin_position, radius_px):
                 continue
             squadmate.alerted = True
             alerted_count += 1
         return alerted_count
 
-    def _has_unalerted_squadmates(self, spawn_id: str) -> bool:
-        """Return whether a squad still has alive unalerted members.
+    def _has_unalerted_squadmates(
+        self,
+        spawn_id: str,
+        origin_position: WorldCoord,
+        radius_px: float,
+    ) -> bool:
+        """Return whether a squad or nearby group has alive unalerted members.
 
         Args:
             spawn_id: Source spawn id shared by squad members.
+            origin_position: Position of the enemy that raised the alert.
+            radius_px: Nearby-enemy fallback radius in world pixels.
 
         Returns:
-            True if at least one alive squadmate is still idle.
+            True if at least one alive squadmate or nearby enemy is still idle.
         """
         return any(
-            enemy.alive and not enemy.alerted and enemy.spawn_id == spawn_id
+            enemy.alive
+            and not enemy.alerted
+            and self._is_squad_alert_target(enemy, spawn_id, origin_position, radius_px)
             for enemy in self._enemies
         )
+
+    @staticmethod
+    def _is_squad_alert_target(
+        enemy: EnemyState,
+        spawn_id: str,
+        origin_position: WorldCoord,
+        radius_px: float,
+    ) -> bool:
+        """Return whether an enemy should receive a squad alert broadcast.
+
+        Args:
+            enemy: Potential alert target.
+            spawn_id: Source spawn id shared by squad members.
+            origin_position: Position of the enemy that raised the alert.
+            radius_px: Nearby-enemy fallback radius in world pixels.
+
+        Returns:
+            True for same-spawn squadmates or nearby enemies in fallback range.
+        """
+        if spawn_id and enemy.spawn_id == spawn_id:
+            return True
+        safe_radius = max(0.0, radius_px)
+        if safe_radius <= 0.0:
+            return False
+        dx = enemy.world_position.x - origin_position.x
+        dy = enemy.world_position.y - origin_position.y
+        return math.hypot(dx, dy) <= safe_radius
 
     def _spawn_hit_marker(self, position: WorldCoord) -> None:
         """Create a short-lived enemy hit marker.

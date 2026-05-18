@@ -123,7 +123,7 @@
     "hit_marker_radius_px": 8.0,
     "health_bar_visible_seconds": 1.6,
     "hit_flash_seconds": 0.12,
-    "draw_view_cones": true,
+    "draw_view_cones": false,
     "vision_range_px": 320.0,
     "vision_angle_degrees": 80.0,
     "line_of_sight_sample_step_px": 8.0,
@@ -139,6 +139,7 @@
     "max_initial_enemies": 30,
     "placement_attempts_per_enemy": 24,
     "squad_alert_broadcast_delay_seconds": 0.25,
+    "squad_alert_broadcast_radius_px": 200.0,
     "chase_speed_px_per_second": 70.0,
     "preferred_combat_distance_px": 180.0,
     "minimum_combat_distance_px": 96.0,
@@ -154,7 +155,7 @@
     "path_target_rebuild_distance_px": 48.0,
     "path_max_iterations": 2048,
     "path_waypoint_reach_distance_px": 12.0,
-    "draw_enemy_paths": true,
+    "draw_enemy_paths": false,
     "tactical_positioning_enabled": true,
     "player_stationary_speed_threshold_px_per_second": 12.0,
     "player_stationary_time_seconds": 0.7,
@@ -166,6 +167,6 @@
     "tactical_min_slot_angle_degrees": 60.0,
     "tactical_slot_commitment_seconds": 2.5,
     "tactical_player_reposition_distance_px": 56.0,
-    "draw_tactical_slots": true
+    "draw_tactical_slots": false
   }
 }

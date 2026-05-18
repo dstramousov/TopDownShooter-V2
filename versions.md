@@ -346,3 +346,16 @@
 - Updated Russian documentation for the new squad alert behavior.
 - Added a test for delayed squadmate alert propagation.
 
+## v0.0.45 -> v0.0.46
+
+- Added a nearby-radius fallback for delayed squad alert propagation.
+- Squad alert broadcasts now notify same-spawn squadmates and nearby alive enemies from adjacent spawn anchors.
+- Added `squad_alert_broadcast_radius_px` to enemy runtime config and debug overlay.
+- Updated Russian configuration/tactics documentation for squad alert radius behavior.
+- Added a regression test for nearby fallback alert propagation.
+
+## v0.0.46 -> v0.0.47
+
+- Fixed delayed squad alert propagation being cleared by enemy chase movement before it could trigger.
+- Kept vision-triggered and hit-triggered squad alerts queued until the enemy system update applies them.
+- Added a regression test that verifies chase movement does not discard pending squad alerts.

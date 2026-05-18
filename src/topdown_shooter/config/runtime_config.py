@@ -151,6 +151,7 @@ class EnemyConfig:
         max_initial_enemies: Global cap for startup enemies.
         placement_attempts_per_enemy: Candidate attempts for each squad member.
         squad_alert_broadcast_delay_seconds: Delay before a squad alert propagates.
+        squad_alert_broadcast_radius_px: Nearby fallback radius for squad alert propagation.
         chase_speed_px_per_second: Speed for alerted enemy combat movement.
         preferred_combat_distance_px: Desired distance alerted enemies try to keep.
         minimum_combat_distance_px: Hard distance where enemies retreat more aggressively.
@@ -203,6 +204,7 @@ class EnemyConfig:
     max_initial_enemies: int
     placement_attempts_per_enemy: int
     squad_alert_broadcast_delay_seconds: float
+    squad_alert_broadcast_radius_px: float
     chase_speed_px_per_second: float
     preferred_combat_distance_px: float
     minimum_combat_distance_px: float
@@ -573,6 +575,10 @@ class RuntimeConfigLoader:
                 squad_alert_broadcast_delay_seconds=self._require_non_negative_float(
                     enemies,
                     "squad_alert_broadcast_delay_seconds",
+                ),
+                squad_alert_broadcast_radius_px=self._require_non_negative_float(
+                    enemies,
+                    "squad_alert_broadcast_radius_px",
                 ),
                 chase_speed_px_per_second=self._require_non_negative_float(
                     enemies,

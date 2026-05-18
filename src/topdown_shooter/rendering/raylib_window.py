@@ -206,12 +206,18 @@ class RaylibWindow:
                     squad_alert_broadcast_delay_seconds=(
                         self._config.enemies.squad_alert_broadcast_delay_seconds
                     ),
+                    squad_alert_broadcast_radius_px=(
+                        self._config.enemies.squad_alert_broadcast_radius_px
+                    ),
                 )
                 self._enemy_system.apply_projectile_hits(
                     projectiles=self._projectile_system.projectiles,
                     enemy_collision_radius_px=self._config.enemies.marker_radius_px,
                     squad_alert_broadcast_delay_seconds=(
                         self._config.enemies.squad_alert_broadcast_delay_seconds
+                    ),
+                    squad_alert_broadcast_radius_px=(
+                        self._config.enemies.squad_alert_broadcast_radius_px
                     ),
                 )
                 self._enemy_system.update_perception(
@@ -224,6 +230,9 @@ class RaylibWindow:
                     ),
                     squad_alert_broadcast_delay_seconds=(
                         self._config.enemies.squad_alert_broadcast_delay_seconds
+                    ),
+                    squad_alert_broadcast_radius_px=(
+                        self._config.enemies.squad_alert_broadcast_radius_px
                     ),
                 )
                 self._enemy_system.update_chase_movement(

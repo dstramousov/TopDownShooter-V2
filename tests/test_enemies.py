@@ -1166,3 +1166,100 @@ def test_enemy_squad_alert_propagates_after_configured_delay() -> None:
     assert all(not enemy.alerted for enemy in spawn_one_enemies)
     assert system.stats.pending_squad_alerts == 0
     assert system.stats.squad_alerts_triggered == 1
+
+
+def test_enemy_squad_alert_uses_nearby_fallback_radius() -> None:
+    """Alert propagation should include nearby enemies from adjacent spawn anchors."""
+    runtime_map = _build_runtime_map_from_rows((
+        "++++++++++++",
+        "++++++++++++",
+        "++++++++++++",
+    ))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {"id": "spawn_0", "position": [1, 1]},
+                {"id": "spawn_1", "position": [2, 1]},
+                {"id": "spawn_2", "position": [10, 1]},
+            ],
+        },
+        runtime_map,
+        min_squad_size=1,
+        max_squad_size=1,
+        enemy_max_health=100.0,
+    )
+    origin = next(enemy for enemy in system.enemies if enemy.spawn_id == "spawn_0")
+    nearby = next(enemy for enemy in system.enemies if enemy.spawn_id == "spawn_1")
+    far = next(enemy for enemy in system.enemies if enemy.spawn_id == "spawn_2")
+    projectile = ProjectileState(
+        position=origin.world_position,
+        previous_position=origin.world_position,
+        direction_x=1.0,
+        direction_y=0.0,
+        speed_px_per_second=16.0,
+        max_distance_px=64.0,
+        lifetime_seconds=10.0,
+        radius_px=3.0,
+        damage=10.0,
+    )
+
+    system.apply_projectile_hits(
+        (projectile,),
+        enemy_collision_radius_px=8.0,
+        squad_alert_broadcast_delay_seconds=0.1,
+        squad_alert_broadcast_radius_px=48.0,
+    )
+    system.update(
+        0.1,
+        squad_alert_broadcast_delay_seconds=0.1,
+        squad_alert_broadcast_radius_px=48.0,
+    )
+
+    assert origin.alerted is True
+    assert nearby.alerted is True
+    assert far.alerted is False
+
+
+def test_enemy_chase_movement_keeps_pending_squad_alerts() -> None:
+    """Chase movement should not clear queued squad alert broadcasts."""
+    from topdown_shooter.world.collision import TileCollisionService
+
+    runtime_map = _build_runtime_map_from_rows((
+        "++++++++++++",
+        "++++++++++++",
+        "++++++++++++",
+    ))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {"id": "spawn_0", "position": [1, 1], "facing_angle_degrees": 0.0},
+                {"id": "spawn_1", "position": [2, 1], "facing_angle_degrees": 0.0},
+            ],
+        },
+        runtime_map,
+        min_squad_size=1,
+        max_squad_size=1,
+    )
+
+    system.update_perception(
+        player_position=WorldCoord(x=48.0, y=24.0),
+        collision_service=TileCollisionService(runtime_map),
+        vision_range_px=64.0,
+        vision_angle_degrees=80.0,
+        line_of_sight_sample_step_px=4.0,
+        squad_alert_broadcast_delay_seconds=0.5,
+        squad_alert_broadcast_radius_px=48.0,
+    )
+
+    assert system.stats.pending_squad_alerts == 1
+
+    system.update_chase_movement(
+        player_position=WorldCoord(x=48.0, y=24.0),
+        collision_service=TileCollisionService(runtime_map),
+        frame_time=0.1,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+    )
+
+    assert system.stats.pending_squad_alerts == 1

@@ -376,6 +376,10 @@ class DebugOverlay:
                     f"{self._config.enemies.squad_alert_broadcast_delay_seconds:.2f}s",
                 ),
                 DebugOverlayRow(
+                    "Alert radius",
+                    f"{self._config.enemies.squad_alert_broadcast_radius_px:.0f}px",
+                ),
+                DebugOverlayRow(
                     "Move speed",
                     f"{self._config.enemies.chase_speed_px_per_second:.1f}px/s",
                 ),
