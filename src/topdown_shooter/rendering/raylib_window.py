@@ -106,6 +106,7 @@ class RaylibWindow:
             max_health=config.player.max_health,
         )
         self._player_speed_px_per_second = 0.0
+        self._weapon_fire_events_last_update = 0
         self._collision_service = TileCollisionService(runtime_map)
         self._enemy_pathfinder = GridPathfinder(runtime_map)
         self._player_controller = PlayerController(
@@ -214,6 +215,17 @@ class RaylibWindow:
                         self._config.enemies.squad_alert_broadcast_radius_px
                     ),
                 )
+                if self._weapon_fire_events_last_update > 0:
+                    self._enemy_system.alert_enemies_by_sound(
+                        origin=self._player.world_position,
+                        noise_radius_px=self._weapon_controller.stats.noise_radius_px,
+                        squad_alert_broadcast_delay_seconds=(
+                            self._config.enemies.squad_alert_broadcast_delay_seconds
+                        ),
+                        squad_alert_broadcast_radius_px=(
+                            self._config.enemies.squad_alert_broadcast_radius_px
+                        ),
+                    )
                 self._enemy_system.apply_projectile_hits(
                     projectiles=self._projectile_system.projectiles,
                     enemy_collision_radius_px=self._config.enemies.marker_radius_px,
@@ -389,7 +401,7 @@ class RaylibWindow:
         if self._raylib.is_key_pressed(self._reload_key):
             self._weapon_controller.reload_current()
 
-        self._weapon_controller.update(
+        self._weapon_fire_events_last_update = self._weapon_controller.update(
             fire_held=self._raylib.is_mouse_button_down(self._fire_primary_button),
             frame_time=frame_time,
             origin=self._player.world_position,

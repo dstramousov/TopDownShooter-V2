@@ -38,6 +38,7 @@ class WeaponDefinition:
         initial_reserve_ammo: Initial reserve ammo, or None for infinite reserve.
         reload_time_seconds: Time required to reload this weapon.
         active_movement_speed_multiplier: Player movement multiplier while this weapon is active.
+        noise_radius_px: Enemy hearing radius produced by each fire event.
     """
 
     weapon_id: str
@@ -55,6 +56,7 @@ class WeaponDefinition:
     initial_reserve_ammo: int | None
     reload_time_seconds: float
     active_movement_speed_multiplier: float
+    noise_radius_px: float
 
     @property
     def fire_interval_seconds(self) -> float:
@@ -156,6 +158,8 @@ class WeaponStats:
         reload_time_seconds: Current weapon reload duration.
         reload_remaining_seconds: Current reload countdown.
         active_movement_speed_multiplier: Player movement multiplier while this weapon is active.
+        noise_radius_px: Enemy hearing radius produced by each fire event.
+        fire_events_last_update: Weapon fire events spawned during the last update.
         available_slots: Available weapon slot numbers.
     """
 
@@ -178,6 +182,8 @@ class WeaponStats:
     reload_time_seconds: float
     reload_remaining_seconds: float
     active_movement_speed_multiplier: float
+    noise_radius_px: float
+    fire_events_last_update: int
     available_slots: tuple[int, ...]
 
     @property
@@ -299,6 +305,7 @@ class WeaponConfigLoader:
                 raw_weapon,
                 "active_movement_speed_multiplier",
             ),
+            noise_radius_px=self._require_non_negative_float(raw_weapon, "noise_radius_px"),
         )
 
     def _require_str(self, data: dict[str, object], key: str) -> str:
@@ -463,6 +470,7 @@ class WeaponController:
         self._projectile_system = projectile_system
         self._state = state
         self._rng = rng if rng is not None else random.Random()
+        self._fire_events_last_update = 0
 
     @property
     def stats(self) -> WeaponStats:
@@ -489,6 +497,8 @@ class WeaponController:
             reload_time_seconds=weapon.reload_time_seconds,
             reload_remaining_seconds=self._state.reload_remaining_seconds,
             active_movement_speed_multiplier=weapon.active_movement_speed_multiplier,
+            noise_radius_px=weapon.noise_radius_px,
+            fire_events_last_update=self._fire_events_last_update,
             available_slots=tuple(sorted(self._state.database.weapon_ids_by_slot)),
         )
 
@@ -551,7 +561,7 @@ class WeaponController:
         origin: WorldCoord,
         direction_x: float,
         direction_y: float,
-    ) -> None:
+    ) -> int:
         """Update continuous fire state and spawn projectiles when ready.
 
         Args:
@@ -560,7 +570,11 @@ class WeaponController:
             origin: Projectile spawn origin.
             direction_x: Normalized aim direction X component.
             direction_y: Normalized aim direction Y component.
+
+        Returns:
+            Number of weapon fire events spawned during this update.
         """
+        self._fire_events_last_update = 0
         if frame_time > 0.0:
             self._state.cooldown_remaining_seconds = max(
                 0.0,
@@ -574,13 +588,13 @@ class WeaponController:
                 if self._state.reload_remaining_seconds <= 0.0:
                     self._finish_reload()
         if self._state.reload_remaining_seconds > 0.0:
-            return
+            return 0
         if not fire_held:
-            return
+            return 0
         if direction_x == 0.0 and direction_y == 0.0:
-            return
+            return 0
         if self._state.current_ammo.ammo_in_magazine <= 0:
-            return
+            return 0
 
         fire_interval = self._state.current_weapon.fire_interval_seconds
         shots_spawned = 0
@@ -590,8 +604,10 @@ class WeaponController:
                 break
             self._state.cooldown_remaining_seconds += fire_interval
             shots_spawned += 1
+            self._fire_events_last_update += 1
             if shots_spawned >= max_fire_events_per_frame:
                 break
+        return self._fire_events_last_update
 
     def _fire_once(self, origin: WorldCoord, direction_x: float, direction_y: float) -> bool:
         """Spawn one weapon fire event.

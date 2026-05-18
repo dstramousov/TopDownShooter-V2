@@ -17,7 +17,8 @@
       "initial_reserve_ammo": "infinite",
       "reload_time_seconds": 0.9,
       "active_movement_speed_multiplier": 1.0,
-      "damage": 35.0
+      "damage": 35.0,
+      "noise_radius_px": 260.0
     },
     {
       "id": "ak47",
@@ -34,7 +35,8 @@
       "initial_reserve_ammo": 90,
       "reload_time_seconds": 1.7,
       "active_movement_speed_multiplier": 0.96,
-      "damage": 24.0
+      "damage": 24.0,
+      "noise_radius_px": 420.0
     },
     {
       "id": "minigun_m134",
@@ -51,7 +53,8 @@
       "initial_reserve_ammo": 2000,
       "reload_time_seconds": 4.5,
       "active_movement_speed_multiplier": 0.75,
-      "damage": 12.0
+      "damage": 12.0,
+      "noise_radius_px": 620.0
     }
   ]
 }

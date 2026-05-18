@@ -328,6 +328,7 @@ class DebugOverlay:
                 DebugOverlayRow("Reload left", f"{weapon_stats.reload_remaining_seconds:.3f}s"),
                 DebugOverlayRow("Reload prog", f"{weapon_stats.reload_progress:.2f}"),
                 DebugOverlayRow("Damage", f"{weapon_stats.damage:.1f}"),
+                DebugOverlayRow("Noise", f"{weapon_stats.noise_radius_px:.0f}px"),
                 DebugOverlayRow(
                     "Move mult",
                     f"{weapon_stats.active_movement_speed_multiplier:.2f}x",
@@ -360,6 +361,7 @@ class DebugOverlay:
                 DebugOverlayRow("Squads", str(enemy_stats.spawned_squads)),
                 DebugOverlayRow("Squad pending", str(enemy_stats.pending_squad_alerts)),
                 DebugOverlayRow("Squad alerts", str(enemy_stats.squad_alerts_triggered)),
+                DebugOverlayRow("Sound alerts", str(enemy_stats.sound_alerts_triggered)),
                 DebugOverlayRow("Killed", str(enemy_stats.killed_enemies)),
                 DebugOverlayRow("Hits", str(enemy_stats.total_hits)),
                 DebugOverlayRow("Hit markers", str(enemy_stats.active_hit_markers)),

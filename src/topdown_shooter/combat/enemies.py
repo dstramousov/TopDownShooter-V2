@@ -119,6 +119,7 @@ class EnemyStats:
         spawned_squads: Number of tactical spawn zones that produced at least one enemy.
         pending_squad_alerts: Number of scheduled squad alert broadcasts.
         squad_alerts_triggered: Number of squadmates alerted by broadcasts in the last update.
+        sound_alerts_triggered: Number of enemies alerted by gunshot sound in the last update.
     """
 
     active_enemies: int
@@ -143,6 +144,7 @@ class EnemyStats:
     spawned_squads: int
     pending_squad_alerts: int
     squad_alerts_triggered: int
+    sound_alerts_triggered: int
 
 
 class EnemySystem:
@@ -190,6 +192,7 @@ class EnemySystem:
         self._tactical_slots_assigned = 0
         self._pending_squad_alerts: dict[str, tuple[float, WorldCoord, float]] = {}
         self._squad_alerts_triggered = 0
+        self._sound_alerts_triggered = 0
 
     @classmethod
     def from_tactical_map(
@@ -360,6 +363,7 @@ class EnemySystem:
             spawned_squads=self._spawned_squads,
             pending_squad_alerts=len(self._pending_squad_alerts),
             squad_alerts_triggered=self._squad_alerts_triggered,
+            sound_alerts_triggered=self._sound_alerts_triggered,
         )
 
     def update(
@@ -376,6 +380,7 @@ class EnemySystem:
             squad_alert_broadcast_radius_px: Radius used for nearby squad alert fallback.
         """
         self._squad_alerts_triggered = 0
+        self._sound_alerts_triggered = 0
         if frame_time <= 0.0:
             return
         self._update_pending_squad_alerts(
@@ -1764,6 +1769,43 @@ class EnemySystem:
                     squad_alert_broadcast_delay_seconds=squad_alert_broadcast_delay_seconds,
                     squad_alert_broadcast_radius_px=squad_alert_broadcast_radius_px,
                 )
+
+    def alert_enemies_by_sound(
+        self,
+        origin: WorldCoord,
+        noise_radius_px: float,
+        squad_alert_broadcast_delay_seconds: float = 0.0,
+        squad_alert_broadcast_radius_px: float = 0.0,
+    ) -> int:
+        """Alert enemies that can hear a gunshot near the player.
+
+        Args:
+            origin: Sound source world position.
+            noise_radius_px: Hearing radius in world pixels.
+            squad_alert_broadcast_delay_seconds: Delay before squadmates are alerted.
+            squad_alert_broadcast_radius_px: Radius for nearby squad alert fallback.
+
+        Returns:
+            Number of enemies newly alerted by sound.
+        """
+        if noise_radius_px <= 0.0:
+            return 0
+        alerted_count = 0
+        for enemy in self._enemies:
+            if not enemy.alive or enemy.alerted:
+                continue
+            dx = enemy.world_position.x - origin.x
+            dy = enemy.world_position.y - origin.y
+            if math.hypot(dx, dy) > noise_radius_px:
+                continue
+            self._alert_enemy(
+                enemy,
+                squad_alert_broadcast_delay_seconds=squad_alert_broadcast_delay_seconds,
+                squad_alert_broadcast_radius_px=squad_alert_broadcast_radius_px,
+            )
+            alerted_count += 1
+        self._sound_alerts_triggered += alerted_count
+        return alerted_count
 
     def apply_projectile_hits(
         self,

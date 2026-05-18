@@ -1263,3 +1263,34 @@ def test_enemy_chase_movement_keeps_pending_squad_alerts() -> None:
     )
 
     assert system.stats.pending_squad_alerts == 1
+
+
+def test_gunshot_sound_alerts_nearby_enemies_only() -> None:
+    """Gunshot sound should alert idle enemies inside the configured noise radius."""
+    runtime_map = _build_runtime_map_from_rows((
+        "++++++++++",
+        "++++++++++",
+        "++++++++++",
+    ))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {"id": "near", "position": [1, 1]},
+                {"id": "far", "position": [9, 1]},
+            ],
+        },
+        runtime_map,
+    )
+
+    alerted = system.alert_enemies_by_sound(
+        origin=WorldCoord(x=24.0, y=24.0),
+        noise_radius_px=48.0,
+        squad_alert_broadcast_delay_seconds=0.25,
+        squad_alert_broadcast_radius_px=0.0,
+    )
+
+    assert alerted == 1
+    assert system.stats.sound_alerts_triggered == 1
+    assert system.enemies[0].alerted is True
+    assert system.enemies[1].alerted is False
+    assert system.stats.pending_squad_alerts == 0

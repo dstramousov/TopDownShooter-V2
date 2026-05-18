@@ -367,3 +367,13 @@
 - Added distance culling for heavy enemy debug layers around the player.
 - Updated the default runtime config to keep costly path and tactical-slot debug drawing disabled by default.
 - Updated Russian configuration and enemy tactics documentation for the new debug rendering budget settings.
+
+## v0.0.48 -> v0.0.49
+
+- Added per-weapon `noise_radius_px` values to `res/config/weapons.json`.
+- Weapon updates now report fire events from the current frame.
+- Enemies now become alerted when they hear a player gunshot inside the active weapon noise radius.
+- Gunshot hearing alerts also trigger the existing delayed squad alert propagation.
+- Updated debug overlay diagnostics and Russian documentation for gunshot hearing.
+- Added tests for weapon noise configuration and sound-triggered enemy alerts.
+

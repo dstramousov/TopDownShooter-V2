@@ -60,6 +60,7 @@ def _write_weapon_database(path: Path) -> None:
                         "initial_reserve_ammo": "infinite",
                         "reload_time_seconds": 0.9,
                         "active_movement_speed_multiplier": 1.0,
+                        "noise_radius_px": 260.0,
                     }
                 ],
             },
@@ -84,6 +85,7 @@ def test_weapon_config_loader_loads_default_weapon(tmp_path: Path) -> None:
     assert database.default_weapon.reload_time_seconds == 0.9
     assert database.default_weapon.active_movement_speed_multiplier == 1.0
     assert database.default_weapon.damage == 35.0
+    assert database.default_weapon.noise_radius_px == 260.0
 
 
 def test_weapon_controller_continuously_fires_while_button_is_held(tmp_path: Path) -> None:
@@ -152,6 +154,7 @@ def _write_two_weapon_database(path: Path) -> None:
                         "initial_reserve_ammo": "infinite",
                         "reload_time_seconds": 0.9,
                         "active_movement_speed_multiplier": 1.0,
+                        "noise_radius_px": 260.0,
                     },
                     {
                         "id": "ak47",
@@ -169,6 +172,7 @@ def _write_two_weapon_database(path: Path) -> None:
                         "initial_reserve_ammo": 90,
                         "reload_time_seconds": 1.7,
                         "active_movement_speed_multiplier": 0.96,
+                        "noise_radius_px": 420.0,
                     },
                 ],
             },
@@ -195,6 +199,7 @@ def test_weapon_controller_switches_weapon_slots(tmp_path: Path) -> None:
     assert controller.stats.reserve_ammo == 90
     assert controller.stats.reload_time_seconds == 1.7
     assert controller.stats.active_movement_speed_multiplier == 0.96
+    assert controller.stats.noise_radius_px == 420.0
     assert controller.stats.damage == 24.0
 
 
