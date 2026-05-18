@@ -1,135 +1,193 @@
-# TopDownShooter V.2
+# TopDownShooter V2
 
-Initial runtime foundation for loading a generated TopDownMapGen map package.
+TopDownShooter V2 — прототип 2D top-down shooter на Python с использованием raylib/pyray. Проект сейчас находится в стадии активной разработки игровых систем: карты, движения игрока, стрельбы, оружия, поведения противников, отладки и конфигурации.
 
-## Current scope
+<img width="1277" height="741" alt="Screenshot from 2026-05-18 14-04-17" src="https://github.com/user-attachments/assets/449eee4c-d2df-4bec-8613-6cbaea7bfe33" />
 
-Version `0.0.24` supports map package inspection, a minimal render window, camera foundation, a runtime debug overlay, map-viewer camera controls, an initial player marker, and basic WASD player movement:
-
-- reads `_manifest.json`;
-- reads `validation_report.json`;
-- reads `tactical_map.json`;
-- performs minimal runtime validation;
-- builds an internal `RuntimeMap`;
-- prints a concise inspection summary;
-- opens a minimal raylib window;
-- centers a clamped camera on the map start tile;
-- toggles a debug overlay with runtime, map, camera, mouse, tactical, and validation data;
-- pans, zooms, and resets the camera through configurable controls;
-- spawns a simple player marker at the generated start tile;
-- moves the player with configurable WASD controls and basic tile collision;
-- follows the moving player with a configurable camera mode;
-- applies smooth camera follow, movement lookahead, aim lookahead, and a dead zone;
-- calculates mouse aim direction from the player to the world-space cursor;
-- draws a short configurable aim debug marker above the player;
-- draws only camera-visible map tiles each frame;
-- shows a standalone FPS counter even when the debug overlay is disabled;
-- fires the equipped weapon continuously while the primary mouse button is held, using weapon data from `res/config/weapons.json`;
-- switches between the pistol and AK-47 weapon slots;
-- tracks magazine ammo and reserve ammo, including infinite reserve ammo for the pistol;
-- reloads the equipped weapon from reserve ammo;
-- draws a configurable player HUD with health, active weapon, and ammo status;
-- shows short-lived impact markers when projectiles hit blocked map tiles;
-- spawns static enemy markers from tactical `enemy_spawn_zones`.
-
-The shooter runtime does not import or call TopDownMapGen. The map generator remains a separate project.
-
-## Usage
-
-```bash
-python3 -m topdown_shooter --map ./maps/current --inspect-map
-```
-
-or, after installing the package:
-
-```bash
-topdown-shooter --map ./maps/current --inspect-map
-```
+<img width="3840" height="1080" alt="Screenshot from 2026-05-18 14-04-11" src="https://github.com/user-attachments/assets/882ab440-66cc-4d54-af06-b829153d1067" />
 
 
-## Run map renderer
+Основная цель текущей версии — собрать техническую базу для тактического top-down shooter-а, где игрок перемещается по тайловой карте, использует разное оружие, а противники не просто бегут по прямой, а замечают игрока, реагируют на выстрелы, преследуют, окружают, теряют цель и возвращаются на свои позиции.
 
-The minimal renderer opens a raylib window and draws the loaded map package:
+## Текущий статус
 
-```bash
-PYTHONPATH=src python3 -m topdown_shooter --map ../TopDownMapGen/out --run
-```
+На текущий момент реализована рабочая игровая петля:
 
-Window settings, player marker settings, enemy marker settings, aim debug settings, weapon database path, projectile impact settings, player HUD settings, FPS counter settings, debug overlay settings, and control bindings are stored in the packaged runtime config:
+- загрузка карты из подготовленного map package;
+- отображение тайловой карты;
+- управление игроком;
+- движение с учётом типа тайлов;
+- стрельба;
+- несколько видов оружия;
+- боезапас, магазины и перезарядка;
+- HUD;
+- debug overlay;
+- противники с HP;
+- попадания по противникам;
+- агр противников через зрение, попадание и звук выстрела;
+- преследование игрока;
+- A* pathfinding по тайловой сетке;
+- тактическое окружение игрока;
+- состояния поведения противника;
+- возврат противников домой после потери игрока.
+
+Проект уже не является простым “игрок ходит и стреляет”. Сейчас это основа для боевого прототипа с развивающейся AI-системой.
+
+## Управление и игрок
+
+Игрок управляется в top-down перспективе. Движение учитывает коллизии и свойства тайлов. Разные типы поверхности могут влиять на скорость перемещения. Например, по воде игрок движется медленнее, чем по обычной земле.
+
+Система движения учитывает:
+
+- базовую скорость игрока;
+- модификаторы поверхности;
+- активное оружие;
+- вес оружия;
+- коллизии с непроходимыми тайлами.
+
+Активное оружие влияет на скорость движения. Лёгкое оружие почти не ощущается, автомат даёт небольшой штраф, тяжёлый миниган заметно замедляет игрока. Это добавляет простой, но полезный баланс между огневой мощью и мобильностью.
+
+## Оружие и стрельба
+
+Оружие вынесено в конфиг `res/config/weapons.json`. Сейчас поддерживается несколько видов оружия:
+
+- pistol;
+- AK-47;
+- M134 Minigun.
+
+Для каждого оружия задаются отдельные параметры:
+
+- урон;
+- скорострельность;
+- размер магазина;
+- общий боезапас;
+- время перезарядки;
+- скорость снаряда;
+- дальность;
+- разброс;
+- вес активного оружия;
+- радиус шума выстрела.
+
+Перезарядка у каждого оружия своя. Во время reload-а в HUD отображается небольшой progress bar под блоком weapon, чтобы игрок сразу видел состояние перезарядки.
+
+M134 Minigun добавлен как тест тяжёлой огневой системы: большой боезапас, крупный магазин и высокий темп стрельбы. Он хорошо подходит для проверки нагрузки, стрельбы очередями и реакции противников на шум.
+
+## HUD и debug overlay
+
+HUD показывает основную игровую информацию:
+
+- здоровье игрока;
+- текущее оружие;
+- патроны в магазине;
+- общий боезапас;
+- состояние перезарядки.
+
+Для HUD используется тот же шрифт, что и в debug overlay, чтобы интерфейс выглядел единообразно.
+
+Debug overlay был расширен и вынесен в правую side panel внутри основного окна. Это решает проблему, когда отладочная информация перекрывала игровую карту. Панель можно скроллить колесом мыши, если данных больше, чем помещается по высоте.
+
+Через debug overlay можно видеть:
+
+- FPS;
+- параметры окна и камеры;
+- состояние игрока;
+- активное оружие;
+- параметры противников;
+- pathfinding-статистику;
+- tactical positioning;
+- количество противников в разных состояниях;
+- параметры debug-отрисовки.
+
+Для тяжёлой debug-отрисовки добавлены лимиты. Отрисовка конусов обзора, путей и tactical slots может быть ограничена по количеству и дистанции до игрока, чтобы не просаживать FPS при большом числе активных врагов.
+
+## Противники
+
+Противники создаются на основе точек спавна карты. Вместо одиночного появления они могут размещаться небольшими группами вокруг spawn point. При появлении противник получает осмысленное направление взгляда, чтобы не смотреть в стену или непроходимую область.
+
+У каждого противника есть:
+
+- позиция;
+- здоровье;
+- направление взгляда;
+- состояние тревоги;
+- home position;
+- путь движения;
+- tactical target;
+- состояние awareness.
+
+Противники получают урон от снарядов игрока и могут умирать. При попадании противник агрится на игрока.
+
+## Обзор и агр
+
+У противников есть конус обзора. Игрок обнаруживается, если он попадает в конус видимости на заданной дистанции и между ним и противником есть line of sight.
+
+Противник может сагриться несколькими способами:
+
+- увидел игрока в конусе обзора;
+- получил попадание;
+- услышал выстрел рядом;
+- получил тревогу от другого противника.
+
+Если один противник из группы сагрился, тревога передаётся соседним противникам через небольшую задержку. Это имитирует предупреждение внутри отряда. Передача тревоги работает как по `spawn_id`, так и по радиусу, чтобы визуально близкие группы тоже реагировали согласованно.
+
+Выстрелы игрока создают шум. Радиус шума задаётся отдельно для каждого оружия. Пистолет слышен на меньшей дистанции, автомат дальше, миниган — ещё дальше. Если противник находится в радиусе шума, он агрится и может передать тревогу остальным.
+
+## Состояния противников
+
+Вместо простого `alerted = true/false` добавлен цикл awareness states:
+
+- `idle` — противник спокоен;
+- `engaged` — противник прямо сейчас видит игрока;
+- `searching` — противник потерял прямую видимость, но продолжает искать;
+- `returning` — противник потерял цель и возвращается домой.
+
+Цвет конуса обзора отражает состояние:
+
+- зелёный — idle / returning;
+- красный — engaged;
+- жёлтый — searching.
+
+Если противник видит игрока, он переходит в `engaged`, запоминает позицию игрока и начинает преследование. Если line of sight потерян, он переходит в `searching`. Если игрок не найден за заданное время, противник переходит в `returning` и возвращается к своей home position.
+
+После возвращения домой противник сбрасывает тревогу, очищает path/tactical target, восстанавливает стартовый угол обзора и снова становится idle.
+
+## Движение и pathfinding
+
+Для движения противников используется несколько уровней логики.
+
+На открытом пространстве работает combat steering:
+
+- сближение с игроком;
+- удержание боевой дистанции;
+- страйф;
+- отход, если противник слишком близко.
+
+Если прямой путь заблокирован, используется A* pathfinding по tile grid. Это позволяет противникам обходить лес, стены и другие непроходимые области, а не упираться в препятствие.
+
+A* работает по walkable tiles, учитывает диагональное движение и запрещает diagonal corner cutting, чтобы противники не проходили сквозь углы.
+
+Пути не пересчитываются каждый кадр. Для pathfinding есть интервалы обновления и условия перестроения пути, чтобы не создавать лишнюю нагрузку.
+
+## Тактическое окружение игрока
+
+Если игрок останавливается и занимает позицию, противники не должны просто толпиться рядом. Для этого добавлена система tactical surround positioning.
+
+Когда игрок стоит почти на месте заданное время, активные противники пытаются занять боевые позиции вокруг него:
+
+- выбираются candidate slots на кольцах вокруг игрока;
+- позиции проверяются на walkability;
+- проверяется line of sight до игрока;
+- проверяется достижимость через A*;
+- враги распределяются по секторам;
+- слоты не должны слишком сильно накладываться друг на друга.
+
+Если противник получил tactical slot, он идёт к нему через pathfinding и удерживает позицию. Если подходящий слот не найден, противник использует pressure movement: продолжает давить и смещаться вокруг игрока, а не стоит на месте.
+
+Эта система пока не является полноценным squad AI или cover system, но уже создаёт ощущение, что враги пытаются окружать и занимать позиции для будущей перестрелки.
+
+## Конфигурация
+
+Основной runtime config находится в:
 
 ```text
 res/config/default_runtime_config.json
-```
-
-Default controls:
-
-```text
-Esc: close runtime window
-Ctrl+D: toggle debug overlay
-Arrows: pan camera
-Mouse wheel: zoom in / zoom out
-Q / E: zoom out / zoom in
-Home: reset camera to map start and switch to map-viewer mode
-F: toggle player-follow camera
-WASD: move player
-LMB: hold to fire current weapon
-R: reload current weapon
-1 / 2: switch weapon slots
-```
-
-## Camera foundation
-
-The renderer uses a small camera rig that centers on the generated start tile and clamps the camera target to map bounds. Runtime starts in player-follow mode by default, so the camera target tracks the moving player with smoothing, movement-direction lookahead, aim-direction lookahead, a small dead zone, and a configurable max camera speed. Pressing the configured follow toggle switches between player-follow and manual map-viewer modes. Manual panning uses arrow keys while WASD controls player movement. Zoom is available through the mouse wheel and Q/E fallback keys in both modes. Window size, zoom limits, camera movement speed, follow mode default, smooth time, max follow speed, movement lookahead, aim lookahead, dead zone, camera flags, mouse wheel zoom, and control bindings are stored in the packaged runtime config instead of being hardcoded in rendering systems.
-
-## Debug overlay
-
-A small standalone FPS counter is drawn independently from the debug overlay and remains visible when the large panel is hidden. Its enabled flag, screen position, margins, and font size are configured through the `fps_counter` section in `res/config/default_runtime_config.json`.
-
-The debug overlay is a configurable runtime diagnostics panel. By default it opens as a right-side panel inside the main window and can be toggled with the configured debug key chord. The overlay uses two aligned columns: labels are drawn in white and values in orange for readability. It shows current FPS, target FPS, window parameters, render tile counts, projectile statistics, weapon ammo/status, map package metadata, map dimensions, camera mode and target, player position, health, mouse screen/world/tile coordinates, tile data under the cursor, tactical entity counts, validation status, warning codes, active controls, and the configured overlay font. Overlay font size is configured through `debug_overlay.font_size` in `res/config/default_runtime_config.json`. Overlay custom font path is configured through `debug_overlay.font_path`; the default expected path is `res/fonts/PressStart2P-Regular.ttf`. If that font file is missing or cannot be loaded, the runtime falls back to the default raylib font. Overlay background dimming is configured through `debug_overlay.background_alpha`. The classic overlay width is configured through `debug_overlay.panel_width`; the right-side panel width is configured through `debug_overlay.side_panel_width`.
-
-## Resources
-
-Runtime assets live under `res/`. Fonts live under `res/fonts/`. The debug overlay is configured to use `res/fonts/PressStart2P-Regular.ttf` when that file exists.
-
-
-## Weapons
-
-Weapon definitions live in `res/config/weapons.json`. The current schema is `weapons-v1` and the default weapon is `pistol`. The default database currently includes:
-
-```text
-1: Pistol
-2: AK-47
-```
-
-Weapon behavior is data-driven through fields such as:
-
-```text
-slot
-fire_rate_rpm
-projectile_speed_px_per_second
-projectile_range_px
-projectile_lifetime_seconds
-projectile_radius_px
-spread_degrees
-shots_per_fire
-magazine_size
-initial_reserve_ammo
-```
-
-Holding the configured primary fire button fires continuously according to the current weapon fire rate. The fire interval is calculated as `60 / fire_rate_rpm`. The pistol has an 8-round magazine and infinite reserve ammo. The AK-47 has a 30-round magazine and finite reserve ammo. Pressing the configured reload key refills the equipped weapon magazine from reserve ammo. Pressing the configured weapon slot keys switches equipped weapons.
-
-## Player HUD
-
-The player HUD is separate from the debug overlay. It displays health, equipped weapon, and current magazine/reserve ammo. Its position is configured through `hud.position` with supported values `top`, `bottom`, `left`, and `right`. HUD margins, padding, font size, and background alpha are also configured in `res/config/default_runtime_config.json`.
-
-## Enemies
-
-The runtime creates one static enemy marker for each valid tactical `enemy_spawn_zones` entry in the loaded map package. Enemy markers are intentionally simple runtime targets for now. They can be damaged by projectiles, flash on hit, show temporary health bars, and enter an alerted perception state when they see the player or get hit. Debug enemy view cones can be enabled through `enemies.draw_view_cones` in `res/config/default_runtime_config.json`. They still do not move, attack, pathfind, or damage the player yet.
-
-## Projectile impacts
-
-Projectiles disappear when they exceed lifetime/range, leave the map, or hit a blocked tile. Blocked-tile hits create short-lived impact markers so map collision feedback is visible before enemies and damage are implemented. Impact marker lifetime and radius are configured through the `projectile_impacts` section in `res/config/default_runtime_config.json`.
-
-## Player marker
-
-The runtime creates an initial player state at the center of the generated `S` tile and draws it as a simple marker above the map. The player can move with configurable WASD controls. Movement is delta-time based and uses basic tile collision with separate X/Y axis resolution so the marker can slide along blocking tiles. The runtime also calculates a mouse aim direction from the player to the world-space cursor and draws a short configurable aim debug marker. The player starts with the default pistol and can switch to the AK-47 with configured slot keys. Holding LMB fires the equipped weapon continuously while the weapon has magazine ammo. Pressing reload refills the equipped magazine from reserve ammo. Projectiles use the current weapon definition, move in the current aim direction, and disappear when they exceed lifetime/range, leave the map, or hit a blocked tile. Blocked-tile hits create short-lived impact markers. Enemy AI, enemy damage, recoil, particles, and sound are intentionally out of scope for this version. Player speed, health, collision radius, marker radius, enemy marker radius, aim debug marker settings, weapon database path, HUD settings, projectile impact settings, fire binding, reload binding, and weapon slot bindings are configured in `res/config/default_runtime_config.json`.
