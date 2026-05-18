@@ -385,3 +385,13 @@
 - Updated enemy debug colors so cones/markers communicate idle, engaged, searching, and returning states.
 - Updated debug overlay diagnostics with engaged/searching/returning counts.
 - Added regression tests for vision loss, searching, return-home, and idle reset behavior.
+
+## v0.0.50 -> v0.0.51
+
+- Улучшен возврат противников домой после потери игрока.
+- В состоянии `returning` противники идут к индивидуальной `home_position`, а не удерживают боевую дистанцию от неё.
+- При доступном pathfinding используется A* путь домой; при неудаче есть прямой fallback.
+- После достижения дома противник сбрасывается в `idle`, очищает path/tactical slot и восстанавливает стартовый угол обзора.
+- Debug overlay показывает количество противников, завершивших возврат домой за последний update.
+- Добавлены regression-тесты для движения домой и восстановления стартового facing.
+

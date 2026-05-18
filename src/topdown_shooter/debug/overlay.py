@@ -348,6 +348,7 @@ class DebugOverlay:
                 DebugOverlayRow("Engaged", str(enemy_stats.engaged_enemies)),
                 DebugOverlayRow("Searching", str(enemy_stats.searching_enemies)),
                 DebugOverlayRow("Returning", str(enemy_stats.returning_enemies)),
+                DebugOverlayRow("Returned", str(enemy_stats.returned_home_enemies)),
                 DebugOverlayRow("Moving", str(enemy_stats.moving_enemies)),
                 DebugOverlayRow("Approaching", str(enemy_stats.approaching_enemies)),
                 DebugOverlayRow("Strafing", str(enemy_stats.strafing_enemies)),

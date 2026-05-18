@@ -50,6 +50,7 @@ class EnemyState:
         last_path_target_position: Last world-space path target position.
         tactical_target_position: Assigned tactical surround position.
         tactical_target_age_seconds: Seconds elapsed since the current tactical slot assignment.
+        home_facing_angle_degrees: Facing angle restored after return-home behavior.
     """
 
     enemy_id: str
@@ -62,6 +63,7 @@ class EnemyState:
     max_health: float
     health: float
     facing_angle_degrees: float
+    home_facing_angle_degrees: float | None = None
     alerted: bool = False
     awareness_state: str = "idle"
     home_position: WorldCoord | None = None
@@ -131,6 +133,7 @@ class EnemyStats:
         pending_squad_alerts: Number of scheduled squad alert broadcasts.
         squad_alerts_triggered: Number of squadmates alerted by broadcasts in the last update.
         sound_alerts_triggered: Number of enemies alerted by gunshot sound in the last update.
+        returned_home_enemies: Number of enemies that finished returning home in the last update.
     """
 
     active_enemies: int
@@ -159,6 +162,7 @@ class EnemyStats:
     pending_squad_alerts: int
     squad_alerts_triggered: int
     sound_alerts_triggered: int
+    returned_home_enemies: int
 
 
 class EnemySystem:
@@ -204,9 +208,11 @@ class EnemySystem:
         self._last_tactical_player_position: WorldCoord | None = None
         self._tactical_positioning_enemies = 0
         self._tactical_slots_assigned = 0
+        self._returned_home_enemies = 0
         self._pending_squad_alerts: dict[str, tuple[float, WorldCoord, float]] = {}
         self._squad_alerts_triggered = 0
         self._sound_alerts_triggered = 0
+        self._returned_home_enemies = 0
 
     @classmethod
     def from_tactical_map(
@@ -302,6 +308,18 @@ class EnemySystem:
                     continue
                 tile = world_to_tile(world_position, runtime_map.tile_size_px)
                 spawn_id = cls._read_string(raw_spawn, "id", f"spawn_{spawn_index}")
+                facing_angle_degrees = cls._resolve_initial_facing_angle(
+                    raw_spawn=raw_spawn,
+                    spawn_index=spawn_index + squad_member_index,
+                    world_position=world_position,
+                    collision_service=collision_service,
+                    vision_range_px=runtime_map.tile_size_px * 10.0,
+                    smart_facing_enabled=smart_facing_enabled,
+                    facing_candidate_step_degrees=facing_candidate_step_degrees,
+                    facing_probe_side_angle_degrees=facing_probe_side_angle_degrees,
+                    facing_wall_penalty_distance_px=facing_wall_penalty_distance_px,
+                    facing_probe_step_px=facing_probe_step_px,
+                )
                 enemies.append(
                     EnemyState(
                         enemy_id=f"enemy_{len(enemies)}",
@@ -314,18 +332,8 @@ class EnemySystem:
                         home_position=world_position,
                         max_health=enemy_max_health,
                         health=enemy_max_health,
-                        facing_angle_degrees=cls._resolve_initial_facing_angle(
-                            raw_spawn=raw_spawn,
-                            spawn_index=spawn_index + squad_member_index,
-                            world_position=world_position,
-                            collision_service=collision_service,
-                            vision_range_px=runtime_map.tile_size_px * 10.0,
-                            smart_facing_enabled=smart_facing_enabled,
-                            facing_candidate_step_degrees=facing_candidate_step_degrees,
-                            facing_probe_side_angle_degrees=facing_probe_side_angle_degrees,
-                            facing_wall_penalty_distance_px=facing_wall_penalty_distance_px,
-                            facing_probe_step_px=facing_probe_step_px,
-                        ),
+                        facing_angle_degrees=facing_angle_degrees,
+                        home_facing_angle_degrees=facing_angle_degrees,
                     ),
                 )
                 spawned_for_zone += 1
@@ -388,6 +396,7 @@ class EnemySystem:
             pending_squad_alerts=len(self._pending_squad_alerts),
             squad_alerts_triggered=self._squad_alerts_triggered,
             sound_alerts_triggered=self._sound_alerts_triggered,
+            returned_home_enemies=self._returned_home_enemies,
         )
 
     def update(
@@ -405,6 +414,7 @@ class EnemySystem:
         """
         self._squad_alerts_triggered = 0
         self._sound_alerts_triggered = 0
+        self._returned_home_enemies = 0
         if frame_time <= 0.0:
             return
         self._update_pending_squad_alerts(
@@ -578,37 +588,57 @@ class EnemySystem:
                     0.0,
                     return_home_reached_distance_px,
                 ):
+                    enemy.world_position = enemy.home_position
+                    enemy.tile = world_to_tile(enemy.home_position, tile_size_px)
                     EnemySystem._reset_enemy_to_idle(enemy)
+                    self._returned_home_enemies += 1
                     continue
-            moved, approaching, strafing, retreating, stuck, pathing, rebuilt, failed_path = (
-                self._move_enemy_with_combat_steering(
-                    enemy=enemy,
-                    player_position=target_position,
-                    collision_service=collision_service,
-                    frame_time=frame_time,
-                    movement_speed_px_per_second=chase_speed_px_per_second,
-                    enemy_collision_radius_px=enemy_collision_radius_px,
-                    tile_size_px=tile_size_px,
-                    preferred_combat_distance_px=preferred_combat_distance_px,
-                    combat_distance_tolerance_px=combat_distance_tolerance_px,
-                    approach_weight=approach_weight,
-                    strafe_weight=strafe_weight,
-                    retreat_weight=retreat_weight,
-                    strafe_switch_min_seconds=strafe_switch_min_seconds,
-                    strafe_switch_max_seconds=strafe_switch_max_seconds,
-                    line_of_sight_sample_step_px=line_of_sight_sample_step_px,
-                    minimum_combat_distance_px=minimum_combat_distance_px,
-                    movement_direction_smoothing=movement_direction_smoothing,
-                    pathfinder=pathfinder if pathfinding_enabled else None,
-                    path_rebuild_interval_seconds=path_rebuild_interval_seconds,
-                    path_target_rebuild_distance_px=path_target_rebuild_distance_px,
-                    path_max_iterations=path_max_iterations,
-                    path_waypoint_reach_distance_px=path_waypoint_reach_distance_px,
-                    tactical_slot_reached_distance_px=tactical_slot_reached_distance_px,
-                    tactical_pressure_active=(
-                        tactical_active and enemy.awareness_state == "engaged"
-                    ),
+                moved, approaching, strafing, retreating, stuck, pathing, rebuilt, failed_path = (
+                    EnemySystem._move_enemy_to_return_home_target(
+                        enemy=enemy,
+                        collision_service=collision_service,
+                        frame_time=frame_time,
+                        movement_speed_px_per_second=chase_speed_px_per_second,
+                        enemy_collision_radius_px=enemy_collision_radius_px,
+                        tile_size_px=tile_size_px,
+                        pathfinder=pathfinder if pathfinding_enabled else None,
+                        path_rebuild_interval_seconds=path_rebuild_interval_seconds,
+                        path_target_rebuild_distance_px=path_target_rebuild_distance_px,
+                        path_max_iterations=path_max_iterations,
+                        path_waypoint_reach_distance_px=path_waypoint_reach_distance_px,
+                        movement_direction_smoothing=movement_direction_smoothing,
+                    )
                 )
+            else:
+                moved, approaching, strafing, retreating, stuck, pathing, rebuilt, failed_path = (
+                    self._move_enemy_with_combat_steering(
+                        enemy=enemy,
+                        player_position=target_position,
+                        collision_service=collision_service,
+                        frame_time=frame_time,
+                        movement_speed_px_per_second=chase_speed_px_per_second,
+                        enemy_collision_radius_px=enemy_collision_radius_px,
+                        tile_size_px=tile_size_px,
+                        preferred_combat_distance_px=preferred_combat_distance_px,
+                        combat_distance_tolerance_px=combat_distance_tolerance_px,
+                        approach_weight=approach_weight,
+                        strafe_weight=strafe_weight,
+                        retreat_weight=retreat_weight,
+                        strafe_switch_min_seconds=strafe_switch_min_seconds,
+                        strafe_switch_max_seconds=strafe_switch_max_seconds,
+                        line_of_sight_sample_step_px=line_of_sight_sample_step_px,
+                        minimum_combat_distance_px=minimum_combat_distance_px,
+                        movement_direction_smoothing=movement_direction_smoothing,
+                        pathfinder=pathfinder if pathfinding_enabled else None,
+                        path_rebuild_interval_seconds=path_rebuild_interval_seconds,
+                        path_target_rebuild_distance_px=path_target_rebuild_distance_px,
+                        path_max_iterations=path_max_iterations,
+                        path_waypoint_reach_distance_px=path_waypoint_reach_distance_px,
+                        tactical_slot_reached_distance_px=tactical_slot_reached_distance_px,
+                        tactical_pressure_active=(
+                            tactical_active and enemy.awareness_state == "engaged"
+                        ),
+                    )
             )
             if moved:
                 self._moving_enemies += 1
@@ -1319,6 +1349,135 @@ class EnemySystem:
         if moved:
             EnemySystem._clear_enemy_path(enemy)
         return moved, approaching, active_strafe_weight > 0.0, retreating, not moved, False, False, False
+
+
+    @staticmethod
+    def _move_enemy_to_return_home_target(
+        enemy: EnemyState,
+        collision_service: TileCollisionService,
+        frame_time: float,
+        movement_speed_px_per_second: float,
+        enemy_collision_radius_px: float,
+        tile_size_px: int,
+        pathfinder: GridPathfinder | None,
+        path_rebuild_interval_seconds: float,
+        path_target_rebuild_distance_px: float,
+        path_max_iterations: int,
+        path_waypoint_reach_distance_px: float,
+        movement_direction_smoothing: float,
+    ) -> tuple[bool, bool, bool, bool, bool, bool, bool, bool]:
+        """Move a returning enemy toward its individual home position.
+
+        Args:
+            enemy: Enemy returning home.
+            collision_service: Collision service used for final movement validation.
+            frame_time: Current frame duration in seconds.
+            movement_speed_px_per_second: Enemy movement speed in pixels per second.
+            enemy_collision_radius_px: Enemy collision radius in world pixels.
+            tile_size_px: Runtime map tile size in pixels.
+            pathfinder: Optional grid pathfinder used for route-home movement.
+            path_rebuild_interval_seconds: Minimum delay between path rebuilds.
+            path_target_rebuild_distance_px: Home movement distance that forces path rebuild.
+            path_max_iterations: Maximum A* iterations for route-home queries.
+            path_waypoint_reach_distance_px: Distance used to advance path waypoints.
+            movement_direction_smoothing: Blend factor for movement direction.
+
+        Returns:
+            Tuple containing movement and navigation diagnostic flags.
+        """
+        if enemy.home_position is None:
+            return False, False, False, False, False, False, False, False
+        home_position = enemy.home_position
+        dx = home_position.x - enemy.world_position.x
+        dy = home_position.y - enemy.world_position.y
+        distance = math.hypot(dx, dy)
+        if distance <= 0.000001:
+            return False, False, False, False, False, False, False, False
+        enemy.facing_angle_degrees = math.degrees(math.atan2(dy, dx)) % 360.0
+        if pathfinder is not None:
+            path_result = EnemySystem._move_enemy_along_path(
+                enemy=enemy,
+                player_position=home_position,
+                pathfinder=pathfinder,
+                collision_service=collision_service,
+                frame_time=frame_time,
+                movement_speed_px_per_second=movement_speed_px_per_second,
+                enemy_collision_radius_px=enemy_collision_radius_px,
+                tile_size_px=tile_size_px,
+                path_rebuild_interval_seconds=path_rebuild_interval_seconds,
+                path_target_rebuild_distance_px=path_target_rebuild_distance_px,
+                path_max_iterations=path_max_iterations,
+                path_waypoint_reach_distance_px=path_waypoint_reach_distance_px,
+                movement_direction_smoothing=movement_direction_smoothing,
+            )
+            moved, _approaching, _strafing, _retreating, _stuck, pathing, _rebuilt, failed = (
+                path_result
+            )
+            if moved or (pathing and not failed):
+                return path_result
+        return EnemySystem._move_enemy_directly_to_point(
+            enemy=enemy,
+            target_position=home_position,
+            collision_service=collision_service,
+            frame_time=frame_time,
+            movement_speed_px_per_second=movement_speed_px_per_second,
+            enemy_collision_radius_px=enemy_collision_radius_px,
+            tile_size_px=tile_size_px,
+            movement_direction_smoothing=movement_direction_smoothing,
+        )
+
+    @staticmethod
+    def _move_enemy_directly_to_point(
+        enemy: EnemyState,
+        target_position: WorldCoord,
+        collision_service: TileCollisionService,
+        frame_time: float,
+        movement_speed_px_per_second: float,
+        enemy_collision_radius_px: float,
+        tile_size_px: int,
+        movement_direction_smoothing: float,
+    ) -> tuple[bool, bool, bool, bool, bool, bool, bool, bool]:
+        """Move an enemy directly toward a point without combat-distance orbiting.
+
+        Args:
+            enemy: Enemy to move.
+            target_position: Target world position.
+            collision_service: Collision service used for final movement validation.
+            frame_time: Current frame duration in seconds.
+            movement_speed_px_per_second: Enemy movement speed in pixels per second.
+            enemy_collision_radius_px: Enemy collision radius in world pixels.
+            tile_size_px: Runtime map tile size in pixels.
+            movement_direction_smoothing: Blend factor for movement direction.
+
+        Returns:
+            Tuple containing movement and navigation diagnostic flags.
+        """
+        dx = target_position.x - enemy.world_position.x
+        dy = target_position.y - enemy.world_position.y
+        distance = math.hypot(dx, dy)
+        if distance <= 0.000001:
+            return False, False, False, False, False, False, False, False
+        desired_x = dx / distance
+        desired_y = dy / distance
+        move_x, move_y = EnemySystem._smooth_enemy_movement_direction(
+            enemy=enemy,
+            desired_x=desired_x,
+            desired_y=desired_y,
+            smoothing=movement_direction_smoothing,
+        )
+        travel_distance = min(distance, movement_speed_px_per_second * frame_time)
+        position = EnemySystem._try_move_enemy_vector(
+            position=enemy.world_position,
+            dx=move_x * travel_distance,
+            dy=move_y * travel_distance,
+            collision_service=collision_service,
+            enemy_collision_radius_px=enemy_collision_radius_px,
+        )
+        moved = position != enemy.world_position
+        if moved:
+            enemy.world_position = position
+            enemy.tile = world_to_tile(position, tile_size_px)
+        return moved, moved, False, False, not moved, False, False, False
 
     @staticmethod
     def _move_enemy_along_path(
@@ -2173,6 +2332,8 @@ class EnemySystem:
         enemy.time_since_player_seen_seconds = 0.0
         enemy.tactical_target_position = None
         enemy.tactical_target_age_seconds = 0.0
+        if enemy.home_facing_angle_degrees is not None:
+            enemy.facing_angle_degrees = enemy.home_facing_angle_degrees
         EnemySystem._clear_enemy_path(enemy)
 
     @staticmethod

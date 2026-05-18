@@ -1392,3 +1392,86 @@ def test_searching_enemy_returns_home_after_lost_sight_timeout() -> None:
     assert enemy.alerted is False
     assert enemy.awareness_state == "idle"
     assert system.stats.alerted_enemies == 0
+
+
+def test_returning_enemy_moves_to_home_without_combat_distance_hold() -> None:
+    """Returning enemies should go home instead of orbiting at combat distance."""
+    from topdown_shooter.world.collision import TileCollisionService
+
+    runtime_map = _build_runtime_map_from_rows((
+        "++++++",
+        "++++++",
+        "++++++",
+    ))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {"id": "spawn_0", "position": [1, 1], "facing_angle_degrees": 90.0},
+            ],
+        },
+        runtime_map,
+    )
+    enemy = system.enemies[0]
+    assert enemy.home_position == WorldCoord(x=24.0, y=24.0)
+    enemy.alerted = True
+    enemy.awareness_state = "returning"
+    enemy.world_position = WorldCoord(x=88.0, y=24.0)
+    enemy.tile = world_to_tile(enemy.world_position, runtime_map.tile_size_px)
+
+    system.update_chase_movement(
+        player_position=WorldCoord(x=88.0, y=40.0),
+        collision_service=TileCollisionService(runtime_map),
+        frame_time=1.0,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+        preferred_combat_distance_px=48.0,
+        return_home_reached_distance_px=3.0,
+    )
+
+    assert enemy.awareness_state == "returning"
+    assert enemy.world_position.x < 88.0
+    assert enemy.world_position.x == 72.0
+    assert system.stats.moving_enemies == 1
+
+
+def test_returned_enemy_snaps_home_and_restores_initial_facing() -> None:
+    """Enemies should reset to idle at home with their original facing angle."""
+    from topdown_shooter.world.collision import TileCollisionService
+
+    runtime_map = _build_runtime_map_from_rows((
+        "+++++",
+        "+++++",
+        "+++++",
+    ))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {"id": "spawn_0", "position": [1, 1], "facing_angle_degrees": 135.0},
+            ],
+        },
+        runtime_map,
+    )
+    enemy = system.enemies[0]
+    assert enemy.home_position is not None
+    enemy.alerted = True
+    enemy.awareness_state = "returning"
+    enemy.world_position = WorldCoord(x=enemy.home_position.x + 2.0, y=enemy.home_position.y)
+    enemy.tile = world_to_tile(enemy.world_position, runtime_map.tile_size_px)
+    enemy.facing_angle_degrees = 0.0
+
+    system.update_chase_movement(
+        player_position=WorldCoord(x=72.0, y=24.0),
+        collision_service=TileCollisionService(runtime_map),
+        frame_time=0.1,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+        return_home_reached_distance_px=3.0,
+    )
+
+    assert enemy.alerted is False
+    assert enemy.awareness_state == "idle"
+    assert enemy.world_position == enemy.home_position
+    assert enemy.facing_angle_degrees == 135.0
+    assert system.stats.returned_home_enemies == 1
