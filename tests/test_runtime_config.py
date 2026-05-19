@@ -139,6 +139,7 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.render3d.tile_size == 1.0
     assert config.render3d.height_scale == 1.0
     assert config.render3d.render_mode == "optimized"
+    assert config.render3d.view_mode == "gameplay"
     assert config.render3d.show_debug_hud is True
     assert config.render3d.max_visible_primitives == 3000
     assert config.render3d.camera.height == 13.0

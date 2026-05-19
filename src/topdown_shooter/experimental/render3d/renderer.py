@@ -40,6 +40,11 @@ class Render3DInputState:
 class Render3DRenderer:
     """Draw a minimal experimental 3D view of the current runtime map."""
 
+    CLEAN_VIEW_MODE = "clean"
+    GAMEPLAY_VIEW_MODE = "gameplay"
+    DEBUG_VIEW_MODE = "debug"
+    VIEW_MODE_ORDER = (CLEAN_VIEW_MODE, GAMEPLAY_VIEW_MODE, DEBUG_VIEW_MODE)
+
     def __init__(
         self,
         runtime_map: RuntimeMap,
@@ -58,6 +63,7 @@ class Render3DRenderer:
         self._config = config
         self._raylib = import_raylib()
         self._camera_mode = Render3DFollowCamera.LOW_FOLLOW_MODE
+        self._view_mode = config.render3d.view_mode
         self._last_facing_x = 0.0
         self._last_facing_y = -1.0
         self._velocity_x_px_per_second = 0.0
@@ -83,6 +89,10 @@ class Render3DRenderer:
         self._key_one = self._resolve_key("KEY_ONE")
         self._key_two = self._resolve_key("KEY_TWO")
         self._key_reset = self._resolve_key(config.render3d.controls.camera_reset)
+        self._key_view_mode = self._resolve_key(config.render3d.controls.view_mode_toggle)
+        self._key_distance_fade = self._resolve_key(
+            config.render3d.controls.distance_fade_toggle,
+        )
         self._key_hud = self._resolve_key("KEY_H")
         self._fire_primary_button = self._resolve_mouse_button(config.controls.fire_primary)
         self._reload_key = self._resolve_key(config.controls.reload)
@@ -91,6 +101,7 @@ class Render3DRenderer:
         self._weapon_slot_3_key = self._resolve_key(config.controls.weapon_slot_3)
         self._weapon_fire_events_last_update = 0
         self._show_debug_hud = config.render3d.show_debug_hud
+        self._distance_fade_enabled = config.render3d.distance_fade.enabled
 
     def run_follow_preview(
         self,
@@ -198,26 +209,37 @@ class Render3DRenderer:
                 raylib.clear_background(raylib.BLACK)
                 raylib.begin_mode_3d(camera)
                 self._draw_scene(scene)
-                self._draw_enemy_markers(visible_enemies)
-                self._draw_enemy_hit_markers(visible_enemy_hit_markers)
-                self._draw_projectile_markers(visible_projectiles)
-                self._draw_impact_markers(visible_impacts)
-                self._draw_aim_line(player.world_position, self._last_facing_x, self._last_facing_y)
+                if self._view_mode_draws_gameplay_markers():
+                    self._draw_enemy_markers(visible_enemies)
+                    self._draw_projectile_markers(visible_projectiles)
+                    self._draw_impact_markers(visible_impacts)
+                    self._draw_aim_line(player.world_position, self._last_facing_x, self._last_facing_y)
+                if self._view_mode_draws_debug_markers():
+                    self._draw_enemy_hit_markers(visible_enemy_hit_markers)
                 self._draw_player_marker(player.world_position, self._last_facing_x, self._last_facing_y)
                 raylib.end_mode_3d()
                 if self._show_debug_hud:
-                    self._draw_debug_hud(
-                        scene=scene,
-                        enemies=enemy_system.enemies,
-                        visible_enemies=visible_enemies,
-                        projectiles=projectile_system.projectiles,
-                        visible_projectiles=visible_projectiles,
-                        impacts=projectile_system.impacts,
-                        visible_impacts=visible_impacts,
-                        enemy_hit_markers=enemy_system.hit_markers,
-                        visible_enemy_hit_markers=visible_enemy_hit_markers,
-                        weapon_controller=weapon_controller,
-                    )
+                    if self._view_mode == self.DEBUG_VIEW_MODE:
+                        self._draw_debug_hud(
+                            scene=scene,
+                            enemies=enemy_system.enemies,
+                            visible_enemies=visible_enemies,
+                            projectiles=projectile_system.projectiles,
+                            visible_projectiles=visible_projectiles,
+                            impacts=projectile_system.impacts,
+                            visible_impacts=visible_impacts,
+                            enemy_hit_markers=enemy_system.hit_markers,
+                            visible_enemy_hit_markers=visible_enemy_hit_markers,
+                            weapon_controller=weapon_controller,
+                        )
+                    else:
+                        self._draw_compact_hud(
+                            weapon_controller=weapon_controller,
+                            visible_enemies=visible_enemies,
+                            enemies=enemy_system.enemies,
+                            visible_projectiles=visible_projectiles,
+                            projectiles=projectile_system.projectiles,
+                        )
                 raylib.end_drawing()
         finally:
             self._enable_cursor()
@@ -251,8 +273,30 @@ class Render3DRenderer:
             camera_controller.reset()
         if raylib.is_key_pressed(self._key_reset):
             camera_controller.reset()
+        if raylib.is_key_pressed(self._key_view_mode):
+            self._view_mode = self._next_view_mode(self._view_mode)
+        if raylib.is_key_pressed(self._key_distance_fade):
+            self._distance_fade_enabled = not self._distance_fade_enabled
         if raylib.is_key_pressed(self._key_hud):
             self._show_debug_hud = not self._show_debug_hud
+
+    @classmethod
+    def _next_view_mode(cls, current_mode: str) -> str:
+        """Return the next 3D view mode in the configured cycle."""
+        try:
+            current_index = cls.VIEW_MODE_ORDER.index(current_mode)
+        except ValueError:
+            return cls.GAMEPLAY_VIEW_MODE
+        next_index = (current_index + 1) % len(cls.VIEW_MODE_ORDER)
+        return cls.VIEW_MODE_ORDER[next_index]
+
+    def _view_mode_draws_gameplay_markers(self) -> bool:
+        """Return whether current view mode should draw gameplay objects."""
+        return self._view_mode in {self.GAMEPLAY_VIEW_MODE, self.DEBUG_VIEW_MODE}
+
+    def _view_mode_draws_debug_markers(self) -> bool:
+        """Return whether current view mode should draw debug-only objects."""
+        return self._view_mode == self.DEBUG_VIEW_MODE
 
     def _read_input_state(self) -> Render3DInputState:
         """Read movement input for the experimental 3D player loop."""
@@ -523,13 +567,17 @@ class Render3DRenderer:
             ground_width,
             0.04 * height_scale,
             ground_depth,
-            raylib.DARKGREEN,
+            self._scene_color(raylib.DARKGREEN, ground_center_x, ground_center_z, scene),
         )
         for primitive in scene.primitives:
-            center = raylib.Vector3(
-                (primitive.x + 0.5) * tile_size,
-                0.0,
-                (primitive.y + 0.5) * tile_size,
+            center_x = (primitive.x + 0.5) * tile_size
+            center_z = (primitive.y + 0.5) * tile_size
+            center = raylib.Vector3(center_x, 0.0, center_z)
+            color = self._scene_color(
+                self._tile_color(primitive.symbol),
+                center_x,
+                center_z,
+                scene,
             )
             if primitive.walkable:
                 if primitive.symbol in {"S", "G", ".", "R", "w"}:
@@ -538,7 +586,7 @@ class Render3DRenderer:
                         tile_size,
                         0.04 * height_scale,
                         tile_size,
-                        self._tile_color(primitive.symbol),
+                        color,
                     )
                 continue
             raylib.draw_cube(
@@ -546,8 +594,85 @@ class Render3DRenderer:
                 tile_size,
                 0.9 * height_scale,
                 tile_size,
-                self._tile_color(primitive.symbol),
+                color,
             )
+
+    def _scene_color(
+        self,
+        color: object,
+        x: float,
+        z: float,
+        scene: Render3DSceneSnapshot,
+    ) -> object:
+        """Return a distance-faded scene color for a 3D position."""
+        brightness = self._distance_brightness_for_scene_position(x=x, z=z, scene=scene)
+        if brightness >= 0.999:
+            return color
+        return self._scale_color(color, brightness)
+
+    def _distance_brightness_for_scene_position(
+        self,
+        x: float,
+        z: float,
+        scene: Render3DSceneSnapshot,
+    ) -> float:
+        """Return brightness for a scene position based on player-centered radius."""
+        fade_config = self._config.render3d.distance_fade
+        if not self._distance_fade_enabled:
+            return 1.0
+        tile_size = self._config.render3d.tile_size
+        center_x = (scene.center_tile.x + 0.5) * tile_size
+        center_z = (scene.center_tile.y + 0.5) * tile_size
+        radius = self._config.render3d.view_radius_tiles * tile_size
+        if radius <= 0.0001:
+            return 1.0
+        distance = math.hypot(x - center_x, z - center_z)
+        start = radius * fade_config.fade_start_ratio
+        if distance <= start:
+            return 1.0
+        fade_range = max(radius - start, 0.0001)
+        progress = max(0.0, min(1.0, (distance - start) / fade_range))
+        fog_amount = progress ** fade_config.fog_density
+        return 1.0 - (1.0 - fade_config.min_brightness) * fog_amount
+
+    def _distance_brightness_for_world_position(
+        self,
+        position: WorldCoord,
+        player_position: WorldCoord,
+    ) -> float:
+        """Return brightness for a runtime world position around the player."""
+        fade_config = self._config.render3d.distance_fade
+        if (
+            not self._distance_fade_enabled
+            or fade_config.keep_markers_bright
+        ):
+            return 1.0
+        radius_px = self._config.render3d.view_radius_tiles * self._runtime_map.tile_size_px
+        if radius_px <= 0.0001:
+            return 1.0
+        distance = math.hypot(
+            position.x - player_position.x,
+            position.y - player_position.y,
+        )
+        start = radius_px * fade_config.fade_start_ratio
+        if distance <= start:
+            return 1.0
+        fade_range = max(radius_px - start, 0.0001)
+        progress = max(0.0, min(1.0, (distance - start) / fade_range))
+        fog_amount = progress ** fade_config.fog_density
+        return 1.0 - (1.0 - fade_config.min_brightness) * fog_amount
+
+    def _scale_color(self, color: object, brightness: float) -> object:
+        """Scale an RGB raylib color by brightness while keeping alpha."""
+        raylib = self._raylib
+        try:
+            red = int(max(0, min(255, float(color.r) * brightness)))
+            green = int(max(0, min(255, float(color.g) * brightness)))
+            blue = int(max(0, min(255, float(color.b) * brightness)))
+            alpha = int(getattr(color, "a", 255))
+        except AttributeError:
+            return color
+        return raylib.Color(red, green, blue, alpha)
 
 
     def _visible_enemies(
@@ -943,6 +1068,39 @@ class Render3DRenderer:
         raylib.draw_line_3d(center, direction_end, raylib.ORANGE)
         raylib.draw_sphere(direction_end, tile_size * 0.18, raylib.ORANGE)
 
+    def _draw_compact_hud(
+        self,
+        weapon_controller: WeaponController,
+        visible_enemies: tuple[EnemyState, ...],
+        enemies: tuple[EnemyState, ...],
+        visible_projectiles: tuple[ProjectileState, ...],
+        projectiles: tuple[ProjectileState, ...],
+    ) -> None:
+        """Draw a compact HUD for clean and gameplay 3D view modes."""
+        raylib = self._raylib
+        lines = [
+            f"3D view: {self._view_mode}",
+            f"FPS: {raylib.get_fps()}",
+            "V view mode | L fog | H HUD | C camera reset | ESC close",
+        ]
+        if self._view_mode == self.GAMEPLAY_VIEW_MODE:
+            weapon_stats = weapon_controller.stats
+            lines.extend(
+                (
+                    f"weapon: {weapon_stats.weapon_id} "
+                    f"ammo {weapon_stats.ammo_in_magazine}/{weapon_stats.magazine_size}",
+                    f"enemies: {len(visible_enemies)}/{len(enemies)} visible",
+                    f"projectiles: {len(visible_projectiles)}/{len(projectiles)} visible",
+                    f"fog: {'on' if self._distance_fade_enabled else 'off'} "
+                    f"density {self._config.render3d.distance_fade.fog_density:.2f}",
+                    "mouse X aim | LMB fire | R reload | 1/2/3 weapons",
+                ),
+            )
+        y = 12
+        for line in lines:
+            raylib.draw_text(line, 12, y, 18, raylib.RAYWHITE)
+            y += 22
+
     def _draw_debug_hud(
         self,
         scene: Render3DSceneSnapshot,
@@ -976,8 +1134,11 @@ class Render3DRenderer:
             "3D renderer experiment",
             f"FPS: {raylib.get_fps()}",
             f"camera: {self._camera_mode}",
-            f"mode: {self._config.render3d.render_mode}",
+            f"render mode: {self._config.render3d.render_mode}",
+            f"view mode: {self._view_mode}",
             f"view radius: {self._config.render3d.view_radius_tiles} tiles",
+            f"distance fog: {'on' if self._distance_fade_enabled else 'off'} "
+            f"density {self._config.render3d.distance_fade.fog_density:.2f}",
             f"camera look-ahead: {self._config.render3d.camera.movement_look_ahead_tiles:.1f} tiles",
             f"visible primitives: {len(scene.primitives)}",
             f"enemies: {len(visible_enemies)}/{len(enemies)} visible",
@@ -989,7 +1150,8 @@ class Render3DRenderer:
             f"culled tiles: {scene.culled_tile_count}/{scene.total_tile_count}",
             "movement: facing-relative strafe",
             "mouse X aim | LMB fire | R reload | 1/2/3 weapons",
-            "W/S forward/back | A/D strafe | C reset camera | 1 top | 2 low | H HUD | ESC close",
+            "W/S forward/back | A/D strafe | V view mode | L fog | C reset camera",
+            "1 top | 2 low | H HUD | ESC close",
         ]
         y = 12
         for line in lines:

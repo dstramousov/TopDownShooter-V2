@@ -50,6 +50,7 @@ def test_render3d_config_loads_from_default_config() -> None:
     assert config.render3d.enabled is False
     assert config.render3d.view_radius_tiles == 60
     assert config.render3d.render_mode == "optimized"
+    assert config.render3d.view_mode == "gameplay"
     assert config.render3d.max_visible_primitives == 3000
     assert config.render3d.camera.height == 13.0
     assert config.render3d.camera.distance == 12.0
@@ -65,6 +66,13 @@ def test_render3d_config_loads_from_default_config() -> None:
     assert config.render3d.player_movement.invert_mouse_x is False
     assert config.render3d.player_movement.movement_relative_to == "facing"
     assert config.render3d.controls.camera_reset == "KEY_C"
+    assert config.render3d.controls.view_mode_toggle == "KEY_V"
+    assert config.render3d.controls.distance_fade_toggle == "KEY_L"
+    assert config.render3d.distance_fade.enabled is True
+    assert config.render3d.distance_fade.fade_start_ratio == 0.55
+    assert config.render3d.distance_fade.min_brightness == 0.65
+    assert config.render3d.distance_fade.fog_density == 0.8
+    assert config.render3d.distance_fade.keep_markers_bright is True
     assert config.render3d.enemies.draw_enemy_markers is True
     assert config.render3d.enemies.max_visible_enemies == 128
     assert config.render3d.enemies.marker_radius_tiles == 0.28
@@ -420,3 +428,94 @@ def test_render3d_age_progress_is_clamped() -> None:
     assert Render3DRenderer._age_progress(1.0, 2.0) == 0.5
     assert Render3DRenderer._age_progress(3.0, 2.0) == 1.0
     assert Render3DRenderer._age_progress(3.0, 0.0) == 1.0
+
+
+def test_render3d_view_mode_cycle_is_stable() -> None:
+    """View mode toggle should cycle through clean, gameplay, and debug."""
+    assert Render3DRenderer._next_view_mode("clean") == "gameplay"
+    assert Render3DRenderer._next_view_mode("gameplay") == "debug"
+    assert Render3DRenderer._next_view_mode("debug") == "clean"
+    assert Render3DRenderer._next_view_mode("unknown") == "gameplay"
+
+
+def test_render3d_distance_brightness_fades_after_start_ratio() -> None:
+    """Distance fade should dim scene positions near the view radius edge."""
+    from dataclasses import replace
+
+    runtime_map = _build_runtime_map()
+    config = RuntimeConfigLoader().load_default()
+    render_config = replace(config.render3d, view_radius_tiles=10)
+    runtime_config = replace(config, render3d=render_config)
+    renderer = object.__new__(Render3DRenderer)
+    renderer._config = runtime_config
+    renderer._runtime_map = runtime_map
+    renderer._distance_fade_enabled = True
+    scene = Render3DSceneBuilder(runtime_map, render_config).build_snapshot(TileCoord(0, 0))
+
+    center_brightness = renderer._distance_brightness_for_scene_position(
+        x=0.5,
+        z=0.5,
+        scene=scene,
+    )
+    edge_brightness = renderer._distance_brightness_for_scene_position(
+        x=10.5,
+        z=0.5,
+        scene=scene,
+    )
+
+    assert center_brightness == 1.0
+    assert edge_brightness == render_config.distance_fade.min_brightness
+
+
+def test_render3d_distance_brightness_uses_fog_density_curve() -> None:
+    """Distance fog density should change mid-fade brightness only."""
+    from dataclasses import replace
+
+    runtime_map = _build_runtime_map()
+    config = RuntimeConfigLoader().load_default()
+    distance_fade = replace(
+        config.render3d.distance_fade,
+        fade_start_ratio=0.0,
+        min_brightness=0.5,
+        fog_density=2.0,
+    )
+    render_config = replace(
+        config.render3d,
+        view_radius_tiles=10,
+        distance_fade=distance_fade,
+    )
+    runtime_config = replace(config, render3d=render_config)
+    renderer = object.__new__(Render3DRenderer)
+    renderer._config = runtime_config
+    renderer._runtime_map = runtime_map
+    renderer._distance_fade_enabled = True
+    scene = Render3DSceneBuilder(runtime_map, render_config).build_snapshot(TileCoord(0, 0))
+
+    middle_brightness = renderer._distance_brightness_for_scene_position(
+        x=5.5,
+        z=0.5,
+        scene=scene,
+    )
+
+    assert middle_brightness == 0.875
+
+
+def test_render3d_distance_brightness_can_be_disabled() -> None:
+    """Distance fade toggle should restore full brightness."""
+    from dataclasses import replace
+
+    runtime_map = _build_runtime_map()
+    config = RuntimeConfigLoader().load_default()
+    render_config = replace(config.render3d, view_radius_tiles=10)
+    runtime_config = replace(config, render3d=render_config)
+    renderer = object.__new__(Render3DRenderer)
+    renderer._config = runtime_config
+    renderer._runtime_map = runtime_map
+    renderer._distance_fade_enabled = False
+    scene = Render3DSceneBuilder(runtime_map, render_config).build_snapshot(TileCoord(0, 0))
+
+    assert renderer._distance_brightness_for_scene_position(
+        x=10.5,
+        z=0.5,
+        scene=scene,
+    ) == 1.0

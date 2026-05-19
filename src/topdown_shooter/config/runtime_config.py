@@ -381,14 +381,37 @@ class Render3DPlayerMovementConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class Render3DDistanceFadeConfig:
+    """Experimental 3D distance fade settings.
+
+    Attributes:
+        enabled: Whether distance fade starts enabled.
+        fade_start_ratio: Radius ratio where fading begins.
+        min_brightness: Minimum brightness multiplier at the render radius edge.
+        fog_density: Curve exponent controlling how aggressively distance fog grows.
+        keep_markers_bright: Whether gameplay markers ignore distance fade.
+    """
+
+    enabled: bool
+    fade_start_ratio: float
+    min_brightness: float
+    fog_density: float
+    keep_markers_bright: bool
+
+
+@dataclass(frozen=True, slots=True)
 class Render3DControlsConfig:
     """Experimental 3D renderer control bindings.
 
     Attributes:
         camera_reset: Key name used to reset only the 3D follow camera smoothing.
+        view_mode_toggle: Key name used to cycle 3D view modes.
+        distance_fade_toggle: Key name used to toggle distance fade.
     """
 
     camera_reset: str
+    view_mode_toggle: str
+    distance_fade_toggle: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -477,11 +500,14 @@ class Render3DConfig:
         height_scale: Multiplier for generated 3D primitive heights.
         render_mode: Default 3D render mode. Supported values are ``optimized``
             and ``per_tile``.
-        show_debug_hud: Whether the 3D debug HUD is drawn.
+        view_mode: Default 3D view mode. Supported values are ``clean``,
+            ``gameplay``, and ``debug``.
+        show_debug_hud: Whether the 3D HUD is drawn.
         max_visible_primitives: Safety cap for visible primitive rendering.
         camera: Follow-camera settings.
         player_movement: Experimental 3D player movement settings.
         controls: Experimental 3D control bindings.
+        distance_fade: Experimental 3D distance fade settings.
         enemies: Experimental 3D enemy marker settings.
         projectiles: Experimental 3D projectile marker settings.
         combat_visuals: Experimental 3D combat readability settings.
@@ -492,11 +518,13 @@ class Render3DConfig:
     tile_size: float
     height_scale: float
     render_mode: str
+    view_mode: str
     show_debug_hud: bool
     max_visible_primitives: int
     camera: Render3DCameraConfig
     player_movement: Render3DPlayerMovementConfig
     controls: Render3DControlsConfig
+    distance_fade: Render3DDistanceFadeConfig
     enemies: Render3DEnemyConfig
     projectiles: Render3DProjectileConfig
     combat_visuals: Render3DCombatVisualsConfig
@@ -962,16 +990,19 @@ class RuntimeConfigLoader:
         camera = self._require_dict(render3d, "camera")
         player_movement = self._require_dict(render3d, "player_movement")
         controls = self._require_dict(render3d, "controls")
+        distance_fade = self._require_dict(render3d, "distance_fade")
         enemies = self._require_dict(render3d, "enemies")
         projectiles = self._require_dict(render3d, "projectiles")
         combat_visuals = self._require_dict(render3d, "combat_visuals")
         render_mode = self._require_render3d_mode(render3d, "render_mode")
+        view_mode = self._require_render3d_view_mode(render3d, "view_mode")
         return Render3DConfig(
             enabled=self._require_bool(render3d, "enabled"),
             view_radius_tiles=self._require_positive_int(render3d, "view_radius_tiles"),
             tile_size=self._require_positive_float(render3d, "tile_size"),
             height_scale=self._require_positive_float(render3d, "height_scale"),
             render_mode=render_mode,
+            view_mode=view_mode,
             show_debug_hud=self._require_bool(render3d, "show_debug_hud"),
             max_visible_primitives=self._require_positive_int(
                 render3d,
@@ -1045,6 +1076,30 @@ class RuntimeConfigLoader:
             ),
             controls=Render3DControlsConfig(
                 camera_reset=self._require_str(controls, "camera_reset"),
+                view_mode_toggle=self._require_str(controls, "view_mode_toggle"),
+                distance_fade_toggle=self._require_str(
+                    controls,
+                    "distance_fade_toggle",
+                ),
+            ),
+            distance_fade=Render3DDistanceFadeConfig(
+                enabled=self._require_bool(distance_fade, "enabled"),
+                fade_start_ratio=self._require_unit_interval_float(
+                    distance_fade,
+                    "fade_start_ratio",
+                ),
+                min_brightness=self._require_unit_interval_float(
+                    distance_fade,
+                    "min_brightness",
+                ),
+                fog_density=self._require_positive_float(
+                    distance_fade,
+                    "fog_density",
+                ),
+                keep_markers_bright=self._require_bool(
+                    distance_fade,
+                    "keep_markers_bright",
+                ),
             ),
             projectiles=Render3DProjectileConfig(
                 draw_aim_line=self._require_bool(
@@ -1189,6 +1244,27 @@ class RuntimeConfigLoader:
             raise RuntimeConfigError(
                 "Runtime config field "
                 f"'{field}' must be 'optimized' or 'per_tile'.",
+            )
+        return value
+
+    def _require_render3d_view_mode(self, data: dict[str, Any], field: str) -> str:
+        """Read and validate an experimental 3D view mode.
+
+        Args:
+            data: Source mapping.
+            field: Field name to read.
+
+        Returns:
+            Validated view mode.
+
+        Raises:
+            RuntimeConfigError: If the view mode value is unsupported.
+        """
+        value = self._require_str(data, field)
+        if value not in {"clean", "gameplay", "debug"}:
+            raise RuntimeConfigError(
+                "Runtime config field "
+                f"'{field}' must be 'clean', 'gameplay', or 'debug'.",
             )
         return value
 
@@ -1384,6 +1460,15 @@ class RuntimeConfigLoader:
         if not isinstance(value, int | float) or value < 0:
             raise RuntimeConfigError(f"Runtime config number is missing or invalid: {key}")
         return float(value)
+
+    def _require_unit_interval_float(self, data: dict[str, Any], key: str) -> float:
+        """Read and validate a float value in the 0..1 range."""
+        value = self._require_non_negative_float(data, key)
+        if value > 1.0:
+            raise RuntimeConfigError(
+                f"Runtime config field '{key}' must be less than or equal to 1.0.",
+            )
+        return value
 
     def _require_key_names(self, data: dict[str, Any], key: str) -> tuple[str, ...]:
         """Return one or more required key names.
