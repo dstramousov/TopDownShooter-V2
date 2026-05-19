@@ -184,7 +184,7 @@
     "show_debug_hud": true,
     "max_visible_primitives": 3000,
     "camera": {
-      "height": 18.0,
+      "height": 13.0,
       "distance": 12.0,
       "look_ahead_tiles": 5.0,
       "movement_look_ahead_tiles": 3.5,
@@ -197,7 +197,19 @@
       "movement_speed_tiles_per_second": 6.0,
       "acceleration_tiles_per_second_squared": 28.0,
       "deceleration_tiles_per_second_squared": 34.0,
-      "turn_speed_degrees_per_second": 220.0
+      "turn_speed_degrees_per_second": 220.0,
+      "preserve_facing_while_backpedaling": true,
+      "backpedal_input_threshold": 0.5,
+      "mouse_turn_sensitivity": 0.004,
+      "invert_mouse_x": false,
+      "movement_relative_to": "facing"
+    },
+    "enemies": {
+      "draw_enemy_markers": true,
+      "max_visible_enemies": 128,
+      "marker_radius_tiles": 0.28,
+      "marker_height_tiles": 1.15,
+      "direction_line_length_tiles": 1.1
     }
   }
 }

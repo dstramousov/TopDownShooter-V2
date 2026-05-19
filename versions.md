@@ -477,3 +477,22 @@
 - Shifted the 3D camera anchor toward the player movement direction so the player is not locked to the exact screen center.
 - Added render3d camera tuning for movement look-ahead distance and smoothing.
 - Updated the experimental 3D debug HUD to show the configured camera look-ahead.
+
+## v0.0.63 -> v0.0.64
+
+- Stabilized experimental 3D backpedal handling so backward input keeps the current visual facing instead of forcing a 180-degree turn.
+- Added configurable backpedal-facing settings to the `render3d.player_movement` section.
+- Updated the 3D debug HUD to show stable backpedal behavior.
+
+## v0.0.64 -> v0.0.65
+
+- Добавлен mouse yaw для направления взгляда в экспериментальном 3D-режиме.
+- WASD/стрелки теперь двигают игрока относительно направления взгляда: W/S вперед/назад, A/D strafe.
+- Настройки mouse aim и movement basis вынесены в секцию render3d.player_movement.
+
+## v0.0.65 -> v0.0.66
+
+- Добавлены 3D-маркеры врагов в экспериментальный `--renderer 3d` режим.
+- Враги отрисовываются только внутри player-centered view radius и ограничены отдельным safety cap.
+- Настройки enemy-маркеров вынесены в секцию `render3d.enemies`.
+- HUD экспериментального 3D-режима показывает количество видимых врагов.

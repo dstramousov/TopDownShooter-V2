@@ -361,14 +361,44 @@ class Render3DPlayerMovementConfig:
         movement_speed_tiles_per_second: Maximum player speed in tile units.
         acceleration_tiles_per_second_squared: Acceleration toward requested movement.
         deceleration_tiles_per_second_squared: Braking speed when movement input is released.
-        turn_speed_degrees_per_second: Maximum visual facing turn speed.
+        turn_speed_degrees_per_second: Legacy maximum visual facing turn speed.
+        preserve_facing_while_backpedaling: Whether backward movement keeps current facing.
+        backpedal_input_threshold: Minimum backward input value treated as backpedaling.
+        mouse_turn_sensitivity: Mouse yaw sensitivity in radians per pixel.
+        invert_mouse_x: Whether horizontal mouse yaw should be inverted.
+        movement_relative_to: Movement basis name for the 3D experiment.
     """
 
     movement_speed_tiles_per_second: float
     acceleration_tiles_per_second_squared: float
     deceleration_tiles_per_second_squared: float
     turn_speed_degrees_per_second: float
+    preserve_facing_while_backpedaling: bool
+    backpedal_input_threshold: float
+    mouse_turn_sensitivity: float
+    invert_mouse_x: bool
+    movement_relative_to: str
 
+
+
+
+@dataclass(frozen=True, slots=True)
+class Render3DEnemyConfig:
+    """Experimental 3D enemy marker settings.
+
+    Attributes:
+        draw_enemy_markers: Whether enemy markers are drawn in the 3D experiment.
+        max_visible_enemies: Maximum enemy markers drawn per frame.
+        marker_radius_tiles: Enemy marker radius in 3D tile units.
+        marker_height_tiles: Enemy marker height in 3D tile units.
+        direction_line_length_tiles: Enemy facing line length in 3D tile units.
+    """
+
+    draw_enemy_markers: bool
+    max_visible_enemies: int
+    marker_radius_tiles: float
+    marker_height_tiles: float
+    direction_line_length_tiles: float
 
 @dataclass(frozen=True, slots=True)
 class Render3DConfig:
@@ -385,6 +415,7 @@ class Render3DConfig:
         max_visible_primitives: Safety cap for visible primitive rendering.
         camera: Follow-camera settings.
         player_movement: Experimental 3D player movement settings.
+        enemies: Experimental 3D enemy marker settings.
     """
 
     enabled: bool
@@ -396,6 +427,7 @@ class Render3DConfig:
     max_visible_primitives: int
     camera: Render3DCameraConfig
     player_movement: Render3DPlayerMovementConfig
+    enemies: Render3DEnemyConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -857,6 +889,7 @@ class RuntimeConfigLoader:
         """
         camera = self._require_dict(render3d, "camera")
         player_movement = self._require_dict(render3d, "player_movement")
+        enemies = self._require_dict(render3d, "enemies")
         render_mode = self._require_render3d_mode(render3d, "render_mode")
         return Render3DConfig(
             enabled=self._require_bool(render3d, "enabled"),
@@ -914,8 +947,71 @@ class RuntimeConfigLoader:
                     player_movement,
                     "turn_speed_degrees_per_second",
                 ),
+                preserve_facing_while_backpedaling=self._require_bool(
+                    player_movement,
+                    "preserve_facing_while_backpedaling",
+                ),
+                backpedal_input_threshold=self._require_non_negative_float(
+                    player_movement,
+                    "backpedal_input_threshold",
+                ),
+                mouse_turn_sensitivity=self._require_positive_float(
+                    player_movement,
+                    "mouse_turn_sensitivity",
+                ),
+                invert_mouse_x=self._require_bool(
+                    player_movement,
+                    "invert_mouse_x",
+                ),
+                movement_relative_to=self._require_render3d_movement_basis(
+                    player_movement,
+                    "movement_relative_to",
+                ),
+            ),
+            enemies=Render3DEnemyConfig(
+                draw_enemy_markers=self._require_bool(
+                    enemies,
+                    "draw_enemy_markers",
+                ),
+                max_visible_enemies=self._require_positive_int(
+                    enemies,
+                    "max_visible_enemies",
+                ),
+                marker_radius_tiles=self._require_positive_float(
+                    enemies,
+                    "marker_radius_tiles",
+                ),
+                marker_height_tiles=self._require_positive_float(
+                    enemies,
+                    "marker_height_tiles",
+                ),
+                direction_line_length_tiles=self._require_positive_float(
+                    enemies,
+                    "direction_line_length_tiles",
+                ),
             ),
         )
+
+    def _require_render3d_movement_basis(self, data: dict[str, Any], field: str) -> str:
+        """Read and validate an experimental 3D movement basis.
+
+        Args:
+            data: Source mapping.
+            field: Field name to read.
+
+        Returns:
+            Validated movement basis.
+
+        Raises:
+            RuntimeConfigError: If the movement basis value is unsupported.
+        """
+        value = self._require_str(data, field)
+        if value not in {"facing"}:
+            raise RuntimeConfigError(
+                "Runtime config field "
+                f"'{field}' must be 'facing'.",
+            )
+        return value
 
     def _require_render3d_mode(self, data: dict[str, Any], field: str) -> str:
         """Read and validate an experimental 3D render mode.

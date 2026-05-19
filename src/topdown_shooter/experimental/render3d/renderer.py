@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 
+from topdown_shooter.combat.enemies import EnemyState, EnemySystem
 from topdown_shooter.config.runtime_config import RuntimeConfig
 from topdown_shooter.experimental.render3d.camera import Render3DFollowCamera
 from topdown_shooter.experimental.render3d.scene import Render3DSceneBuilder, Render3DSceneSnapshot
@@ -85,6 +86,7 @@ class Render3DRenderer:
         player_controller: PlayerController,
         scene_builder: Render3DSceneBuilder,
         camera_controller: Render3DFollowCamera,
+        enemy_system: EnemySystem,
     ) -> None:
         """Run the first interactive 3D follow-camera preview.
 
@@ -93,12 +95,14 @@ class Render3DRenderer:
             player_controller: Runtime player movement controller.
             scene_builder: View-radius scene builder.
             camera_controller: Smoothed 3D follow-camera controller.
+            enemy_system: Runtime enemies drawn as 3D markers.
         """
         raylib = self._raylib
         window = self._config.window
         self._configure_raylib_logging()
         raylib.init_window(window.width, window.height, f"{window.title} - 3D experiment")
         raylib.set_target_fps(window.target_fps)
+        self._disable_cursor()
         scene = scene_builder.build_snapshot(player.tile)
         try:
             while not raylib.window_should_close():
@@ -106,9 +110,14 @@ class Render3DRenderer:
                     break
                 frame_time = raylib.get_frame_time()
                 self._update_camera_mode(camera_controller)
+                self._update_facing_from_mouse()
                 input_state = self._read_input_state()
                 self._update_player(player, player_controller, input_state, frame_time)
                 scene = scene_builder.build_snapshot(player.tile)
+                visible_enemies = self._visible_enemies(
+                    enemies=enemy_system.enemies,
+                    player_position=player.world_position,
+                )
                 camera_state = camera_controller.build_state(
                     player_position=player.world_position,
                     facing_x=self._last_facing_x,
@@ -136,12 +145,14 @@ class Render3DRenderer:
                 raylib.clear_background(raylib.BLACK)
                 raylib.begin_mode_3d(camera)
                 self._draw_scene(scene)
+                self._draw_enemy_markers(visible_enemies)
                 self._draw_player_marker(player.world_position, self._last_facing_x, self._last_facing_y)
                 raylib.end_mode_3d()
                 if self._show_debug_hud:
-                    self._draw_debug_hud(scene)
+                    self._draw_debug_hud(scene, enemy_system.enemies, visible_enemies)
                 raylib.end_drawing()
         finally:
+            self._enable_cursor()
             raylib.close_window()
 
     def run_static_preview(
@@ -196,11 +207,15 @@ class Render3DRenderer:
         input_state: Render3DInputState,
         frame_time: float,
     ) -> None:
-        """Update camera-relative movement and smoothed facing direction."""
+        """Update facing-relative movement without rotating from movement input."""
         if frame_time <= 0.0:
             return
 
-        movement_x, movement_y = self._camera_relative_movement(input_state)
+        movement_x, movement_y = self._facing_relative_movement(
+            input_state=input_state,
+            facing_x=self._last_facing_x,
+            facing_y=self._last_facing_y,
+        )
         self._update_velocity(movement_x, movement_y, frame_time)
         velocity_length = math.hypot(
             self._velocity_x_px_per_second,
@@ -216,22 +231,46 @@ class Render3DRenderer:
                 frame_time=frame_time,
                 speed_px_per_second=velocity_length,
             )
-            self._update_facing_toward_velocity(frame_time)
-            self._update_player_aim(player)
+        self._update_player_aim(player)
 
-    def _camera_relative_movement(self, input_state: Render3DInputState) -> tuple[float, float]:
-        """Convert raw input into a camera-relative 2D world direction."""
+    def _update_facing_from_mouse(self) -> None:
+        """Rotate visual facing from horizontal mouse movement."""
+        mouse_delta = self._raylib.get_mouse_delta()
+        delta_x = float(mouse_delta.x)
+        if abs(delta_x) <= 0.0001:
+            return
+        movement_config = self._config.render3d.player_movement
+        yaw_delta = delta_x * movement_config.mouse_turn_sensitivity
+        if movement_config.invert_mouse_x:
+            yaw_delta = -yaw_delta
+        current_angle = math.atan2(self._last_facing_y, self._last_facing_x)
+        new_angle = current_angle + yaw_delta
+        self._last_facing_x = math.cos(new_angle)
+        self._last_facing_y = math.sin(new_angle)
+
+    @staticmethod
+    def _facing_relative_movement(
+        input_state: Render3DInputState,
+        facing_x: float,
+        facing_y: float,
+    ) -> tuple[float, float]:
+        """Convert raw input into a facing-relative 2D world direction."""
         if input_state.move_x == 0.0 and input_state.move_y == 0.0:
             return 0.0, 0.0
 
-        forward_x, forward_y = self._camera_forward_x, self._camera_forward_y
+        length = math.hypot(facing_x, facing_y)
+        if length <= 0.0001:
+            forward_x, forward_y = 0.0, -1.0
+        else:
+            forward_x = facing_x / length
+            forward_y = facing_y / length
         right_x, right_y = -forward_y, forward_x
         desired_x = right_x * input_state.move_x + forward_x * (-input_state.move_y)
         desired_y = right_y * input_state.move_x + forward_y * (-input_state.move_y)
-        length = math.hypot(desired_x, desired_y)
-        if length <= 0.0001:
+        desired_length = math.hypot(desired_x, desired_y)
+        if desired_length <= 0.0001:
             return 0.0, 0.0
-        return desired_x / length, desired_y / length
+        return desired_x / desired_length, desired_y / desired_length
 
     def _update_velocity(self, direction_x: float, direction_y: float, frame_time: float) -> None:
         """Move current velocity toward requested camera-relative movement."""
@@ -261,6 +300,25 @@ class Render3DRenderer:
             target_y=target_y,
             max_delta=max_delta,
         )
+
+    def _should_update_facing_from_input(self, input_state: Render3DInputState) -> bool:
+        """Return whether movement input should rotate visual facing."""
+        if input_state.move_x == 0.0 and input_state.move_y == 0.0:
+            return False
+        movement_config = self._config.render3d.player_movement
+        if not movement_config.preserve_facing_while_backpedaling:
+            return True
+        return not self._is_backpedal_input(
+            input_state=input_state,
+            threshold=movement_config.backpedal_input_threshold,
+        )
+
+    @staticmethod
+    def _is_backpedal_input(input_state: Render3DInputState, threshold: float) -> bool:
+        """Return whether raw input mostly requests backward movement."""
+        if input_state.move_y <= 0.0:
+            return False
+        return input_state.move_y >= max(abs(input_state.move_x), threshold)
 
     def _update_facing_toward_velocity(self, frame_time: float) -> None:
         """Turn visual facing toward current movement without snapping."""
@@ -391,6 +449,94 @@ class Render3DRenderer:
                 self._tile_color(primitive.symbol),
             )
 
+
+    def _visible_enemies(
+        self,
+        enemies: tuple[EnemyState, ...],
+        player_position: WorldCoord,
+    ) -> tuple[EnemyState, ...]:
+        """Return alive enemies inside the player-centered 3D view radius.
+
+        Args:
+            enemies: Runtime enemies spawned from tactical map data.
+            player_position: Current player position in world pixels.
+
+        Returns:
+            Distance-sorted tuple of enemies visible in the 3D experiment.
+        """
+        enemy_config = self._config.render3d.enemies
+        if not enemy_config.draw_enemy_markers:
+            return ()
+
+        radius_px = self._config.render3d.view_radius_tiles * self._runtime_map.tile_size_px
+        radius_squared = radius_px * radius_px
+        candidates: list[tuple[float, EnemyState]] = []
+        for enemy in enemies:
+            if not enemy.alive:
+                continue
+            dx = enemy.world_position.x - player_position.x
+            dy = enemy.world_position.y - player_position.y
+            distance_squared = dx * dx + dy * dy
+            if distance_squared <= radius_squared:
+                candidates.append((distance_squared, enemy))
+
+        candidates.sort(key=lambda item: item[0])
+        return tuple(
+            enemy
+            for _, enemy in candidates[: enemy_config.max_visible_enemies]
+        )
+
+    def _draw_enemy_markers(self, enemies: tuple[EnemyState, ...]) -> None:
+        """Draw visible enemies as simple 3D gameplay markers.
+
+        Args:
+            enemies: Visible enemies to draw.
+        """
+        if not enemies:
+            return
+
+        raylib = self._raylib
+        render_config = self._config.render3d
+        enemy_config = render_config.enemies
+        tile_size = render_config.tile_size
+        height_scale = render_config.height_scale
+        tile_size_px = self._runtime_map.tile_size_px
+        marker_radius = enemy_config.marker_radius_tiles * tile_size
+        marker_height = enemy_config.marker_height_tiles * height_scale
+        direction_length = enemy_config.direction_line_length_tiles * tile_size
+
+        for enemy in enemies:
+            center = raylib.Vector3(
+                enemy.world_position.x / tile_size_px * tile_size,
+                marker_height * 0.5,
+                enemy.world_position.y / tile_size_px * tile_size,
+            )
+            color = raylib.RED if enemy.alerted else raylib.MAROON
+            raylib.draw_cylinder(
+                center,
+                marker_radius,
+                marker_radius * 0.85,
+                marker_height,
+                12,
+                color,
+            )
+            raylib.draw_sphere(
+                raylib.Vector3(center.x, marker_height + marker_radius, center.z),
+                marker_radius * 0.85,
+                raylib.RED,
+            )
+            facing_radians = math.radians(enemy.facing_angle_degrees)
+            direction_end = raylib.Vector3(
+                center.x + math.cos(facing_radians) * direction_length,
+                marker_height + marker_radius,
+                center.z + math.sin(facing_radians) * direction_length,
+            )
+            raylib.draw_line_3d(
+                raylib.Vector3(center.x, marker_height + marker_radius, center.z),
+                direction_end,
+                raylib.PINK,
+            )
+
     def _draw_player_marker(
         self,
         player_position: WorldCoord,
@@ -434,11 +580,18 @@ class Render3DRenderer:
         raylib.draw_line_3d(center, direction_end, raylib.ORANGE)
         raylib.draw_sphere(direction_end, tile_size * 0.18, raylib.ORANGE)
 
-    def _draw_debug_hud(self, scene: Render3DSceneSnapshot) -> None:
+    def _draw_debug_hud(
+        self,
+        scene: Render3DSceneSnapshot,
+        enemies: tuple[EnemyState, ...],
+        visible_enemies: tuple[EnemyState, ...],
+    ) -> None:
         """Draw the experimental renderer debug HUD.
 
         Args:
             scene: Visible 3D scene snapshot.
+            enemies: All runtime enemies owned by the experiment.
+            visible_enemies: Enemy markers currently inside the 3D view radius.
         """
         raylib = self._raylib
         lines = [
@@ -449,10 +602,12 @@ class Render3DRenderer:
             f"view radius: {self._config.render3d.view_radius_tiles} tiles",
             f"camera look-ahead: {self._config.render3d.camera.movement_look_ahead_tiles:.1f} tiles",
             f"visible primitives: {len(scene.primitives)}",
+            f"enemies: {len(visible_enemies)}/{len(enemies)} visible",
             f"radius center: player tile {scene.center_tile.x},{scene.center_tile.y}",
             f"culled tiles: {scene.culled_tile_count}/{scene.total_tile_count}",
-            "movement: camera-relative, smooth turn",
-            "WASD/arrows move | 1 top | 2 low | R reset | H HUD | ESC close",
+            "movement: facing-relative strafe",
+            "mouse X aim | W/S forward/back | A/D strafe",
+            "1 top | 2 low | R reset | H HUD | ESC close",
         ]
         y = 12
         for line in lines:
@@ -479,6 +634,18 @@ class Render3DRenderer:
             "S": raylib.YELLOW,
             "G": raylib.GOLD,
         }.get(symbol, raylib.GREEN)
+
+    def _disable_cursor(self) -> None:
+        """Capture the mouse cursor for yaw aiming when available."""
+        disable_cursor = getattr(self._raylib, "disable_cursor", None)
+        if callable(disable_cursor):
+            disable_cursor()
+
+    def _enable_cursor(self) -> None:
+        """Restore the mouse cursor when leaving the experiment window."""
+        enable_cursor = getattr(self._raylib, "enable_cursor", None)
+        if callable(enable_cursor):
+            enable_cursor()
 
     def _configure_raylib_logging(self) -> None:
         """Reduce raylib logging noise before opening the 3D experiment window."""

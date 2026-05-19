@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from topdown_shooter.combat.enemies import EnemySystem
 from topdown_shooter.config.runtime_config import RuntimeConfig
 from topdown_shooter.experimental.render3d.camera import Render3DFollowCamera
 from topdown_shooter.experimental.render3d.renderer import Render3DRenderer
@@ -53,6 +54,25 @@ class ExperimentalRender3DRuntime:
             runtime_map=self._runtime_map,
             config=self._config.render3d,
         )
+        enemy_system = EnemySystem.from_tactical_map(
+            tactical_map=self._package.tactical_map,
+            runtime_map=self._runtime_map,
+            enemy_max_health=self._config.enemies.max_health,
+            hit_marker_lifetime_seconds=self._config.enemies.hit_marker_lifetime_seconds,
+            hit_marker_radius_px=self._config.enemies.hit_marker_radius_px,
+            smart_facing_enabled=self._config.enemies.smart_initial_facing,
+            facing_candidate_step_degrees=self._config.enemies.facing_candidate_step_degrees,
+            facing_probe_side_angle_degrees=self._config.enemies.facing_probe_side_angle_degrees,
+            facing_wall_penalty_distance_px=self._config.enemies.facing_wall_penalty_distance_px,
+            facing_probe_step_px=self._config.enemies.facing_probe_step_px,
+            min_squad_size=self._config.enemies.min_squad_size,
+            max_squad_size=self._config.enemies.max_squad_size,
+            squad_radius_px=self._config.enemies.squad_radius_px,
+            min_enemy_spacing_px=self._config.enemies.min_enemy_spacing_px,
+            max_initial_enemies=self._config.enemies.max_initial_enemies,
+            placement_attempts_per_enemy=self._config.enemies.placement_attempts_per_enemy,
+            spawn_collision_radius_px=self._config.enemies.marker_radius_px,
+        )
         Render3DRenderer(
             runtime_map=self._runtime_map,
             package=self._package,
@@ -62,4 +82,5 @@ class ExperimentalRender3DRuntime:
             player_controller=player_controller,
             scene_builder=scene_builder,
             camera_controller=camera,
+            enemy_system=enemy_system,
         )

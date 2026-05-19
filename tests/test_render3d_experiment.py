@@ -1,7 +1,9 @@
 """Tests for the experimental 3D renderer scaffold."""
 
+from topdown_shooter.combat.enemies import EnemyState
 from topdown_shooter.config.runtime_config import RuntimeConfigLoader
 from topdown_shooter.experimental.render3d.camera import Render3DFollowCamera
+from topdown_shooter.experimental.render3d.renderer import Render3DInputState, Render3DRenderer
 from topdown_shooter.experimental.render3d.scene import Render3DSceneBuilder
 from topdown_shooter.world.coordinates import TileCoord, WorldCoord
 from topdown_shooter.world.runtime_map import RuntimeMap, TacticalRuntimeSummary
@@ -56,6 +58,16 @@ def test_render3d_config_loads_from_default_config() -> None:
     assert config.render3d.camera.top_down_back_offset_tiles == 0.25
     assert config.render3d.player_movement.movement_speed_tiles_per_second == 6.0
     assert config.render3d.player_movement.turn_speed_degrees_per_second == 220.0
+    assert config.render3d.player_movement.preserve_facing_while_backpedaling is True
+    assert config.render3d.player_movement.backpedal_input_threshold == 0.5
+    assert config.render3d.player_movement.mouse_turn_sensitivity == 0.004
+    assert config.render3d.player_movement.invert_mouse_x is False
+    assert config.render3d.player_movement.movement_relative_to == "facing"
+    assert config.render3d.enemies.draw_enemy_markers is True
+    assert config.render3d.enemies.max_visible_enemies == 128
+    assert config.render3d.enemies.marker_radius_tiles == 0.28
+    assert config.render3d.enemies.marker_height_tiles == 1.15
+    assert config.render3d.enemies.direction_line_length_tiles == 1.1
 
 
 def test_render3d_camera_builds_follow_state() -> None:
@@ -130,3 +142,123 @@ def test_render3d_scene_builder_keeps_nearest_tiles_when_capped() -> None:
 
     assert len(snapshot.primitives) == 2
     assert {(primitive.x, primitive.y) for primitive in snapshot.primitives} == {(1, 0), (0, 0)}
+
+
+def test_render3d_backpedal_input_keeps_visual_facing() -> None:
+    """Backward and backward-diagonal input should be treated as backpedaling."""
+    assert Render3DRenderer._is_backpedal_input(
+        Render3DInputState(move_x=0.0, move_y=1.0),
+        threshold=0.5,
+    )
+    assert Render3DRenderer._is_backpedal_input(
+        Render3DInputState(move_x=1.0, move_y=1.0),
+        threshold=0.5,
+    )
+    assert not Render3DRenderer._is_backpedal_input(
+        Render3DInputState(move_x=1.0, move_y=0.0),
+        threshold=0.5,
+    )
+    assert not Render3DRenderer._is_backpedal_input(
+        Render3DInputState(move_x=0.0, move_y=-1.0),
+        threshold=0.5,
+    )
+
+
+def test_render3d_facing_relative_movement_supports_strafe() -> None:
+    """Facing-relative movement should keep A/D as strafe inputs."""
+    forward = Render3DRenderer._facing_relative_movement(
+        Render3DInputState(move_x=0.0, move_y=-1.0),
+        facing_x=0.0,
+        facing_y=-1.0,
+    )
+    backward = Render3DRenderer._facing_relative_movement(
+        Render3DInputState(move_x=0.0, move_y=1.0),
+        facing_x=0.0,
+        facing_y=-1.0,
+    )
+    strafe_left = Render3DRenderer._facing_relative_movement(
+        Render3DInputState(move_x=-1.0, move_y=0.0),
+        facing_x=0.0,
+        facing_y=-1.0,
+    )
+    strafe_right = Render3DRenderer._facing_relative_movement(
+        Render3DInputState(move_x=1.0, move_y=0.0),
+        facing_x=0.0,
+        facing_y=-1.0,
+    )
+
+    assert forward == (0.0, -1.0)
+    assert backward == (0.0, 1.0)
+    assert strafe_left == (-1.0, 0.0)
+    assert strafe_right == (1.0, 0.0)
+
+
+def test_render3d_facing_relative_movement_normalizes_diagonal() -> None:
+    """Diagonal facing-relative movement should not be faster than cardinal movement."""
+    movement_x, movement_y = Render3DRenderer._facing_relative_movement(
+        Render3DInputState(move_x=1.0, move_y=-1.0),
+        facing_x=0.0,
+        facing_y=-1.0,
+    )
+
+    assert round((movement_x * movement_x + movement_y * movement_y) ** 0.5, 6) == 1.0
+    assert movement_x > 0.0
+    assert movement_y < 0.0
+
+
+def test_render3d_visible_enemies_are_radius_limited() -> None:
+    """Enemy marker filtering should keep only alive enemies inside view radius."""
+    from dataclasses import replace
+
+    runtime_map = _build_runtime_map()
+    config = RuntimeConfigLoader().load_default()
+    render_config = replace(config.render3d, view_radius_tiles=1)
+    runtime_config = replace(config, render3d=render_config)
+    renderer = object.__new__(Render3DRenderer)
+    renderer._config = runtime_config
+    renderer._runtime_map = runtime_map
+
+    near_enemy = EnemyState(
+        enemy_id="near",
+        spawn_id="spawn_near",
+        zone_id="zone",
+        spawn_type="test",
+        role="rifle",
+        tile=TileCoord(1, 0),
+        world_position=WorldCoord(16.0, 0.0),
+        max_health=100.0,
+        health=100.0,
+        facing_angle_degrees=0.0,
+    )
+    far_enemy = EnemyState(
+        enemy_id="far",
+        spawn_id="spawn_far",
+        zone_id="zone",
+        spawn_type="test",
+        role="rifle",
+        tile=TileCoord(2, 1),
+        world_position=WorldCoord(64.0, 64.0),
+        max_health=100.0,
+        health=100.0,
+        facing_angle_degrees=0.0,
+    )
+    dead_enemy = EnemyState(
+        enemy_id="dead",
+        spawn_id="spawn_dead",
+        zone_id="zone",
+        spawn_type="test",
+        role="rifle",
+        tile=TileCoord(0, 1),
+        world_position=WorldCoord(8.0, 8.0),
+        max_health=100.0,
+        health=0.0,
+        facing_angle_degrees=0.0,
+        alive=False,
+    )
+
+    visible = renderer._visible_enemies(
+        enemies=(far_enemy, dead_enemy, near_enemy),
+        player_position=WorldCoord(0.0, 0.0),
+    )
+
+    assert visible == (near_enemy,)
