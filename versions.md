@@ -553,3 +553,9 @@
 - Добавлено переключение enemy vision cones по клавише O.
 - Настройки визуализации вынесены в секцию `render3d.enemy_vision`.
 - Конусы используют существующие параметры enemy perception range/angle и не меняют AI, агр или баланс.
+
+## v0.0.74 -> v0.0.75
+
+- Улучшена читаемость врагов в экспериментальном 3D renderer-е: состояние врага теперь видно по body color, ground-ring, status marker и facing tip.
+- Разделены визуальные состояния idle, alerted/searching, returning и engaged без изменения AI, pathfinding, агра или баланса.
+- 2D runtime и существующая gameplay-логика не изменялись.

@@ -801,7 +801,7 @@ class Render3DRenderer:
             return color
 
     def _draw_enemy_markers(self, enemies: tuple[EnemyState, ...]) -> None:
-        """Draw visible enemies as simple 3D gameplay markers.
+        """Draw visible enemies with state-readable 3D gameplay markers.
 
         Args:
             enemies: Visible enemies to draw.
@@ -818,6 +818,9 @@ class Render3DRenderer:
         marker_radius = enemy_config.marker_radius_tiles * tile_size
         marker_height = enemy_config.marker_height_tiles * height_scale
         direction_length = enemy_config.direction_line_length_tiles * tile_size
+        ring_radius = marker_radius * 1.55
+        ring_height = 0.035 * height_scale
+        facing_y = marker_height + marker_radius
 
         for enemy in enemies:
             center = raylib.Vector3(
@@ -826,6 +829,16 @@ class Render3DRenderer:
                 enemy.world_position.y / tile_size_px * tile_size,
             )
             color = self._enemy_marker_color(enemy)
+            state_color = self._enemy_state_color(enemy)
+            ring_center = raylib.Vector3(center.x, ring_height * 0.5, center.z)
+            raylib.draw_cylinder_wires(
+                ring_center,
+                ring_radius,
+                ring_radius,
+                ring_height,
+                20,
+                state_color,
+            )
             raylib.draw_cylinder(
                 center,
                 marker_radius,
@@ -840,6 +853,16 @@ class Render3DRenderer:
                 marker_radius * 0.85,
                 color,
             )
+            status_center = raylib.Vector3(
+                center.x,
+                marker_height + marker_radius * 2.2,
+                center.z,
+            )
+            raylib.draw_sphere(
+                status_center,
+                marker_radius * 0.34,
+                state_color,
+            )
             if self._is_enemy_hit_flashing(enemy):
                 raylib.draw_sphere(
                     head_center,
@@ -847,15 +870,17 @@ class Render3DRenderer:
                     raylib.YELLOW,
                 )
             facing_radians = math.radians(enemy.facing_angle_degrees)
+            facing_start = raylib.Vector3(center.x, facing_y, center.z)
             direction_end = raylib.Vector3(
                 center.x + math.cos(facing_radians) * direction_length,
-                marker_height + marker_radius,
+                facing_y,
                 center.z + math.sin(facing_radians) * direction_length,
             )
-            raylib.draw_line_3d(
-                raylib.Vector3(center.x, marker_height + marker_radius, center.z),
+            raylib.draw_line_3d(facing_start, direction_end, state_color)
+            raylib.draw_sphere(
                 direction_end,
-                raylib.PINK,
+                marker_radius * 0.28,
+                state_color,
             )
 
 
@@ -1251,11 +1276,28 @@ class Render3DRenderer:
             y += 22
 
     def _enemy_marker_color(self, enemy: EnemyState) -> object:
-        """Return the current enemy marker color, including hit flash feedback."""
+        """Return the current enemy body color, including hit flash feedback."""
         raylib = self._raylib
         if self._is_enemy_hit_flashing(enemy):
             return raylib.ORANGE
-        return raylib.RED if enemy.alerted else raylib.MAROON
+        if enemy.awareness_state == "engaged":
+            return raylib.RED
+        if enemy.awareness_state in {"searching", "returning"} or enemy.alerted:
+            return raylib.ORANGE
+        return raylib.MAROON
+
+    def _enemy_state_color(self, enemy: EnemyState) -> object:
+        """Return a high-readability color for enemy awareness indicators."""
+        raylib = self._raylib
+        if enemy.awareness_state == "engaged":
+            return raylib.RED
+        if enemy.awareness_state == "searching":
+            return raylib.ORANGE
+        if enemy.awareness_state == "returning":
+            return raylib.GOLD
+        if enemy.alerted:
+            return raylib.ORANGE
+        return raylib.DARKPURPLE
 
     def _is_enemy_hit_flashing(self, enemy: EnemyState) -> bool:
         """Return whether an enemy is inside the configured 3D hit flash window."""
