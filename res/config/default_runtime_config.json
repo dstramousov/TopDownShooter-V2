@@ -187,9 +187,17 @@
       "height": 18.0,
       "distance": 12.0,
       "look_ahead_tiles": 5.0,
+      "movement_look_ahead_tiles": 3.5,
+      "look_ahead_smoothing": 0.2,
       "follow_smoothing": 0.14,
       "top_down_height": 70.0,
       "top_down_back_offset_tiles": 0.25
+    },
+    "player_movement": {
+      "movement_speed_tiles_per_second": 6.0,
+      "acceleration_tiles_per_second_squared": 28.0,
+      "deceleration_tiles_per_second_squared": 34.0,
+      "turn_speed_degrees_per_second": 220.0
     }
   }
 }

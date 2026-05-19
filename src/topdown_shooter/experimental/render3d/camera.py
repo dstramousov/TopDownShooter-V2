@@ -53,10 +53,14 @@ class Render3DFollowCamera:
         self._config = config
         self._tile_size_px = tile_size_px
         self._current_state: Render3DCameraState | None = None
+        self._look_ahead_x = 0.0
+        self._look_ahead_z = 0.0
 
     def reset(self) -> None:
         """Reset smoothing so the next state snaps to the desired camera."""
         self._current_state = None
+        self._look_ahead_x = 0.0
+        self._look_ahead_z = 0.0
 
     def build_state(
         self,
@@ -82,6 +86,7 @@ class Render3DFollowCamera:
             player_position=player_position,
             facing_x=facing_x,
             facing_y=facing_y,
+            frame_time=frame_time,
             mode=mode,
         )
         if self._current_state is None:
@@ -100,33 +105,59 @@ class Render3DFollowCamera:
         player_position: WorldCoord,
         facing_x: float,
         facing_y: float,
+        frame_time: float,
         mode: str,
     ) -> Render3DCameraState:
         """Build the unsmoothed camera state for a mode."""
         direction_x, direction_z = self._normalize_direction(facing_x, facing_y)
-        target_x = player_position.x / self._tile_size_px
-        target_z = player_position.y / self._tile_size_px
+        self._update_look_ahead_offset(direction_x, direction_z, frame_time)
+        player_x = player_position.x / self._tile_size_px
+        player_z = player_position.y / self._tile_size_px
+        anchor_x = player_x + self._look_ahead_x
+        anchor_z = player_z + self._look_ahead_z
         if mode == self.TOP_DOWN_MODE:
-            target = Render3DVector(x=target_x, y=0.0, z=target_z)
+            target = Render3DVector(x=anchor_x, y=0.0, z=anchor_z)
             position = Render3DVector(
-                x=target_x,
+                x=anchor_x,
                 y=self._config.camera.top_down_height,
-                z=target_z + self._config.camera.top_down_back_offset_tiles,
+                z=anchor_z + self._config.camera.top_down_back_offset_tiles,
             )
             return Render3DCameraState(position=position, target=target)
 
-        look_ahead = self._config.camera.look_ahead_tiles
+        target_look_ahead = self._config.camera.look_ahead_tiles
         target = Render3DVector(
-            x=target_x + direction_x * look_ahead,
+            x=anchor_x + direction_x * target_look_ahead,
             y=0.0,
-            z=target_z + direction_z * look_ahead,
+            z=anchor_z + direction_z * target_look_ahead,
         )
         position = Render3DVector(
-            x=target_x - direction_x * self._config.camera.distance,
+            x=anchor_x - direction_x * self._config.camera.distance,
             y=self._config.camera.height,
-            z=target_z - direction_z * self._config.camera.distance,
+            z=anchor_z - direction_z * self._config.camera.distance,
         )
         return Render3DCameraState(position=position, target=target)
+
+
+    def _update_look_ahead_offset(
+        self,
+        direction_x: float,
+        direction_z: float,
+        frame_time: float,
+    ) -> None:
+        """Smoothly move the camera anchor ahead of the player."""
+        distance = self._config.camera.movement_look_ahead_tiles
+        target_x = direction_x * distance
+        target_z = direction_z * distance
+        smoothing = self._config.camera.look_ahead_smoothing
+        if smoothing <= 0.0:
+            self._look_ahead_x = target_x
+            self._look_ahead_z = target_z
+            return
+        if frame_time <= 0.0:
+            return
+        alpha = max(0.0, min(1.0, 1.0 - math.exp(-frame_time / smoothing)))
+        self._look_ahead_x += (target_x - self._look_ahead_x) * alpha
+        self._look_ahead_z += (target_z - self._look_ahead_z) * alpha
 
     def _smoothing_alpha(self, frame_time: float) -> float:
         """Calculate frame-rate independent smoothing alpha."""

@@ -335,7 +335,9 @@ class Render3DCameraConfig:
     Attributes:
         height: Low-follow camera height above the player in 3D tile units.
         distance: Low-follow camera distance behind the player in 3D tile units.
-        look_ahead_tiles: Forward look-ahead distance in tile units.
+        look_ahead_tiles: Forward target look-ahead distance in tile units.
+        movement_look_ahead_tiles: Smoothed camera anchor offset in movement direction.
+        look_ahead_smoothing: Smoothing factor for movement look-ahead offset.
         follow_smoothing: Camera smoothing factor for follow updates.
         top_down_height: Top-down camera height above the player in tile units.
         top_down_back_offset_tiles: Small top-down Z offset to avoid a singular view.
@@ -344,9 +346,28 @@ class Render3DCameraConfig:
     height: float
     distance: float
     look_ahead_tiles: float
+    movement_look_ahead_tiles: float
+    look_ahead_smoothing: float
     follow_smoothing: float
     top_down_height: float
     top_down_back_offset_tiles: float
+
+
+@dataclass(frozen=True, slots=True)
+class Render3DPlayerMovementConfig:
+    """Experimental 3D player movement settings.
+
+    Attributes:
+        movement_speed_tiles_per_second: Maximum player speed in tile units.
+        acceleration_tiles_per_second_squared: Acceleration toward requested movement.
+        deceleration_tiles_per_second_squared: Braking speed when movement input is released.
+        turn_speed_degrees_per_second: Maximum visual facing turn speed.
+    """
+
+    movement_speed_tiles_per_second: float
+    acceleration_tiles_per_second_squared: float
+    deceleration_tiles_per_second_squared: float
+    turn_speed_degrees_per_second: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -363,6 +384,7 @@ class Render3DConfig:
         show_debug_hud: Whether the 3D debug HUD is drawn.
         max_visible_primitives: Safety cap for visible primitive rendering.
         camera: Follow-camera settings.
+        player_movement: Experimental 3D player movement settings.
     """
 
     enabled: bool
@@ -373,6 +395,7 @@ class Render3DConfig:
     show_debug_hud: bool
     max_visible_primitives: int
     camera: Render3DCameraConfig
+    player_movement: Render3DPlayerMovementConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -833,6 +856,7 @@ class RuntimeConfigLoader:
             Experimental 3D renderer configuration.
         """
         camera = self._require_dict(render3d, "camera")
+        player_movement = self._require_dict(render3d, "player_movement")
         render_mode = self._require_render3d_mode(render3d, "render_mode")
         return Render3DConfig(
             enabled=self._require_bool(render3d, "enabled"),
@@ -852,6 +876,14 @@ class RuntimeConfigLoader:
                     camera,
                     "look_ahead_tiles",
                 ),
+                movement_look_ahead_tiles=self._require_non_negative_float(
+                    camera,
+                    "movement_look_ahead_tiles",
+                ),
+                look_ahead_smoothing=self._require_non_negative_float(
+                    camera,
+                    "look_ahead_smoothing",
+                ),
                 follow_smoothing=self._require_non_negative_float(
                     camera,
                     "follow_smoothing",
@@ -863,6 +895,24 @@ class RuntimeConfigLoader:
                 top_down_back_offset_tiles=self._require_positive_float(
                     camera,
                     "top_down_back_offset_tiles",
+                ),
+            ),
+            player_movement=Render3DPlayerMovementConfig(
+                movement_speed_tiles_per_second=self._require_positive_float(
+                    player_movement,
+                    "movement_speed_tiles_per_second",
+                ),
+                acceleration_tiles_per_second_squared=self._require_positive_float(
+                    player_movement,
+                    "acceleration_tiles_per_second_squared",
+                ),
+                deceleration_tiles_per_second_squared=self._require_positive_float(
+                    player_movement,
+                    "deceleration_tiles_per_second_squared",
+                ),
+                turn_speed_degrees_per_second=self._require_positive_float(
+                    player_movement,
+                    "turn_speed_degrees_per_second",
                 ),
             ),
         )

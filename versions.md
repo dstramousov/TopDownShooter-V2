@@ -463,3 +463,17 @@
 - Limited the 3D ground plane to the current player-centered view bounds instead of drawing one full-map ground slab.
 - Drew the 3D player marker from the continuous world position rather than the integer tile center for smooth movement.
 - Updated the 3D HUD with the player-centered radius tile coordinate.
+
+## v0.0.61 -> v0.0.62
+
+- Added camera-relative movement for the experimental 3D runtime.
+- Added smooth acceleration, deceleration, and visual facing turns for the 3D player marker.
+- Added render3d player movement tuning to the runtime config.
+- Updated the 3D debug HUD to show the new movement mode.
+
+## v0.0.62 -> v0.0.63
+
+- Added smoothed 3D camera look-ahead for the experimental follow view.
+- Shifted the 3D camera anchor toward the player movement direction so the player is not locked to the exact screen center.
+- Added render3d camera tuning for movement look-ahead distance and smoothing.
+- Updated the experimental 3D debug HUD to show the configured camera look-ahead.

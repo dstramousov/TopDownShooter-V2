@@ -50,8 +50,12 @@ def test_render3d_config_loads_from_default_config() -> None:
     assert config.render3d.max_visible_primitives == 3000
     assert config.render3d.camera.height == 18.0
     assert config.render3d.camera.distance == 12.0
+    assert config.render3d.camera.movement_look_ahead_tiles == 3.5
+    assert config.render3d.camera.look_ahead_smoothing == 0.2
     assert config.render3d.camera.top_down_height == 70.0
     assert config.render3d.camera.top_down_back_offset_tiles == 0.25
+    assert config.render3d.player_movement.movement_speed_tiles_per_second == 6.0
+    assert config.render3d.player_movement.turn_speed_degrees_per_second == 220.0
 
 
 def test_render3d_camera_builds_follow_state() -> None:
@@ -59,12 +63,39 @@ def test_render3d_camera_builds_follow_state() -> None:
     config = RuntimeConfigLoader().load_default().render3d
     camera = Render3DFollowCamera(config=config, tile_size_px=16)
 
-    state = camera.build_state(WorldCoord(24.0, 40.0), facing_x=0.0, facing_y=-1.0)
+    state = camera.build_state(
+        WorldCoord(24.0, 40.0),
+        facing_x=0.0,
+        facing_y=-1.0,
+        frame_time=1.0,
+    )
 
     assert state.position.y == config.camera.height
     assert state.position.x == 1.5
     assert state.target.z < 2.5
     assert state.position.z > 2.5
+
+
+def test_render3d_camera_adds_smoothed_movement_look_ahead() -> None:
+    """Follow camera should shift its anchor toward the movement direction."""
+    config = RuntimeConfigLoader().load_default().render3d
+    camera = Render3DFollowCamera(config=config, tile_size_px=16)
+
+    initial_state = camera.build_state(
+        WorldCoord(160.0, 160.0),
+        facing_x=1.0,
+        facing_y=0.0,
+        frame_time=0.0,
+    )
+    next_state = camera.build_state(
+        WorldCoord(160.0, 160.0),
+        facing_x=1.0,
+        facing_y=0.0,
+        frame_time=1.0,
+    )
+
+    assert next_state.target.x > initial_state.target.x
+    assert next_state.position.x > initial_state.position.x
 
 
 def test_render3d_scene_builder_limits_visible_tiles_by_radius() -> None:

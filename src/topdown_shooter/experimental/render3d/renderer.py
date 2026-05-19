@@ -53,6 +53,10 @@ class Render3DRenderer:
         self._camera_mode = Render3DFollowCamera.LOW_FOLLOW_MODE
         self._last_facing_x = 0.0
         self._last_facing_y = -1.0
+        self._velocity_x_px_per_second = 0.0
+        self._velocity_y_px_per_second = 0.0
+        self._camera_forward_x = 0.0
+        self._camera_forward_y = -1.0
         self._player_key_left = self._resolve_player_keys(
             config.controls.player_left,
             fallback_key_names=("KEY_LEFT",),
@@ -112,6 +116,7 @@ class Render3DRenderer:
                     frame_time=frame_time,
                     mode=self._camera_mode,
                 )
+                self._update_camera_relative_basis(camera_state)
                 camera = raylib.Camera3D(
                     raylib.Vector3(
                         camera_state.position.x,
@@ -191,22 +196,155 @@ class Render3DRenderer:
         input_state: Render3DInputState,
         frame_time: float,
     ) -> None:
-        """Update the experimental player movement and facing direction."""
-        player_controller.update(
-            player=player,
-            intent=PlayerMoveIntent(x=input_state.move_x, y=input_state.move_y),
-            frame_time=frame_time,
-            speed_px_per_second=self._config.player.movement_speed_px_per_second,
+        """Update camera-relative movement and smoothed facing direction."""
+        if frame_time <= 0.0:
+            return
+
+        movement_x, movement_y = self._camera_relative_movement(input_state)
+        self._update_velocity(movement_x, movement_y, frame_time)
+        velocity_length = math.hypot(
+            self._velocity_x_px_per_second,
+            self._velocity_y_px_per_second,
         )
-        if input_state.move_x != 0.0 or input_state.move_y != 0.0:
-            length = math.hypot(input_state.move_x, input_state.move_y)
-            self._last_facing_x = input_state.move_x / length
-            self._last_facing_y = input_state.move_y / length
-            aim_target = WorldCoord(
-                x=player.world_position.x + self._last_facing_x * self._runtime_map.tile_size_px,
-                y=player.world_position.y + self._last_facing_y * self._runtime_map.tile_size_px,
+        if velocity_length > 0.01:
+            player_controller.update(
+                player=player,
+                intent=PlayerMoveIntent(
+                    x=self._velocity_x_px_per_second,
+                    y=self._velocity_y_px_per_second,
+                ),
+                frame_time=frame_time,
+                speed_px_per_second=velocity_length,
             )
-            player.aim = PlayerAimState.from_positions(player.world_position, aim_target)
+            self._update_facing_toward_velocity(frame_time)
+            self._update_player_aim(player)
+
+    def _camera_relative_movement(self, input_state: Render3DInputState) -> tuple[float, float]:
+        """Convert raw input into a camera-relative 2D world direction."""
+        if input_state.move_x == 0.0 and input_state.move_y == 0.0:
+            return 0.0, 0.0
+
+        forward_x, forward_y = self._camera_forward_x, self._camera_forward_y
+        right_x, right_y = -forward_y, forward_x
+        desired_x = right_x * input_state.move_x + forward_x * (-input_state.move_y)
+        desired_y = right_y * input_state.move_x + forward_y * (-input_state.move_y)
+        length = math.hypot(desired_x, desired_y)
+        if length <= 0.0001:
+            return 0.0, 0.0
+        return desired_x / length, desired_y / length
+
+    def _update_velocity(self, direction_x: float, direction_y: float, frame_time: float) -> None:
+        """Move current velocity toward requested camera-relative movement."""
+        movement_config = self._config.render3d.player_movement
+        tile_size_px = self._runtime_map.tile_size_px
+        max_speed = movement_config.movement_speed_tiles_per_second * tile_size_px
+        current_x = self._velocity_x_px_per_second
+        current_y = self._velocity_y_px_per_second
+        target_x = direction_x * max_speed
+        target_y = direction_y * max_speed
+        if direction_x == 0.0 and direction_y == 0.0:
+            max_delta = (
+                movement_config.deceleration_tiles_per_second_squared
+                * tile_size_px
+                * frame_time
+            )
+        else:
+            max_delta = (
+                movement_config.acceleration_tiles_per_second_squared
+                * tile_size_px
+                * frame_time
+            )
+        self._velocity_x_px_per_second, self._velocity_y_px_per_second = self._move_vector_toward(
+            current_x=current_x,
+            current_y=current_y,
+            target_x=target_x,
+            target_y=target_y,
+            max_delta=max_delta,
+        )
+
+    def _update_facing_toward_velocity(self, frame_time: float) -> None:
+        """Turn visual facing toward current movement without snapping."""
+        velocity_length = math.hypot(
+            self._velocity_x_px_per_second,
+            self._velocity_y_px_per_second,
+        )
+        if velocity_length <= 0.01:
+            return
+        target_x = self._velocity_x_px_per_second / velocity_length
+        target_y = self._velocity_y_px_per_second / velocity_length
+        turn_radians = math.radians(
+            self._config.render3d.player_movement.turn_speed_degrees_per_second,
+        ) * frame_time
+        self._last_facing_x, self._last_facing_y = self._rotate_direction_toward(
+            current_x=self._last_facing_x,
+            current_y=self._last_facing_y,
+            target_x=target_x,
+            target_y=target_y,
+            max_angle=turn_radians,
+        )
+
+    def _update_player_aim(self, player: PlayerState) -> None:
+        """Update the runtime aim state from smoothed visual facing."""
+        aim_target = WorldCoord(
+            x=player.world_position.x + self._last_facing_x * self._runtime_map.tile_size_px,
+            y=player.world_position.y + self._last_facing_y * self._runtime_map.tile_size_px,
+        )
+        player.aim = PlayerAimState.from_positions(player.world_position, aim_target)
+
+    def _update_camera_relative_basis(self, camera_state: object) -> None:
+        """Refresh the movement basis from the current 3D camera view."""
+        direction_x = camera_state.target.x - camera_state.position.x
+        direction_y = camera_state.target.z - camera_state.position.z
+        length = math.hypot(direction_x, direction_y)
+        if length <= 0.0001:
+            return
+        self._camera_forward_x = direction_x / length
+        self._camera_forward_y = direction_y / length
+
+    @staticmethod
+    def _move_vector_toward(
+        current_x: float,
+        current_y: float,
+        target_x: float,
+        target_y: float,
+        max_delta: float,
+    ) -> tuple[float, float]:
+        """Move a 2D vector toward another by a maximum distance."""
+        delta_x = target_x - current_x
+        delta_y = target_y - current_y
+        delta_length = math.hypot(delta_x, delta_y)
+        if delta_length <= max_delta or delta_length <= 0.0001:
+            return target_x, target_y
+        ratio = max_delta / delta_length
+        return current_x + delta_x * ratio, current_y + delta_y * ratio
+
+    @staticmethod
+    def _rotate_direction_toward(
+        current_x: float,
+        current_y: float,
+        target_x: float,
+        target_y: float,
+        max_angle: float,
+    ) -> tuple[float, float]:
+        """Rotate a normalized direction toward another without overshooting."""
+        current_length = math.hypot(current_x, current_y)
+        target_length = math.hypot(target_x, target_y)
+        if target_length <= 0.0001:
+            return current_x, current_y
+        if current_length <= 0.0001:
+            return target_x / target_length, target_y / target_length
+
+        current_x /= current_length
+        current_y /= current_length
+        target_x /= target_length
+        target_y /= target_length
+        current_angle = math.atan2(current_y, current_x)
+        target_angle = math.atan2(target_y, target_x)
+        delta = (target_angle - current_angle + math.pi) % (math.tau) - math.pi
+        if abs(delta) <= max_angle:
+            return target_x, target_y
+        new_angle = current_angle + math.copysign(max_angle, delta)
+        return math.cos(new_angle), math.sin(new_angle)
 
     def _draw_scene(self, scene: Render3DSceneSnapshot) -> None:
         """Draw visible map primitives.
@@ -309,9 +447,11 @@ class Render3DRenderer:
             f"camera: {self._camera_mode}",
             f"mode: {self._config.render3d.render_mode}",
             f"view radius: {self._config.render3d.view_radius_tiles} tiles",
+            f"camera look-ahead: {self._config.render3d.camera.movement_look_ahead_tiles:.1f} tiles",
             f"visible primitives: {len(scene.primitives)}",
             f"radius center: player tile {scene.center_tile.x},{scene.center_tile.y}",
             f"culled tiles: {scene.culled_tile_count}/{scene.total_tile_count}",
+            "movement: camera-relative, smooth turn",
             "WASD/arrows move | 1 top | 2 low | R reset | H HUD | ESC close",
         ]
         y = 12

@@ -149,3 +149,7 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.render3d.camera.follow_smoothing == 0.14
     assert config.render3d.camera.top_down_height == 70.0
     assert config.render3d.camera.top_down_back_offset_tiles == 0.25
+    assert config.render3d.player_movement.movement_speed_tiles_per_second == 6.0
+    assert config.render3d.player_movement.acceleration_tiles_per_second_squared == 28.0
+    assert config.render3d.player_movement.deceleration_tiles_per_second_squared == 34.0
+    assert config.render3d.player_movement.turn_speed_degrees_per_second == 220.0
