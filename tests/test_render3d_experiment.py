@@ -74,6 +74,15 @@ def test_render3d_config_loads_from_default_config() -> None:
     assert config.render3d.distance_fade.min_brightness == 0.25
     assert config.render3d.distance_fade.fog_density == 2.5
     assert config.render3d.distance_fade.keep_markers_bright is True
+    assert config.enemies.fire_enabled is True
+    assert config.enemies.fire_damage == 8.0
+    assert config.enemies.fire_rate_rpm == 90.0
+    assert config.enemies.fire_projectile_speed_px_per_second == 260.0
+    assert config.enemies.fire_projectile_range_px == 340.0
+    assert config.enemies.fire_projectile_lifetime_seconds == 1.4
+    assert config.enemies.fire_projectile_radius_px == 3.0
+    assert config.enemies.fire_max_distance_px == 300.0
+    assert config.enemies.fire_muzzle_offset_px == 10.0
     assert config.render3d.enemies.draw_enemy_markers is True
     assert config.render3d.enemies.max_visible_enemies == 128
     assert config.render3d.enemies.marker_radius_tiles == 0.28

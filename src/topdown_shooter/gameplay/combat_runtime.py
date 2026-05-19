@@ -83,6 +83,31 @@ def update_combat_runtime(
         ),
         squad_alert_broadcast_radius_px=enemy_config.squad_alert_broadcast_radius_px,
     )
+    if enemy_config.fire_enabled:
+        enemy_system.fire_at_player(
+            player_position=player.world_position,
+            projectile_system=projectile_system,
+            collision_service=collision_service,
+            fire_rate_rpm=enemy_config.fire_rate_rpm,
+            projectile_speed_px_per_second=(
+                enemy_config.fire_projectile_speed_px_per_second
+            ),
+            projectile_range_px=enemy_config.fire_projectile_range_px,
+            projectile_lifetime_seconds=(
+                enemy_config.fire_projectile_lifetime_seconds
+            ),
+            projectile_radius_px=enemy_config.fire_projectile_radius_px,
+            damage=enemy_config.fire_damage,
+            max_fire_distance_px=enemy_config.fire_max_distance_px,
+            muzzle_offset_px=enemy_config.fire_muzzle_offset_px,
+            line_of_sight_sample_step_px=enemy_config.line_of_sight_sample_step_px,
+        )
+    _apply_enemy_projectile_hits(
+        player=player,
+        projectiles=projectile_system.projectiles,
+        player_collision_radius_px=config.player.collision_radius_px,
+    )
+
     enemy_system.update_chase_movement(
         player_position=player.world_position,
         collision_service=collision_service,
@@ -126,3 +151,72 @@ def update_combat_runtime(
         return_home_reached_distance_px=enemy_config.return_home_reached_distance_px,
     )
     projectile_system.prune_dead()
+
+
+def _apply_enemy_projectile_hits(
+    *,
+    player: PlayerState,
+    projectiles: tuple[object, ...],
+    player_collision_radius_px: float,
+) -> None:
+    """Apply hostile projectile damage to the player.
+
+    Args:
+        player: Mutable player state receiving damage.
+        projectiles: Active projectile states to test against the player.
+        player_collision_radius_px: Player collision radius in world pixels.
+    """
+    if player_collision_radius_px <= 0.0 or player.health <= 0:
+        return
+    for projectile in projectiles:
+        if (
+            not getattr(projectile, "alive", False)
+            or getattr(projectile, "owner", "player") != "enemy"
+        ):
+            continue
+        collision_radius = player_collision_radius_px + projectile.radius_px
+        distance_squared = _point_to_segment_distance_squared(
+            point=player.world_position,
+            start=projectile.previous_position,
+            end=projectile.position,
+        )
+        if distance_squared > collision_radius * collision_radius:
+            continue
+        player.health = max(0, int(round(player.health - projectile.damage)))
+        projectile.alive = False
+        if player.health <= 0:
+            break
+
+
+def _point_to_segment_distance_squared(
+    *,
+    point: object,
+    start: object,
+    end: object,
+) -> float:
+    """Return squared distance from a point to a segment-like object.
+
+    Args:
+        point: Object with ``x`` and ``y`` attributes.
+        start: Segment start object with ``x`` and ``y`` attributes.
+        end: Segment end object with ``x`` and ``y`` attributes.
+
+    Returns:
+        Squared distance in world pixels.
+    """
+    segment_x = end.x - start.x
+    segment_y = end.y - start.y
+    segment_length_squared = segment_x * segment_x + segment_y * segment_y
+    if segment_length_squared <= 0.0:
+        dx = point.x - end.x
+        dy = point.y - end.y
+        return dx * dx + dy * dy
+    point_x = point.x - start.x
+    point_y = point.y - start.y
+    t = (point_x * segment_x + point_y * segment_y) / segment_length_squared
+    t = min(1.0, max(0.0, t))
+    closest_x = start.x + segment_x * t
+    closest_y = start.y + segment_y * t
+    dx = point.x - closest_x
+    dy = point.y - closest_y
+    return dx * dx + dy * dy

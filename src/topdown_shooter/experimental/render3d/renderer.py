@@ -17,7 +17,9 @@ from topdown_shooter.gameplay.combat_runtime import update_combat_runtime
 from topdown_shooter.experimental.render3d.camera import Render3DFollowCamera
 from topdown_shooter.experimental.render3d.scene import Render3DSceneBuilder, Render3DSceneSnapshot
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
+from topdown_shooter.rendering.player_hud import PlayerHud
 from topdown_shooter.rendering.raylib_window import import_raylib
+from topdown_shooter.rendering.text import RaylibTextRenderer
 from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.coordinates import WorldCoord
 from topdown_shooter.world.pathfinding import GridPathfinder
@@ -109,6 +111,18 @@ class Render3DRenderer:
         self._show_debug_hud = config.render3d.show_debug_hud
         self._distance_fade_enabled = config.render3d.distance_fade.enabled
         self._enemy_vision_enabled = config.render3d.enemy_vision.enabled
+        self._player_hud = PlayerHud(
+            raylib=self._raylib,
+            config=config.hud,
+            window=config.window,
+            font_path=config.debug_overlay.font_path,
+            font_spacing=config.debug_overlay.font_spacing,
+        )
+        self._hud_text = RaylibTextRenderer(
+            raylib=self._raylib,
+            font_path=config.debug_overlay.font_path,
+            font_spacing=config.debug_overlay.font_spacing,
+        )
 
     def run_follow_preview(
         self,
@@ -218,10 +232,18 @@ class Render3DRenderer:
                     self._draw_enemy_markers(visible_enemies)
                     self._draw_projectile_markers(visible_projectiles)
                     self._draw_impact_markers(visible_impacts)
-                    self._draw_aim_line(player.world_position, self._last_facing_x, self._last_facing_y)
+                    self._draw_aim_line(
+                        player.world_position,
+                        self._last_facing_x,
+                        self._last_facing_y,
+                    )
                 if self._view_mode_draws_debug_markers():
                     self._draw_enemy_hit_markers(visible_enemy_hit_markers)
-                self._draw_player_marker(player.world_position, self._last_facing_x, self._last_facing_y)
+                self._draw_player_marker(
+                    player.world_position,
+                    self._last_facing_x,
+                    self._last_facing_y,
+                )
                 raylib.end_mode_3d()
                 if self._show_debug_hud:
                     if self._view_mode == self.DEBUG_VIEW_MODE:
@@ -238,15 +260,14 @@ class Render3DRenderer:
                             weapon_controller=weapon_controller,
                         )
                     else:
-                        self._draw_compact_hud(
+                        self._draw_gameplay_hud(
+                            player=player,
                             weapon_controller=weapon_controller,
-                            visible_enemies=visible_enemies,
-                            enemies=enemy_system.enemies,
-                            visible_projectiles=visible_projectiles,
-                            projectiles=projectile_system.projectiles,
                         )
                 raylib.end_drawing()
         finally:
+            self._player_hud.unload()
+            self._hud_text.unload()
             self._enable_cursor()
             raylib.close_window()
 
@@ -594,22 +615,102 @@ class Render3DRenderer:
                 scene,
             )
             if primitive.walkable:
-                if primitive.symbol in {"S", "G", ".", "R", "w"}:
-                    raylib.draw_cube(
-                        center,
-                        tile_size,
-                        0.04 * height_scale,
-                        tile_size,
-                        color,
-                    )
+                self._draw_walkable_tile(center, primitive.symbol, color)
                 continue
+            self._draw_blocking_tile(center, primitive.symbol, color)
+
+    def _draw_walkable_tile(self, center: object, symbol: str, color: object) -> None:
+        """Draw one walkable gameplay tile with symbol-specific readability."""
+        raylib = self._raylib
+        tile_size = self._config.render3d.tile_size
+        height_scale = self._config.render3d.height_scale
+        if symbol in {"+", "f", "m", "b"}:
+            tile_height = 0.07 * height_scale
+        elif symbol == "w":
+            tile_height = 0.025 * height_scale
+        else:
+            tile_height = 0.04 * height_scale
+        tile_center = raylib.Vector3(center.x, tile_height * 0.5, center.z)
+        raylib.draw_cube(tile_center, tile_size, tile_height, tile_size, color)
+        if symbol == "w":
+            self._draw_tile_surface_outline(tile_center, tile_size, tile_height, raylib.BLUE)
+        elif symbol in {"S", "G", "R"}:
+            self._draw_tile_surface_outline(tile_center, tile_size, tile_height, raylib.RAYWHITE)
+
+    def _draw_blocking_tile(self, center: object, symbol: str, color: object) -> None:
+        """Draw one blocking map tile with stronger environment silhouettes."""
+        raylib = self._raylib
+        tile_size = self._config.render3d.tile_size
+        height_scale = self._config.render3d.height_scale
+        if symbol == "T":
+            trunk_height = 0.82 * height_scale
+            canopy_height = 0.62 * height_scale
+            trunk_center = raylib.Vector3(center.x, trunk_height * 0.5, center.z)
+            canopy_center = raylib.Vector3(
+                center.x,
+                trunk_height + canopy_height * 0.35,
+                center.z,
+            )
             raylib.draw_cube(
-                raylib.Vector3(center.x, 0.45 * height_scale, center.z),
-                tile_size,
-                0.9 * height_scale,
-                tile_size,
+                trunk_center,
+                tile_size * 0.34,
+                trunk_height,
+                tile_size * 0.34,
                 color,
             )
+            raylib.draw_cube(
+                canopy_center,
+                tile_size * 0.94,
+                canopy_height,
+                tile_size * 0.94,
+                self._scene_green_shadow(color),
+            )
+            return
+
+        height = self._blocking_tile_height(symbol) * height_scale
+        width = tile_size * self._blocking_tile_width_scale(symbol)
+        block_center = raylib.Vector3(center.x, height * 0.5, center.z)
+        raylib.draw_cube(block_center, width, height, width, color)
+        self._draw_tile_surface_outline(block_center, width, height, raylib.RAYWHITE)
+
+    def _blocking_tile_height(self, symbol: str) -> float:
+        """Return 3D height in tiles for a blocking symbol."""
+        if symbol == "#":
+            return 1.35
+        if symbol in {"c", "b"}:
+            return 0.55
+        return 0.9
+
+    def _blocking_tile_width_scale(self, symbol: str) -> float:
+        """Return width multiplier for a blocking symbol."""
+        if symbol in {"c", "b"}:
+            return 0.78
+        return 1.0
+
+    def _draw_tile_surface_outline(
+        self,
+        center: object,
+        width: float,
+        height: float,
+        color: object,
+    ) -> None:
+        """Draw a subtle wire outline around an environment tile."""
+        draw_cube_wires = getattr(self._raylib, "draw_cube_wires", None)
+        if callable(draw_cube_wires):
+            draw_cube_wires(center, width, height, width, self._color_with_alpha(color, 95))
+
+    def _scene_green_shadow(self, color: object) -> object:
+        """Return a darker green-ish variation for tree canopies."""
+        raylib = self._raylib
+        try:
+            return raylib.Color(
+                max(0, min(255, int(color.r) - 18)),
+                max(0, min(255, int(color.g) + 18)),
+                max(0, min(255, int(color.b) - 12)),
+                int(getattr(color, "a", 255)),
+            )
+        except AttributeError:
+            return color
 
     def _scene_color(
         self,
@@ -1048,11 +1149,13 @@ class Render3DRenderer:
                     end.z - projectile.direction_y * tracer_length,
                 )
                 tracer_end = raylib.Vector3(end.x, tracer_y, end.z)
-                raylib.draw_line_3d(start, tracer_end, raylib.SKYBLUE)
+                tracer_color = self._projectile_tracer_color(projectile)
+                core_color = self._projectile_core_color(projectile)
+                raylib.draw_line_3d(start, tracer_end, tracer_color)
                 raylib.draw_line_3d(
                     raylib.Vector3(start.x, projectile_y, start.z),
                     end,
-                    raylib.BLUE,
+                    core_color,
                 )
             else:
                 start = raylib.Vector3(
@@ -1060,9 +1163,25 @@ class Render3DRenderer:
                     projectile_y,
                     projectile.previous_position.y / tile_size_px * tile_size,
                 )
-                raylib.draw_line_3d(start, end, raylib.SKYBLUE)
-            raylib.draw_sphere(end, max(radius, 0.03 * tile_size), raylib.RAYWHITE)
+                raylib.draw_line_3d(start, end, self._projectile_tracer_color(projectile))
+            raylib.draw_sphere(
+                end,
+                max(radius, 0.03 * tile_size),
+                self._projectile_core_color(projectile),
+            )
 
+
+    def _projectile_tracer_color(self, projectile: ProjectileState) -> object:
+        """Return tracer color based on projectile owner."""
+        if projectile.owner == "enemy":
+            return self._raylib.ORANGE
+        return self._raylib.SKYBLUE
+
+    def _projectile_core_color(self, projectile: ProjectileState) -> object:
+        """Return projectile core color based on projectile owner."""
+        if projectile.owner == "enemy":
+            return self._raylib.RED
+        return self._raylib.RAYWHITE
     def _draw_impact_markers(self, impacts: tuple[ImpactMarkerState, ...]) -> None:
         """Draw projectile impact markers in the 3D experiment.
 
@@ -1106,7 +1225,12 @@ class Render3DRenderer:
                     raylib.GOLD,
                 )
 
-    def _draw_aim_line(self, player_position: WorldCoord, facing_x: float, facing_y: float) -> None:
+    def _draw_aim_line(
+        self,
+        player_position: WorldCoord,
+        facing_x: float,
+        facing_y: float,
+    ) -> None:
         """Draw the current 3D aim line from the player marker.
 
         Args:
@@ -1182,39 +1306,17 @@ class Render3DRenderer:
         raylib.draw_line_3d(center, direction_end, raylib.ORANGE)
         raylib.draw_sphere(direction_end, tile_size * 0.18, raylib.ORANGE)
 
-    def _draw_compact_hud(
+    def _draw_gameplay_hud(
         self,
+        player: PlayerState,
         weapon_controller: WeaponController,
-        visible_enemies: tuple[EnemyState, ...],
-        enemies: tuple[EnemyState, ...],
-        visible_projectiles: tuple[ProjectileState, ...],
-        projectiles: tuple[ProjectileState, ...],
     ) -> None:
-        """Draw a compact HUD for clean and gameplay 3D view modes."""
-        raylib = self._raylib
-        lines = [
-            f"3D view: {self._view_mode}",
-            f"FPS: {raylib.get_fps()}",
-            "V view mode | L fog | O vision | H HUD | C camera reset | ESC close",
-        ]
-        if self._view_mode == self.GAMEPLAY_VIEW_MODE:
-            weapon_stats = weapon_controller.stats
-            lines.extend(
-                (
-                    f"weapon: {weapon_stats.weapon_id} "
-                    f"ammo {weapon_stats.ammo_in_magazine}/{weapon_stats.magazine_size}",
-                    f"enemies: {len(visible_enemies)}/{len(enemies)} visible",
-                    f"projectiles: {len(visible_projectiles)}/{len(projectiles)} visible",
-                    f"fog: {'on' if self._distance_fade_enabled else 'off'} "
-                    f"density {self._config.render3d.distance_fade.fog_density:.2f}",
-                    f"enemy vision: {'on' if self._enemy_vision_enabled else 'off'}",
-                    "mouse X aim | LMB fire | R reload | 1/2/3 weapons",
-                ),
-            )
-        y = 12
-        for line in lines:
-            raylib.draw_text(line, 12, y, 18, raylib.RAYWHITE)
-            y += 22
+        """Draw the regular 2D-style player HUD in the 3D renderer."""
+        self._player_hud.draw(player, weapon_controller.stats)
+        if self._view_mode != self.GAMEPLAY_VIEW_MODE:
+            return
+        hint = "V VIEW | L FOG | O VISION | H HUD"
+        self._draw_hud_text(hint, 12, self._config.window.height - 28, 8, self._raylib.RAYWHITE)
 
     def _draw_debug_hud(
         self,
@@ -1255,13 +1357,15 @@ class Render3DRenderer:
             f"distance fog: {'on' if self._distance_fade_enabled else 'off'} "
             f"density {self._config.render3d.distance_fade.fog_density:.2f}",
             f"enemy vision: {'on' if self._enemy_vision_enabled else 'off'}",
-            f"camera look-ahead: {self._config.render3d.camera.movement_look_ahead_tiles:.1f} tiles",
+            "camera look-ahead: "
+            f"{self._config.render3d.camera.movement_look_ahead_tiles:.1f} tiles",
             f"visible primitives: {len(scene.primitives)}",
             f"enemies: {len(visible_enemies)}/{len(enemies)} visible",
             f"projectiles: {len(visible_projectiles)}/{len(projectiles)} visible",
             f"impacts: {len(visible_impacts)}/{len(impacts)} visible",
             f"enemy hits: {len(visible_enemy_hit_markers)}/{len(enemy_hit_markers)} visible",
-            f"weapon: {weapon_stats.weapon_id} ammo {weapon_stats.ammo_in_magazine}/{weapon_stats.magazine_size}",
+            f"weapon: {weapon_stats.weapon_id} "
+            f"ammo {weapon_stats.ammo_in_magazine}/{weapon_stats.magazine_size}",
             f"radius center: player tile {scene.center_tile.x},{scene.center_tile.y}",
             f"culled tiles: {scene.culled_tile_count}/{scene.total_tile_count}",
             "movement: facing-relative strafe",
@@ -1272,8 +1376,19 @@ class Render3DRenderer:
         ]
         y = 12
         for line in lines:
-            raylib.draw_text(line, 12, y, 18, raylib.RAYWHITE)
-            y += 22
+            self._draw_hud_text(line, 12, y, 8, raylib.RAYWHITE)
+            y += 16
+
+    def _draw_hud_text(
+        self,
+        text: str,
+        x: int,
+        y: int,
+        font_size: int,
+        color: object,
+    ) -> None:
+        """Draw 3D overlay text with the configured pixel font."""
+        self._hud_text.draw_text(text, x, y, font_size, color)
 
     def _enemy_marker_color(self, enemy: EnemyState) -> object:
         """Return the current enemy body color, including hit flash feedback."""

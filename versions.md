@@ -559,3 +559,17 @@
 - Улучшена читаемость врагов в экспериментальном 3D renderer-е: состояние врага теперь видно по body color, ground-ring, status marker и facing tip.
 - Разделены визуальные состояния idle, alerted/searching, returning и engaged без изменения AI, pathfinding, агра или баланса.
 - 2D runtime и существующая gameplay-логика не изменялись.
+
+## v0.0.75 -> v0.0.76
+
+- Улучшена читаемость окружения в экспериментальном 3D renderer-е: стены, деревья, укрытия и особые walkable-тайлы получили более различимые 3D-силуэты.
+- 3D gameplay HUD переведён на общий 2D-style `PlayerHud`, включая отображение HP, оружия, боезапаса и reload state.
+- HUD/overlay текст в 3D renderer-е теперь использует `res/fonts/PressStart2P-Regular.ttf` через общий `RaylibTextRenderer` с безопасным fallback-ом.
+- AI, pathfinding, collision, генератор карты, combat balance и 2D runtime не изменялись.
+
+## v0.0.76 -> v0.0.77
+
+- Добавлена общая enemy fire интеграция: engaged-враги теперь стреляют hostile projectiles через существующий combat runtime pipeline.
+- ProjectileState получил owner-tag, чтобы player/enemy projectiles корректно маршрутизировались и не наносили friendly fire по врагам.
+- Вражеские projectiles наносят урон игроку через общий runtime helper и визуально отличаются в 3D renderer-е красно-оранжевыми трассерами.
+- AI, pathfinding, tactical positioning, collision и генератор карты не изменялись.

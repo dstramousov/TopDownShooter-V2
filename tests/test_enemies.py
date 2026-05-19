@@ -1475,3 +1475,87 @@ def test_returned_enemy_snaps_home_and_restores_initial_facing() -> None:
     assert enemy.world_position == enemy.home_position
     assert enemy.facing_angle_degrees == 135.0
     assert system.stats.returned_home_enemies == 1
+
+
+def test_enemy_system_ignores_enemy_owned_projectiles_for_enemy_damage() -> None:
+    """Enemy-owned projectiles should not damage enemies."""
+    tactical_map: dict[str, object] = {
+        "enemy_spawn_zones": [
+            {
+                "id": "spawn_0",
+                "zone_id": "zone_a",
+                "spawn_type": "initial_squad",
+                "position": [2, 1],
+                "preferred_roles": ["rifleman"],
+            },
+        ],
+    }
+    system = EnemySystem.from_tactical_map(
+        tactical_map,
+        _build_runtime_map(),
+        enemy_max_health=50.0,
+    )
+    projectile = ProjectileState(
+        position=WorldCoord(x=48.0, y=24.0),
+        previous_position=WorldCoord(x=24.0, y=24.0),
+        direction_x=1.0,
+        direction_y=0.0,
+        speed_px_per_second=16.0,
+        max_distance_px=64.0,
+        lifetime_seconds=10.0,
+        radius_px=3.0,
+        damage=50.0,
+        owner="enemy",
+    )
+
+    system.apply_projectile_hits((projectile,), enemy_collision_radius_px=6.0)
+
+    assert projectile.alive is True
+    assert system.stats.active_enemies == 1
+    assert system.stats.total_hits == 0
+    assert system.enemies[0].health == 50.0
+
+
+def test_enemy_system_fires_projectile_from_engaged_enemy() -> None:
+    """Engaged enemies should spawn hostile projectiles when they see the player."""
+    from topdown_shooter.combat.projectiles import ProjectileSystem
+    from topdown_shooter.world.collision import TileCollisionService
+
+    tactical_map: dict[str, object] = {
+        "enemy_spawn_zones": [
+            {
+                "id": "spawn_0",
+                "zone_id": "zone_a",
+                "spawn_type": "initial_squad",
+                "position": [1, 1],
+                "preferred_roles": ["rifleman"],
+            },
+        ],
+    }
+    runtime_map = _build_runtime_map()
+    collision_service = TileCollisionService(runtime_map)
+    projectile_system = ProjectileSystem(collision_service=collision_service)
+    system = EnemySystem.from_tactical_map(tactical_map, runtime_map)
+    enemy = system.enemies[0]
+    enemy.alerted = True
+    enemy.awareness_state = "engaged"
+
+    shots_fired = system.fire_at_player(
+        player_position=WorldCoord(56.0, 24.0),
+        projectile_system=projectile_system,
+        collision_service=collision_service,
+        fire_rate_rpm=120.0,
+        projectile_speed_px_per_second=200.0,
+        projectile_range_px=160.0,
+        projectile_lifetime_seconds=1.0,
+        projectile_radius_px=2.0,
+        damage=7.0,
+        max_fire_distance_px=128.0,
+        muzzle_offset_px=4.0,
+        line_of_sight_sample_step_px=4.0,
+    )
+
+    assert shots_fired == 1
+    assert enemy.fire_cooldown_seconds == 0.5
+    assert projectile_system.projectiles[0].owner == "enemy"
+    assert projectile_system.projectiles[0].damage == 7.0

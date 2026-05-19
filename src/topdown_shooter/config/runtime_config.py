@@ -186,6 +186,15 @@ class EnemyConfig:
         tactical_player_reposition_distance_px: Player movement distance that forces slot reassignment.
         draw_tactical_slots: Whether debug tactical target slots are drawn.
         max_debug_tactical_slots: Maximum tactical slot markers drawn per frame. Zero disables them.
+        fire_enabled: Whether engaged enemies can shoot at the player.
+        fire_damage: Damage dealt by one enemy projectile.
+        fire_rate_rpm: Enemy fire rate in rounds per minute.
+        fire_projectile_speed_px_per_second: Enemy projectile speed in world pixels per second.
+        fire_projectile_range_px: Enemy projectile maximum travel distance.
+        fire_projectile_lifetime_seconds: Enemy projectile lifetime.
+        fire_projectile_radius_px: Enemy projectile collision radius.
+        fire_max_distance_px: Maximum distance where enemies are allowed to shoot.
+        fire_muzzle_offset_px: Forward projectile spawn offset from enemy center.
     """
 
     marker_radius_px: int
@@ -245,6 +254,15 @@ class EnemyConfig:
     tactical_player_reposition_distance_px: float
     draw_tactical_slots: bool
     max_debug_tactical_slots: int
+    fire_enabled: bool
+    fire_damage: float
+    fire_rate_rpm: float
+    fire_projectile_speed_px_per_second: float
+    fire_projectile_range_px: float
+    fire_projectile_lifetime_seconds: float
+    fire_projectile_radius_px: float
+    fire_max_distance_px: float
+    fire_muzzle_offset_px: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -942,6 +960,33 @@ class RuntimeConfigLoader:
                 max_debug_tactical_slots=self._require_non_negative_int(
                     enemies,
                     "max_debug_tactical_slots",
+                ),
+                fire_enabled=self._require_bool(enemies, "fire_enabled"),
+                fire_damage=self._require_positive_float(enemies, "fire_damage"),
+                fire_rate_rpm=self._require_positive_float(enemies, "fire_rate_rpm"),
+                fire_projectile_speed_px_per_second=self._require_positive_float(
+                    enemies,
+                    "fire_projectile_speed_px_per_second",
+                ),
+                fire_projectile_range_px=self._require_positive_float(
+                    enemies,
+                    "fire_projectile_range_px",
+                ),
+                fire_projectile_lifetime_seconds=self._require_positive_float(
+                    enemies,
+                    "fire_projectile_lifetime_seconds",
+                ),
+                fire_projectile_radius_px=self._require_positive_float(
+                    enemies,
+                    "fire_projectile_radius_px",
+                ),
+                fire_max_distance_px=self._require_positive_float(
+                    enemies,
+                    "fire_max_distance_px",
+                ),
+                fire_muzzle_offset_px=self._require_non_negative_float(
+                    enemies,
+                    "fire_muzzle_offset_px",
                 ),
             ),
             debug_overlay=DebugOverlayConfig(

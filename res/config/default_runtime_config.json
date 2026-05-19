@@ -173,7 +173,16 @@
     "tactical_slot_commitment_seconds": 2.5,
     "tactical_player_reposition_distance_px": 56.0,
     "draw_tactical_slots": false,
-    "max_debug_tactical_slots": 8
+    "max_debug_tactical_slots": 8,
+    "fire_enabled": true,
+    "fire_damage": 8.0,
+    "fire_rate_rpm": 90.0,
+    "fire_projectile_speed_px_per_second": 260.0,
+    "fire_projectile_range_px": 340.0,
+    "fire_projectile_lifetime_seconds": 1.4,
+    "fire_projectile_radius_px": 3.0,
+    "fire_max_distance_px": 300.0,
+    "fire_muzzle_offset_px": 10.0
   },
   "render3d": {
     "enabled": false,

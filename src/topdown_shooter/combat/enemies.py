@@ -6,7 +6,7 @@ import math
 import random
 from dataclasses import dataclass
 
-from topdown_shooter.combat.projectiles import ProjectileState
+from topdown_shooter.combat.projectiles import ProjectileState, ProjectileSystem
 from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.coordinates import (
     TileCoord,
@@ -50,6 +50,7 @@ class EnemyState:
         last_path_target_position: Last world-space path target position.
         tactical_target_position: Assigned tactical surround position.
         tactical_target_age_seconds: Seconds elapsed since the current tactical slot assignment.
+        fire_cooldown_seconds: Seconds until this enemy can fire again.
         home_facing_angle_degrees: Facing angle restored after return-home behavior.
     """
 
@@ -81,6 +82,7 @@ class EnemyState:
     last_path_target_position: WorldCoord | None = None
     tactical_target_position: WorldCoord | None = None
     tactical_target_age_seconds: float = 0.0
+    fire_cooldown_seconds: float = 0.0
 
 
 @dataclass(slots=True)
@@ -423,8 +425,15 @@ class EnemySystem:
             squad_alert_broadcast_radius_px=squad_alert_broadcast_radius_px,
         )
         for enemy in self._enemies:
-            if enemy.alive and enemy.last_hit_age_seconds is not None:
+            if not enemy.alive:
+                continue
+            if enemy.last_hit_age_seconds is not None:
                 enemy.last_hit_age_seconds += frame_time
+            if enemy.fire_cooldown_seconds > 0.0:
+                enemy.fire_cooldown_seconds = max(
+                    0.0,
+                    enemy.fire_cooldown_seconds - frame_time,
+                )
         for marker in self._hit_markers:
             marker.age_seconds += frame_time
             if marker.age_seconds >= marker.lifetime_seconds:
@@ -2021,6 +2030,98 @@ class EnemySystem:
         self._sound_alerts_triggered += alerted_count
         return alerted_count
 
+
+    def fire_at_player(
+        self,
+        *,
+        player_position: WorldCoord,
+        projectile_system: ProjectileSystem,
+        collision_service: TileCollisionService,
+        fire_rate_rpm: float,
+        projectile_speed_px_per_second: float,
+        projectile_range_px: float,
+        projectile_lifetime_seconds: float,
+        projectile_radius_px: float,
+        damage: float,
+        max_fire_distance_px: float,
+        muzzle_offset_px: float,
+        line_of_sight_sample_step_px: float,
+    ) -> int:
+        """Spawn enemy projectiles from engaged enemies with line of sight.
+
+        Args:
+            player_position: Current player world position.
+            projectile_system: Projectile system receiving hostile projectiles.
+            collision_service: Collision service used for line-of-sight checks.
+            fire_rate_rpm: Enemy fire rate in rounds per minute.
+            projectile_speed_px_per_second: Enemy projectile speed.
+            projectile_range_px: Enemy projectile maximum travel distance.
+            projectile_lifetime_seconds: Enemy projectile lifetime.
+            projectile_radius_px: Enemy projectile collision radius.
+            damage: Damage dealt to the player per projectile hit.
+            max_fire_distance_px: Maximum distance where enemies are allowed to fire.
+            muzzle_offset_px: Forward spawn offset from the enemy center.
+            line_of_sight_sample_step_px: Sampling step for blocked-tile checks.
+
+        Returns:
+            Number of hostile projectiles spawned this update.
+        """
+        if (
+            fire_rate_rpm <= 0.0
+            or projectile_speed_px_per_second <= 0.0
+            or projectile_range_px <= 0.0
+            or projectile_lifetime_seconds <= 0.0
+            or projectile_radius_px <= 0.0
+            or damage <= 0.0
+            or max_fire_distance_px <= 0.0
+        ):
+            return 0
+
+        shots_fired = 0
+        fire_interval_seconds = 60.0 / fire_rate_rpm
+        for enemy in self._enemies:
+            if (
+                not enemy.alive
+                or enemy.awareness_state != "engaged"
+                or enemy.fire_cooldown_seconds > 0.0
+            ):
+                continue
+
+            direction_x = player_position.x - enemy.world_position.x
+            direction_y = player_position.y - enemy.world_position.y
+            distance = math.hypot(direction_x, direction_y)
+            if distance <= 0.0001 or distance > max_fire_distance_px:
+                continue
+
+            normalized_x = direction_x / distance
+            normalized_y = direction_y / distance
+            if not EnemySystem._has_line_of_sight(
+                start=enemy.world_position,
+                end=player_position,
+                collision_service=collision_service,
+                sample_step_px=line_of_sight_sample_step_px,
+            ):
+                continue
+
+            origin = WorldCoord(
+                x=enemy.world_position.x + normalized_x * max(0.0, muzzle_offset_px),
+                y=enemy.world_position.y + normalized_y * max(0.0, muzzle_offset_px),
+            )
+            if projectile_system.spawn(
+                origin=origin,
+                direction_x=normalized_x,
+                direction_y=normalized_y,
+                speed_px_per_second=projectile_speed_px_per_second,
+                max_distance_px=projectile_range_px,
+                lifetime_seconds=projectile_lifetime_seconds,
+                radius_px=projectile_radius_px,
+                damage=damage,
+                owner="enemy",
+            ):
+                enemy.fire_cooldown_seconds = fire_interval_seconds
+                shots_fired += 1
+        return shots_fired
+
     def apply_projectile_hits(
         self,
         projectiles: tuple[ProjectileState, ...],
@@ -2039,7 +2140,7 @@ class EnemySystem:
         if enemy_collision_radius_px <= 0.0:
             return
         for projectile in projectiles:
-            if not projectile.alive:
+            if not projectile.alive or projectile.owner != "player":
                 continue
             for enemy in self._enemies:
                 if not enemy.alive:

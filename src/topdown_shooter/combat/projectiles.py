@@ -21,7 +21,8 @@ class ProjectileState:
         max_distance_px: Maximum allowed travel distance in world pixels.
         lifetime_seconds: Maximum allowed lifetime in seconds.
         radius_px: Projectile marker radius in world pixels.
-        damage: Damage applied when this projectile hits an enemy.
+        damage: Damage applied when this projectile hits a valid target.
+        owner: Runtime owner tag used to route friendly and hostile hits.
         distance_traveled_px: Current traveled distance in world pixels.
         age_seconds: Current lifetime in seconds.
         alive: Whether the projectile is still active.
@@ -36,6 +37,7 @@ class ProjectileState:
     lifetime_seconds: float
     radius_px: float
     damage: float
+    owner: str = "player"
     distance_traveled_px: float = 0.0
     age_seconds: float = 0.0
     alive: bool = True
@@ -134,6 +136,7 @@ class ProjectileSystem:
         lifetime_seconds: float,
         radius_px: float,
         damage: float,
+        owner: str = "player",
     ) -> bool:
         """Spawn a projectile when the direction and parameters are valid.
 
@@ -145,7 +148,8 @@ class ProjectileSystem:
             max_distance_px: Maximum projectile travel distance in world pixels.
             lifetime_seconds: Maximum projectile lifetime in seconds.
             radius_px: Projectile marker radius in world pixels.
-            damage: Damage applied when this projectile hits an enemy.
+            damage: Damage applied when this projectile hits a valid target.
+            owner: Runtime owner tag, usually ``player`` or ``enemy``.
 
         Returns:
             True if a projectile was spawned.
@@ -158,6 +162,7 @@ class ProjectileSystem:
             or lifetime_seconds <= 0.0
             or radius_px <= 0.0
             or damage <= 0.0
+            or not owner
         ):
             return False
         projectile = ProjectileState(
@@ -170,6 +175,7 @@ class ProjectileSystem:
             lifetime_seconds=lifetime_seconds,
             radius_px=radius_px,
             damage=damage,
+            owner=owner,
         )
         self._projectiles.append(projectile)
         self._shots_fired += 1
