@@ -26,6 +26,10 @@ GOAL_MARKER_HEIGHT: Final[float] = 2.4
 CAMERA_PITCH_LIMIT: Final[float] = math.radians(88.0)
 BASE_GROUND_TILE: Final[str] = "+"
 GROUND_THICKNESS: Final[float] = 0.04
+TOP_DOWN_PITCH_DEGREES: Final[float] = -87.0
+LOW_FLY_PITCH_DEGREES: Final[float] = -28.0
+LOW_FLY_HEIGHT: Final[float] = 7.0
+
 
 
 @dataclass(frozen=True)
@@ -165,12 +169,18 @@ class ViewerScene:
         tile_primitives: Non-ground tile primitives to render every frame.
         start_goal_markers: Start and goal marker primitives.
         enemy_spawn_markers: Enemy spawn marker primitives.
+        start_world_position: Optional world X/Z position of the start marker.
+        goal_world_position: Optional world X/Z position of the goal marker.
+        enemy_spawn_world_positions: World X/Z positions of enemy spawn markers.
     """
 
     base_tile_count: int
     tile_primitives: tuple[RenderPrimitive, ...]
     start_goal_markers: tuple[RenderPrimitive, ...]
     enemy_spawn_markers: tuple[RenderPrimitive, ...]
+    start_world_position: tuple[float, float] | None
+    goal_world_position: tuple[float, float] | None
+    enemy_spawn_world_positions: tuple[tuple[float, float], ...]
 
     @property
     def primitive_count(self) -> int:
@@ -193,12 +203,14 @@ class ViewerState:
         use_render_radius: Whether camera-centered primitive culling is enabled.
         render_radius_tiles: Current render radius in tiles.
         visible_primitive_count: Number of primitives drawn in the last frame.
+        selected_enemy_spawn_index: Current enemy spawn focus index for Tab navigation.
     """
 
     show_grid: bool
     use_render_radius: bool
     render_radius_tiles: int
     visible_primitive_count: int = 0
+    selected_enemy_spawn_index: int = -1
 
 
 @dataclass
@@ -774,6 +786,8 @@ def build_viewer_scene(tactical_map: TacticalMap, config: ViewerConfig) -> Viewe
 
     tile_primitives: list[RenderPrimitive] = []
     start_goal_markers: list[RenderPrimitive] = []
+    start_world_position: tuple[float, float] | None = None
+    goal_world_position: tuple[float, float] | None = None
     base_tile_count = 0
 
     for tile_y, row in enumerate(tactical_map.tile_grid):
@@ -797,54 +811,58 @@ def build_viewer_scene(tactical_map: TacticalMap, config: ViewerConfig) -> Viewe
                 make_tile_primitive(tactical_map, config, tile_x, tile_y, tile, run_length)
             )
             if tile == "S":
-                start_goal_markers.append(
-                    make_marker_primitive(
-                        tactical_map,
-                        config,
-                        tile_x,
-                        tile_y,
-                        SPAWN_MARKER_HEIGHT,
-                        (60, 210, 90, 255),
-                        0.35,
-                    )
+                marker = make_marker_primitive(
+                    tactical_map,
+                    config,
+                    tile_x,
+                    tile_y,
+                    SPAWN_MARKER_HEIGHT,
+                    (60, 210, 90, 255),
+                    0.35,
                 )
+                start_goal_markers.append(marker)
+                start_world_position = (marker.x, marker.z)
             elif tile == "G":
-                start_goal_markers.append(
-                    make_marker_primitive(
-                        tactical_map,
-                        config,
-                        tile_x,
-                        tile_y,
-                        GOAL_MARKER_HEIGHT,
-                        (230, 210, 65, 255),
-                        0.35,
-                    )
+                marker = make_marker_primitive(
+                    tactical_map,
+                    config,
+                    tile_x,
+                    tile_y,
+                    GOAL_MARKER_HEIGHT,
+                    (230, 210, 65, 255),
+                    0.35,
                 )
+                start_goal_markers.append(marker)
+                goal_world_position = (marker.x, marker.z)
             tile_x += run_length
 
     enemy_spawn_markers = []
+    enemy_spawn_world_positions = []
     for zone in tactical_map.enemy_spawn_zones:
         position = zone.get("position")
         if not _is_tile_position(position):
             continue
         tile_x, tile_y = position
-        enemy_spawn_markers.append(
-            make_marker_primitive(
-                tactical_map,
-                config,
-                tile_x,
-                tile_y,
-                1.5,
-                (190, 55, 55, 255),
-                0.45,
-            )
+        marker = make_marker_primitive(
+            tactical_map,
+            config,
+            tile_x,
+            tile_y,
+            1.5,
+            (190, 55, 55, 255),
+            0.45,
         )
+        enemy_spawn_markers.append(marker)
+        enemy_spawn_world_positions.append((marker.x, marker.z))
 
     return ViewerScene(
         base_tile_count=base_tile_count,
         tile_primitives=tuple(tile_primitives),
         start_goal_markers=tuple(start_goal_markers),
         enemy_spawn_markers=tuple(enemy_spawn_markers),
+        start_world_position=start_world_position,
+        goal_world_position=goal_world_position,
+        enemy_spawn_world_positions=tuple(enemy_spawn_world_positions),
     )
 
 
@@ -911,12 +929,22 @@ def draw_primitive(raylib: Any, primitive: RenderPrimitive, show_wires: bool) ->
         )
 
 
-def update_viewer_state(raylib: Any, state: ViewerState, config: ViewerConfig) -> None:
-    """Update viewer toggles from keyboard input.
+def update_viewer_state(
+    raylib: Any,
+    state: ViewerState,
+    camera_state: FlyCameraState,
+    tactical_map: TacticalMap,
+    scene: ViewerScene,
+    config: ViewerConfig,
+) -> None:
+    """Update viewer toggles and navigation hotkeys from keyboard input.
 
     Args:
         raylib: Imported pyray module.
         state: Mutable viewer state.
+        camera_state: Mutable camera state.
+        tactical_map: Source tactical map.
+        scene: Precomputed viewer scene.
         config: Viewer config.
     """
 
@@ -934,6 +962,125 @@ def update_viewer_state(raylib: Any, state: ViewerState, config: ViewerConfig) -
             config.render.render_radius_max_tiles,
             state.render_radius_tiles + config.render.render_radius_step_tiles,
         )
+
+    if raylib.is_key_pressed(raylib.KEY_R):
+        reset_camera(camera_state, tactical_map, config)
+    if raylib.is_key_pressed(raylib.KEY_ONE):
+        set_top_down_view(camera_state, tactical_map, config)
+    if raylib.is_key_pressed(raylib.KEY_TWO):
+        set_low_fly_view(camera_state, config)
+    if raylib.is_key_pressed(raylib.KEY_HOME) and scene.start_world_position is not None:
+        focus_camera_on_world_position(camera_state, scene.start_world_position)
+    if raylib.is_key_pressed(raylib.KEY_END) and scene.goal_world_position is not None:
+        focus_camera_on_world_position(camera_state, scene.goal_world_position)
+    if raylib.is_key_pressed(raylib.KEY_TAB):
+        focus_next_enemy_spawn(raylib, state, camera_state, scene)
+
+
+def reset_camera(
+    camera_state: FlyCameraState,
+    tactical_map: TacticalMap,
+    config: ViewerConfig,
+) -> None:
+    """Reset a camera state to the default map overview position.
+
+    Args:
+        camera_state: Mutable camera state to update.
+        tactical_map: Source tactical map.
+        config: Viewer config.
+    """
+
+    default_state = make_initial_camera_state(tactical_map, config)
+    camera_state.x = default_state.x
+    camera_state.y = default_state.y
+    camera_state.z = default_state.z
+    camera_state.yaw = default_state.yaw
+    camera_state.pitch = default_state.pitch
+
+
+def set_top_down_view(
+    camera_state: FlyCameraState,
+    tactical_map: TacticalMap,
+    config: ViewerConfig,
+) -> None:
+    """Switch the camera to a high top-down inspection view.
+
+    Args:
+        camera_state: Mutable camera state to update.
+        tactical_map: Source tactical map.
+        config: Viewer config.
+    """
+
+    map_extent = max(tactical_map.width, tactical_map.height) * config.render.tile_size
+    camera_state.y = max(camera_state.y, map_extent * 0.75, config.camera.start_height_min)
+    camera_state.yaw = 0.0
+    camera_state.pitch = math.radians(TOP_DOWN_PITCH_DEGREES)
+
+
+def set_low_fly_view(camera_state: FlyCameraState, config: ViewerConfig) -> None:
+    """Switch the camera to a low oblique flyover view.
+
+    Args:
+        camera_state: Mutable camera state to update.
+        config: Viewer config.
+    """
+
+    camera_state.y = max(config.camera.min_height, LOW_FLY_HEIGHT)
+    camera_state.pitch = math.radians(LOW_FLY_PITCH_DEGREES)
+
+
+def focus_camera_on_world_position(
+    camera_state: FlyCameraState,
+    world_position: tuple[float, float],
+) -> None:
+    """Move camera X/Z to a marker while preserving height and view angle.
+
+    Args:
+        camera_state: Mutable camera state to update.
+        world_position: Target world X/Z position.
+    """
+
+    camera_state.x, camera_state.z = world_position
+
+
+def focus_next_enemy_spawn(
+    raylib: Any,
+    state: ViewerState,
+    camera_state: FlyCameraState,
+    scene: ViewerScene,
+) -> None:
+    """Move camera focus through enemy spawn markers using Tab shortcuts.
+
+    Args:
+        raylib: Imported pyray module.
+        state: Mutable viewer state.
+        camera_state: Mutable camera state to update.
+        scene: Precomputed viewer scene with spawn marker positions.
+    """
+
+    positions = scene.enemy_spawn_world_positions
+    if not positions:
+        return
+
+    step = -1 if _is_shift_down(raylib) else 1
+    if state.selected_enemy_spawn_index < 0:
+        state.selected_enemy_spawn_index = 0 if step > 0 else len(positions) - 1
+    else:
+        state.selected_enemy_spawn_index = (state.selected_enemy_spawn_index + step) % len(positions)
+    focus_camera_on_world_position(camera_state, positions[state.selected_enemy_spawn_index])
+
+
+def _is_shift_down(raylib: Any) -> bool:
+    """Return whether either Shift key is currently held.
+
+    Args:
+        raylib: Imported pyray module.
+
+    Returns:
+        True if Shift is down, otherwise False.
+    """
+
+    return raylib.is_key_down(raylib.KEY_LEFT_SHIFT) or raylib.is_key_down(raylib.KEY_RIGHT_SHIFT)
 
 
 def is_primitive_visible(
@@ -1073,7 +1220,8 @@ def draw_hud(
     lines = [
         f"Map 3D Viewer: {map_path.name} ({tactical_map.width}x{tactical_map.height})",
         "WASD move | Mouse look | Space/E up | Ctrl/Q down | Wheel height | Shift fast",
-        "G grid | F radius | [/] radius size | Esc exit",
+        "G grid | F radius | [/] radius size | R reset | 1 top | 2 low | Esc exit",
+        "Home start | End goal | Tab enemy spawn | Shift+Tab previous spawn",
         (
             f"Draw: {state.visible_primitive_count}/{scene.primitive_count} visible primitives, "
             f"skipped {scene.base_tile_count} base grass tiles"
@@ -1144,7 +1292,14 @@ def run_viewer(raylib: Any, tactical_map: TacticalMap, map_path: Path, config: V
 
     try:
         while not raylib.window_should_close():
-            update_viewer_state(raylib, viewer_state, config)
+            update_viewer_state(
+                raylib,
+                viewer_state,
+                camera_state,
+                tactical_map,
+                scene,
+                config,
+            )
             camera = update_fly_camera(raylib, camera_state, config)
             raylib.begin_drawing()
             raylib.clear_background(make_color(raylib, (18, 20, 24, 255)))

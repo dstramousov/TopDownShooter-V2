@@ -427,3 +427,10 @@
 - Added camera-centered render radius culling to `res/map_3d_viewer.py`.
 - Added `F` to toggle render radius and `[` / `]` to change radius size at runtime.
 - Updated the HUD with visible/total primitive counts and render radius state.
+
+## v0.0.56 -> v0.0.57
+
+- Added camera navigation presets to `res/map_3d_viewer.py`.
+- Added `R` reset, `1` top-down view, and `2` low fly view hotkeys.
+- Added quick camera focus hotkeys for start, goal, and enemy spawn markers.
+- Updated the viewer HUD controls hint.
