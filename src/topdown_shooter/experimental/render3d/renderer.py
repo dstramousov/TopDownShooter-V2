@@ -2,13 +2,32 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+import math
+
 from topdown_shooter.config.runtime_config import RuntimeConfig
-from topdown_shooter.experimental.render3d.camera import Render3DCameraState
-from topdown_shooter.experimental.render3d.scene import Render3DSceneSnapshot
+from topdown_shooter.experimental.render3d.camera import Render3DFollowCamera
+from topdown_shooter.experimental.render3d.scene import Render3DSceneBuilder, Render3DSceneSnapshot
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.rendering.raylib_window import import_raylib
-from topdown_shooter.world.coordinates import TileCoord
+from topdown_shooter.world.coordinates import TileCoord, WorldCoord
+from topdown_shooter.world.player import PlayerState
+from topdown_shooter.world.player_aim import PlayerAimState
+from topdown_shooter.world.player_controller import PlayerController, PlayerMoveIntent
 from topdown_shooter.world.runtime_map import RuntimeMap
+
+
+@dataclass(frozen=True, slots=True)
+class Render3DInputState:
+    """Current experimental 3D input state.
+
+    Attributes:
+        move_x: Horizontal movement direction.
+        move_y: Vertical movement direction.
+    """
+
+    move_x: float
+    move_y: float
 
 
 class Render3DRenderer:
@@ -31,53 +50,163 @@ class Render3DRenderer:
         self._package = package
         self._config = config
         self._raylib = import_raylib()
+        self._camera_mode = Render3DFollowCamera.LOW_FOLLOW_MODE
+        self._last_facing_x = 0.0
+        self._last_facing_y = -1.0
+        self._player_key_left = self._resolve_player_keys(
+            config.controls.player_left,
+            fallback_key_names=("KEY_LEFT",),
+        )
+        self._player_key_right = self._resolve_player_keys(
+            config.controls.player_right,
+            fallback_key_names=("KEY_RIGHT",),
+        )
+        self._player_key_up = self._resolve_player_keys(
+            config.controls.player_up,
+            fallback_key_names=("KEY_UP",),
+        )
+        self._player_key_down = self._resolve_player_keys(
+            config.controls.player_down,
+            fallback_key_names=("KEY_DOWN",),
+        )
+        self._key_one = self._resolve_key("KEY_ONE")
+        self._key_two = self._resolve_key("KEY_TWO")
+        self._key_reset = self._resolve_key("KEY_R")
+        self._key_hud = self._resolve_key("KEY_H")
+        self._show_debug_hud = config.render3d.show_debug_hud
 
-    def run_static_preview(
+    def run_follow_preview(
         self,
-        camera_state: Render3DCameraState,
-        scene: Render3DSceneSnapshot,
-        player_tile: TileCoord,
+        player: PlayerState,
+        player_controller: PlayerController,
+        scene_builder: Render3DSceneBuilder,
+        camera_controller: Render3DFollowCamera,
     ) -> None:
-        """Run a static first-pass 3D preview window.
+        """Run the first interactive 3D follow-camera preview.
 
         Args:
-            camera_state: Camera state computed from the player position.
-            scene: Visible 3D scene snapshot.
-            player_tile: Player tile used for the marker.
+            player: Mutable player state used by the experiment.
+            player_controller: Runtime player movement controller.
+            scene_builder: View-radius scene builder.
+            camera_controller: Smoothed 3D follow-camera controller.
         """
         raylib = self._raylib
         window = self._config.window
-        render3d = self._config.render3d
+        self._configure_raylib_logging()
         raylib.init_window(window.width, window.height, f"{window.title} - 3D experiment")
         raylib.set_target_fps(window.target_fps)
-        camera = raylib.Camera3D(
-            raylib.Vector3(
-                camera_state.position.x,
-                camera_state.position.y,
-                camera_state.position.z,
-            ),
-            raylib.Vector3(
-                camera_state.target.x,
-                camera_state.target.y,
-                camera_state.target.z,
-            ),
-            raylib.Vector3(0.0, 1.0, 0.0),
-            60.0,
-            raylib.CAMERA_PERSPECTIVE,
-        )
+        scene = scene_builder.build_snapshot(player.tile)
         try:
             while not raylib.window_should_close():
+                if raylib.is_key_pressed(raylib.KEY_ESCAPE):
+                    break
+                frame_time = raylib.get_frame_time()
+                self._update_camera_mode(camera_controller)
+                input_state = self._read_input_state()
+                self._update_player(player, player_controller, input_state, frame_time)
+                scene = scene_builder.build_snapshot(player.tile)
+                camera_state = camera_controller.build_state(
+                    player_position=player.world_position,
+                    facing_x=self._last_facing_x,
+                    facing_y=self._last_facing_y,
+                    frame_time=frame_time,
+                    mode=self._camera_mode,
+                )
+                camera = raylib.Camera3D(
+                    raylib.Vector3(
+                        camera_state.position.x,
+                        camera_state.position.y,
+                        camera_state.position.z,
+                    ),
+                    raylib.Vector3(
+                        camera_state.target.x,
+                        camera_state.target.y,
+                        camera_state.target.z,
+                    ),
+                    raylib.Vector3(0.0, 1.0, 0.0),
+                    60.0,
+                    raylib.CAMERA_PERSPECTIVE,
+                )
                 raylib.begin_drawing()
                 raylib.clear_background(raylib.BLACK)
                 raylib.begin_mode_3d(camera)
                 self._draw_scene(scene)
-                self._draw_player_marker(player_tile)
+                self._draw_player_marker(player.tile, self._last_facing_x, self._last_facing_y)
                 raylib.end_mode_3d()
-                if render3d.show_debug_hud:
+                if self._show_debug_hud:
                     self._draw_debug_hud(scene)
                 raylib.end_drawing()
         finally:
             raylib.close_window()
+
+    def run_static_preview(
+        self,
+        camera_controller: Render3DFollowCamera,
+        scene_builder: Render3DSceneBuilder,
+        player: PlayerState,
+    ) -> None:
+        """Run the current interactive preview through the legacy entry point.
+
+        Args:
+            camera_controller: Smoothed 3D follow-camera controller.
+            scene_builder: View-radius scene builder.
+            player: Mutable player state used by the experiment.
+        """
+        raise RuntimeError(
+            "run_static_preview() is obsolete; use run_follow_preview() instead.",
+        )
+
+    def _update_camera_mode(self, camera_controller: Render3DFollowCamera) -> None:
+        """Apply camera mode hotkeys."""
+        raylib = self._raylib
+        if raylib.is_key_pressed(self._key_one):
+            self._camera_mode = Render3DFollowCamera.TOP_DOWN_MODE
+            camera_controller.reset()
+        if raylib.is_key_pressed(self._key_two):
+            self._camera_mode = Render3DFollowCamera.LOW_FOLLOW_MODE
+            camera_controller.reset()
+        if raylib.is_key_pressed(self._key_reset):
+            camera_controller.reset()
+        if raylib.is_key_pressed(self._key_hud):
+            self._show_debug_hud = not self._show_debug_hud
+
+    def _read_input_state(self) -> Render3DInputState:
+        """Read movement input for the experimental 3D player loop."""
+        move_x = 0.0
+        move_y = 0.0
+        if self._is_any_key_down(self._player_key_left):
+            move_x -= 1.0
+        if self._is_any_key_down(self._player_key_right):
+            move_x += 1.0
+        if self._is_any_key_down(self._player_key_up):
+            move_y -= 1.0
+        if self._is_any_key_down(self._player_key_down):
+            move_y += 1.0
+        return Render3DInputState(move_x=move_x, move_y=move_y)
+
+    def _update_player(
+        self,
+        player: PlayerState,
+        player_controller: PlayerController,
+        input_state: Render3DInputState,
+        frame_time: float,
+    ) -> None:
+        """Update the experimental player movement and facing direction."""
+        player_controller.update(
+            player=player,
+            intent=PlayerMoveIntent(x=input_state.move_x, y=input_state.move_y),
+            frame_time=frame_time,
+            speed_px_per_second=self._config.player.movement_speed_px_per_second,
+        )
+        if input_state.move_x != 0.0 or input_state.move_y != 0.0:
+            length = math.hypot(input_state.move_x, input_state.move_y)
+            self._last_facing_x = input_state.move_x / length
+            self._last_facing_y = input_state.move_y / length
+            aim_target = WorldCoord(
+                x=player.world_position.x + self._last_facing_x * self._runtime_map.tile_size_px,
+                y=player.world_position.y + self._last_facing_y * self._runtime_map.tile_size_px,
+            )
+            player.aim = PlayerAimState.from_positions(player.world_position, aim_target)
 
     def _draw_scene(self, scene: Render3DSceneSnapshot) -> None:
         """Draw visible map primitives.
@@ -122,20 +251,42 @@ class Render3DRenderer:
                 self._tile_color(primitive.symbol),
             )
 
-    def _draw_player_marker(self, player_tile: TileCoord) -> None:
-        """Draw the player start marker.
+    def _draw_player_marker(
+        self,
+        player_tile: TileCoord,
+        facing_x: float,
+        facing_y: float,
+    ) -> None:
+        """Draw the player marker and facing direction.
 
         Args:
             player_tile: Current player tile.
+            facing_x: Current facing X direction.
+            facing_y: Current facing Y direction.
         """
         raylib = self._raylib
         tile_size = self._config.render3d.tile_size
+        height_scale = self._config.render3d.height_scale
         center = raylib.Vector3(
             (player_tile.x + 0.5) * tile_size,
-            0.7,
+            0.7 * height_scale,
             (player_tile.y + 0.5) * tile_size,
         )
-        raylib.draw_cylinder(center, tile_size * 0.3, tile_size * 0.3, 1.4, 16, raylib.YELLOW)
+        raylib.draw_cylinder(
+            center,
+            tile_size * 0.34,
+            tile_size * 0.24,
+            1.4 * height_scale,
+            16,
+            raylib.YELLOW,
+        )
+        direction_end = raylib.Vector3(
+            center.x + facing_x * tile_size * 1.3,
+            center.y + 0.35 * height_scale,
+            center.z + facing_y * tile_size * 1.3,
+        )
+        raylib.draw_line_3d(center, direction_end, raylib.ORANGE)
+        raylib.draw_sphere(direction_end, tile_size * 0.16, raylib.ORANGE)
 
     def _draw_debug_hud(self, scene: Render3DSceneSnapshot) -> None:
         """Draw the experimental renderer debug HUD.
@@ -147,11 +298,12 @@ class Render3DRenderer:
         lines = [
             "3D renderer experiment",
             f"FPS: {raylib.get_fps()}",
+            f"camera: {self._camera_mode}",
             f"mode: {self._config.render3d.render_mode}",
             f"view radius: {self._config.render3d.view_radius_tiles} tiles",
             f"visible primitives: {len(scene.primitives)}",
             f"culled tiles: {scene.culled_tile_count}/{scene.total_tile_count}",
-            "ESC: close",
+            "WASD/arrows move | 1 top | 2 low | R reset | H HUD | ESC close",
         ]
         y = 12
         for line in lines:
@@ -178,3 +330,30 @@ class Render3DRenderer:
             "S": raylib.YELLOW,
             "G": raylib.GOLD,
         }.get(symbol, raylib.GREEN)
+
+    def _configure_raylib_logging(self) -> None:
+        """Reduce raylib logging noise before opening the 3D experiment window."""
+        set_level = getattr(self._raylib, "set_trace_log_level", None)
+        warning_level = getattr(self._raylib, "LOG_WARNING", None)
+        if callable(set_level) and isinstance(warning_level, int):
+            set_level(warning_level)
+
+    def _resolve_key(self, key_name: str) -> int:
+        """Resolve a raylib key constant by name."""
+        key_value = getattr(self._raylib, key_name, None)
+        if not isinstance(key_value, int):
+            raise RuntimeError(f"Unknown raylib key binding: {key_name}")
+        return key_value
+
+    def _resolve_player_keys(
+        self,
+        configured_key_names: tuple[str, ...],
+        fallback_key_names: tuple[str, ...],
+    ) -> tuple[int, ...]:
+        """Resolve configured movement keys plus 3D experiment fallbacks."""
+        key_names = configured_key_names + fallback_key_names
+        return tuple(self._resolve_key(key_name) for key_name in key_names)
+
+    def _is_any_key_down(self, keys: tuple[int, ...]) -> bool:
+        """Return whether any key in a tuple is held down."""
+        return any(self._raylib.is_key_down(key) for key in keys)

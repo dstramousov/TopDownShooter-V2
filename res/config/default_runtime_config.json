@@ -184,10 +184,12 @@
     "show_debug_hud": true,
     "max_visible_primitives": 3000,
     "camera": {
-      "height": 28.0,
-      "distance": 18.0,
-      "look_ahead_tiles": 4.0,
-      "follow_smoothing": 0.18
+      "height": 18.0,
+      "distance": 12.0,
+      "look_ahead_tiles": 5.0,
+      "follow_smoothing": 0.14,
+      "top_down_height": 70.0,
+      "top_down_back_offset_tiles": 0.25
     }
   }
 }

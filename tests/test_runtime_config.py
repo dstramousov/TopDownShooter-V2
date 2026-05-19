@@ -141,7 +141,11 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.render3d.render_mode == "optimized"
     assert config.render3d.show_debug_hud is True
     assert config.render3d.max_visible_primitives == 3000
-    assert config.render3d.camera.height == 28.0
-    assert config.render3d.camera.distance == 18.0
-    assert config.render3d.camera.look_ahead_tiles == 4.0
-    assert config.render3d.camera.follow_smoothing == 0.18
+    assert config.render3d.camera.height == 18.0
+    assert config.render3d.camera.distance == 12.0
+    assert config.render3d.camera.top_down_height == 70.0
+    assert config.render3d.camera.top_down_back_offset_tiles == 0.25
+    assert config.render3d.camera.look_ahead_tiles == 5.0
+    assert config.render3d.camera.follow_smoothing == 0.14
+    assert config.render3d.camera.top_down_height == 70.0
+    assert config.render3d.camera.top_down_back_offset_tiles == 0.25

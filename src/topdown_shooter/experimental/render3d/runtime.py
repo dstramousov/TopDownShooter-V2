@@ -7,7 +7,9 @@ from topdown_shooter.experimental.render3d.camera import Render3DFollowCamera
 from topdown_shooter.experimental.render3d.renderer import Render3DRenderer
 from topdown_shooter.experimental.render3d.scene import Render3DSceneBuilder
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
+from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.player import PlayerState
+from topdown_shooter.world.player_controller import PlayerController
 from topdown_shooter.world.runtime_map import RuntimeMap
 
 
@@ -32,26 +34,32 @@ class ExperimentalRender3DRuntime:
         self._config = config
 
     def run(self) -> None:
-        """Run the first-pass 3D runtime preview."""
+        """Run the first interactive 3D runtime preview."""
         player = PlayerState.spawn_at_map_start(
             self._runtime_map,
             max_health=self._config.player.max_health,
+        )
+        collision_service = TileCollisionService(self._runtime_map)
+        player_controller = PlayerController(
+            collision_service=collision_service,
+            tile_size_px=self._runtime_map.tile_size_px,
+            collision_radius_px=self._config.player.collision_radius_px,
         )
         camera = Render3DFollowCamera(
             config=self._config.render3d,
             tile_size_px=self._runtime_map.tile_size_px,
         )
-        camera_state = camera.build_state(player.world_position)
-        scene = Render3DSceneBuilder(
+        scene_builder = Render3DSceneBuilder(
             runtime_map=self._runtime_map,
             config=self._config.render3d,
-        ).build_snapshot(player.tile)
+        )
         Render3DRenderer(
             runtime_map=self._runtime_map,
             package=self._package,
             config=self._config,
-        ).run_static_preview(
-            camera_state=camera_state,
-            scene=scene,
-            player_tile=player.tile,
+        ).run_follow_preview(
+            player=player,
+            player_controller=player_controller,
+            scene_builder=scene_builder,
+            camera_controller=camera,
         )

@@ -448,3 +448,11 @@
 - Added `--renderer 2d|3d` to select the runtime renderer backend while keeping 2D as the default.
 - Added an isolated `topdown_shooter.experimental.render3d` scaffold with follow camera, scene culling, and a minimal 3D preview renderer.
 - Kept the existing 2D runtime path unchanged unless `--renderer 3d` is explicitly requested.
+
+## v0.0.59 -> v0.0.60
+
+- Reworked the experimental 3D runtime from a static preview into an interactive player-follow preview.
+- Added smoothed 3D camera modes: `1` for top-down view, `2` for low follow view, and `R` to reset smoothing.
+- Added player movement in the 3D experiment with WASD and arrow-key aliases while preserving the 2D runtime path.
+- Improved the 3D player marker with a facing line and added `H` to toggle the 3D debug HUD.
+- Extended the `render3d.camera` config section with top-down camera settings and tuned the default low-follow camera closer to the player.

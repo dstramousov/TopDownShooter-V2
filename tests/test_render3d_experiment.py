@@ -48,8 +48,10 @@ def test_render3d_config_loads_from_default_config() -> None:
     assert config.render3d.view_radius_tiles == 60
     assert config.render3d.render_mode == "optimized"
     assert config.render3d.max_visible_primitives == 3000
-    assert config.render3d.camera.height == 28.0
-    assert config.render3d.camera.distance == 18.0
+    assert config.render3d.camera.height == 18.0
+    assert config.render3d.camera.distance == 12.0
+    assert config.render3d.camera.top_down_height == 70.0
+    assert config.render3d.camera.top_down_back_offset_tiles == 0.25
 
 
 def test_render3d_camera_builds_follow_state() -> None:

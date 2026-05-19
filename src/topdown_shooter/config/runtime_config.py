@@ -333,16 +333,20 @@ class Render3DCameraConfig:
     """Experimental 3D follow-camera settings.
 
     Attributes:
-        height: Camera height above the player in 3D tile units.
-        distance: Camera distance behind the player in 3D tile units.
+        height: Low-follow camera height above the player in 3D tile units.
+        distance: Low-follow camera distance behind the player in 3D tile units.
         look_ahead_tiles: Forward look-ahead distance in tile units.
-        follow_smoothing: Camera smoothing factor reserved for follow updates.
+        follow_smoothing: Camera smoothing factor for follow updates.
+        top_down_height: Top-down camera height above the player in tile units.
+        top_down_back_offset_tiles: Small top-down Z offset to avoid a singular view.
     """
 
     height: float
     distance: float
     look_ahead_tiles: float
     follow_smoothing: float
+    top_down_height: float
+    top_down_back_offset_tiles: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -851,6 +855,14 @@ class RuntimeConfigLoader:
                 follow_smoothing=self._require_non_negative_float(
                     camera,
                     "follow_smoothing",
+                ),
+                top_down_height=self._require_positive_float(
+                    camera,
+                    "top_down_height",
+                ),
+                top_down_back_offset_tiles=self._require_positive_float(
+                    camera,
+                    "top_down_back_offset_tiles",
                 ),
             ),
         )
