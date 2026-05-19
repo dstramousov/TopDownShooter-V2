@@ -25,6 +25,7 @@
     "render_radius_min_tiles": 20,
     "render_radius_max_tiles": 300,
     "draw_enemy_spawns": true,
-    "draw_objective": true
+    "draw_objective": true,
+    "default_render_mode": "optimized"
   }
 }

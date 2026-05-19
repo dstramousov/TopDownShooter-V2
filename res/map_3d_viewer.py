@@ -29,6 +29,9 @@ GROUND_THICKNESS: Final[float] = 0.04
 TOP_DOWN_PITCH_DEGREES: Final[float] = -87.0
 LOW_FLY_PITCH_DEGREES: Final[float] = -28.0
 LOW_FLY_HEIGHT: Final[float] = 7.0
+RENDER_MODE_OPTIMIZED: Final[str] = "optimized"
+RENDER_MODE_PER_TILE: Final[str] = "per_tile"
+VALID_RENDER_MODES: Final[frozenset[str]] = frozenset({RENDER_MODE_OPTIMIZED, RENDER_MODE_PER_TILE})
 
 
 
@@ -90,6 +93,7 @@ class RenderConfig:
         render_radius_max_tiles: Maximum runtime render radius.
         draw_enemy_spawns: Whether enemy spawn markers are visible.
         draw_objective: Whether start and goal markers are visible.
+        default_render_mode: Initial tile render mode.
     """
 
     tile_size: float = 1.0
@@ -101,6 +105,7 @@ class RenderConfig:
     render_radius_max_tiles: int = 300
     draw_enemy_spawns: bool = True
     draw_objective: bool = True
+    default_render_mode: str = RENDER_MODE_OPTIMIZED
 
 
 @dataclass(frozen=True)
@@ -166,7 +171,8 @@ class ViewerScene:
 
     Attributes:
         base_tile_count: Number of skipped base ground tiles.
-        tile_primitives: Non-ground tile primitives to render every frame.
+        tile_primitives: Optimized non-ground tile primitives to render every frame.
+        per_tile_primitives: Full individual tile primitives for detailed visible-radius render.
         start_goal_markers: Start and goal marker primitives.
         enemy_spawn_markers: Enemy spawn marker primitives.
         start_world_position: Optional world X/Z position of the start marker.
@@ -176,6 +182,7 @@ class ViewerScene:
 
     base_tile_count: int
     tile_primitives: tuple[RenderPrimitive, ...]
+    per_tile_primitives: tuple[RenderPrimitive, ...]
     start_goal_markers: tuple[RenderPrimitive, ...]
     enemy_spawn_markers: tuple[RenderPrimitive, ...]
     start_world_position: tuple[float, float] | None
@@ -183,14 +190,24 @@ class ViewerScene:
     enemy_spawn_world_positions: tuple[tuple[float, float], ...]
 
     @property
-    def primitive_count(self) -> int:
-        """Return the total number of scene primitives including the ground slab."""
+    def optimized_primitive_count(self) -> int:
+        """Return the optimized primitive count including the ground slab."""
 
         return (
             len(self.tile_primitives)
             + len(self.start_goal_markers)
             + len(self.enemy_spawn_markers)
             + 1
+        )
+
+    @property
+    def per_tile_primitive_count(self) -> int:
+        """Return the detailed per-tile primitive count with markers."""
+
+        return (
+            len(self.per_tile_primitives)
+            + len(self.start_goal_markers)
+            + len(self.enemy_spawn_markers)
         )
 
 
@@ -202,6 +219,7 @@ class ViewerState:
         show_grid: Whether the expensive debug grid and tile wires are visible.
         use_render_radius: Whether camera-centered primitive culling is enabled.
         render_radius_tiles: Current render radius in tiles.
+        render_mode: Current tile render mode.
         visible_primitive_count: Number of primitives drawn in the last frame.
         selected_enemy_spawn_index: Current enemy spawn focus index for Tab navigation.
     """
@@ -209,6 +227,7 @@ class ViewerState:
     show_grid: bool
     use_render_radius: bool
     render_radius_tiles: int
+    render_mode: str
     visible_primitive_count: int = 0
     selected_enemy_spawn_index: int = -1
 
@@ -398,6 +417,11 @@ def load_viewer_config(path: Path) -> ViewerConfig:
                 RenderConfig.draw_enemy_spawns,
             ),
             draw_objective=_get_bool(render_payload, "draw_objective", RenderConfig.draw_objective),
+            default_render_mode=_get_render_mode(
+                render_payload,
+                "default_render_mode",
+                RenderConfig.default_render_mode,
+            ),
         ),
     )
 
@@ -491,6 +515,27 @@ def _get_bool(payload: dict[str, Any], key: str, default: bool) -> bool:
     return value
 
 
+
+
+def _get_render_mode(payload: dict[str, Any], key: str, default: str) -> str:
+    """Read a render mode config value with validation.
+
+    Args:
+        payload: Config section object.
+        key: Config key.
+        default: Fallback value.
+
+    Returns:
+        Validated render mode string.
+    """
+
+    value = payload.get(key, default)
+    if not isinstance(value, str) or value not in VALID_RENDER_MODES:
+        LOGGER.warning("Invalid render mode for %s; using %s.", key, default)
+        return default
+    return value
+
+
 def normalize_viewer_config(config: ViewerConfig) -> ViewerConfig:
     """Normalize dependent config values.
 
@@ -517,6 +562,9 @@ def normalize_viewer_config(config: ViewerConfig) -> ViewerConfig:
             render_radius_max_tiles=radius_max,
             draw_enemy_spawns=config.render.draw_enemy_spawns,
             draw_objective=config.render.draw_objective,
+            default_render_mode=config.render.default_render_mode
+            if config.render.default_render_mode in VALID_RENDER_MODES
+            else RENDER_MODE_OPTIMIZED,
         ),
     )
 
@@ -785,6 +833,7 @@ def build_viewer_scene(tactical_map: TacticalMap, config: ViewerConfig) -> Viewe
     """
 
     tile_primitives: list[RenderPrimitive] = []
+    per_tile_primitives: list[RenderPrimitive] = []
     start_goal_markers: list[RenderPrimitive] = []
     start_world_position: tuple[float, float] | None = None
     goal_world_position: tuple[float, float] | None = None
@@ -794,6 +843,9 @@ def build_viewer_scene(tactical_map: TacticalMap, config: ViewerConfig) -> Viewe
         tile_x = 0
         while tile_x < tactical_map.width:
             tile = row[tile_x]
+            per_tile_primitives.append(
+                make_tile_primitive(tactical_map, config, tile_x, tile_y, tile, 1)
+            )
             if tile == BASE_GROUND_TILE:
                 base_tile_count += 1
                 tile_x += 1
@@ -858,6 +910,7 @@ def build_viewer_scene(tactical_map: TacticalMap, config: ViewerConfig) -> Viewe
     return ViewerScene(
         base_tile_count=base_tile_count,
         tile_primitives=tuple(tile_primitives),
+        per_tile_primitives=tuple(per_tile_primitives),
         start_goal_markers=tuple(start_goal_markers),
         enemy_spawn_markers=tuple(enemy_spawn_markers),
         start_world_position=start_world_position,
@@ -952,6 +1005,12 @@ def update_viewer_state(
         state.show_grid = not state.show_grid
     if raylib.is_key_pressed(raylib.KEY_F):
         state.use_render_radius = not state.use_render_radius
+    if raylib.is_key_pressed(raylib.KEY_T):
+        state.render_mode = (
+            RENDER_MODE_PER_TILE
+            if state.render_mode == RENDER_MODE_OPTIMIZED
+            else RENDER_MODE_OPTIMIZED
+        )
     if raylib.is_key_pressed(raylib.KEY_LEFT_BRACKET):
         state.render_radius_tiles = max(
             config.render.render_radius_min_tiles,
@@ -1088,6 +1147,7 @@ def is_primitive_visible(
     camera_state: FlyCameraState,
     state: ViewerState,
     config: ViewerConfig,
+    force_radius: bool = False,
 ) -> bool:
     """Check whether a primitive is inside the camera-centered render radius.
 
@@ -1096,12 +1156,13 @@ def is_primitive_visible(
         camera_state: Current camera state.
         state: Mutable viewer state.
         config: Viewer config.
+        force_radius: Whether to apply radius culling even when globally disabled.
 
     Returns:
         True when the primitive should be drawn.
     """
 
-    if not state.use_render_radius:
+    if not state.use_render_radius and not force_radius:
         return True
 
     radius = state.render_radius_tiles * config.render.tile_size
@@ -1116,6 +1177,7 @@ def iter_visible_primitives(
     camera_state: FlyCameraState,
     state: ViewerState,
     config: ViewerConfig,
+    force_radius: bool = False,
 ) -> tuple[RenderPrimitive, ...]:
     """Filter primitives by the active render radius.
 
@@ -1124,17 +1186,18 @@ def iter_visible_primitives(
         camera_state: Current camera state.
         state: Mutable viewer state.
         config: Viewer config.
+        force_radius: Whether to apply radius culling even when globally disabled.
 
     Returns:
         Visible primitives for the current frame.
     """
 
-    if not state.use_render_radius:
+    if not state.use_render_radius and not force_radius:
         return primitives
     return tuple(
         primitive
         for primitive in primitives
-        if is_primitive_visible(primitive, camera_state, state, config)
+        if is_primitive_visible(primitive, camera_state, state, config, force_radius)
     )
 
 
@@ -1157,13 +1220,25 @@ def draw_scene(
         config: Viewer config.
     """
 
-    visible_count = 1
-    draw_base_ground(raylib, tactical_map, config)
-
-    tile_primitives = iter_visible_primitives(scene.tile_primitives, camera_state, state, config)
-    for primitive in tile_primitives:
-        draw_primitive(raylib, primitive, state.show_grid)
-    visible_count += len(tile_primitives)
+    visible_count = 0
+    if state.render_mode == RENDER_MODE_PER_TILE:
+        tile_primitives = iter_visible_primitives(
+            scene.per_tile_primitives,
+            camera_state,
+            state,
+            config,
+            force_radius=True,
+        )
+        for primitive in tile_primitives:
+            draw_primitive(raylib, primitive, state.show_grid)
+        visible_count += len(tile_primitives)
+    else:
+        visible_count += 1
+        draw_base_ground(raylib, tactical_map, config)
+        tile_primitives = iter_visible_primitives(scene.tile_primitives, camera_state, state, config)
+        for primitive in tile_primitives:
+            draw_primitive(raylib, primitive, state.show_grid)
+        visible_count += len(tile_primitives)
 
     if config.render.draw_objective:
         objective_primitives = iter_visible_primitives(
@@ -1171,6 +1246,7 @@ def draw_scene(
             camera_state,
             state,
             config,
+            force_radius=state.render_mode == RENDER_MODE_PER_TILE,
         )
         for primitive in objective_primitives:
             draw_primitive(raylib, primitive, state.show_grid)
@@ -1182,6 +1258,7 @@ def draw_scene(
             camera_state,
             state,
             config,
+            force_radius=state.render_mode == RENDER_MODE_PER_TILE,
         )
         for primitive in enemy_primitives:
             draw_primitive(raylib, primitive, state.show_grid)
@@ -1217,16 +1294,26 @@ def draw_hud(
         if state.use_render_radius
         else f"radius off/{state.render_radius_tiles} tiles"
     )
+    total_primitives = (
+        scene.per_tile_primitive_count
+        if state.render_mode == RENDER_MODE_PER_TILE
+        else scene.optimized_primitive_count
+    )
+    render_mode_text = (
+        "per-tile radius-limited"
+        if state.render_mode == RENDER_MODE_PER_TILE
+        else RENDER_MODE_OPTIMIZED
+    )
     lines = [
         f"Map 3D Viewer: {map_path.name} ({tactical_map.width}x{tactical_map.height})",
         "WASD move | Mouse look | Space/E up | Ctrl/Q down | Wheel height | Shift fast",
-        "G grid | F radius | [/] radius size | R reset | 1 top | 2 low | Esc exit",
+        "G grid | F radius | [/] radius size | T tile render mode | R reset | 1 top | 2 low",
         "Home start | End goal | Tab enemy spawn | Shift+Tab previous spawn",
         (
-            f"Draw: {state.visible_primitive_count}/{scene.primitive_count} visible primitives, "
+            f"Draw: {state.visible_primitive_count}/{total_primitives} visible primitives, "
             f"skipped {scene.base_tile_count} base grass tiles"
         ),
-        f"Render: {radius_text}, grid {'on' if state.show_grid else 'off'}",
+        f"Render: {render_mode_text}, {radius_text}, grid {'on' if state.show_grid else 'off'}",
         "Tiles: # walls, T trees, b bushes, w water, S start, G goal, red enemy spawns",
     ]
     for index, line in enumerate(lines):
@@ -1287,6 +1374,7 @@ def run_viewer(raylib: Any, tactical_map: TacticalMap, map_path: Path, config: V
         show_grid=config.render.draw_grid_by_default,
         use_render_radius=config.render.use_render_radius,
         render_radius_tiles=config.render.render_radius_tiles,
+        render_mode=config.render.default_render_mode,
     )
     camera_state = make_initial_camera_state(tactical_map, config)
 

@@ -434,3 +434,10 @@
 - Added `R` reset, `1` top-down view, and `2` low fly view hotkeys.
 - Added quick camera focus hotkeys for start, goal, and enemy spawn markers.
 - Updated the viewer HUD controls hint.
+
+## v0.0.57 -> v0.0.58
+
+- Added a toggleable per-tile render mode to `res/map_3d_viewer.py`.
+- Kept optimized render mode as the default viewer mode.
+- Added `T` hotkey and HUD/config support for `optimized` / `per_tile` render modes.
+- Limited per-tile rendering to the camera render radius to avoid full-map draw call spikes.
