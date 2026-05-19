@@ -539,3 +539,10 @@
 - Distance fade сделан мягче по умолчанию: дальние тайлы меньше проваливаются в темноту.
 - Формула затемнения теперь использует density-curve, чтобы менять характер нарастания тумана из конфига.
 - HUD экспериментального 3D-режима показывает состояние fog и текущую density.
+
+## v0.0.72 -> v0.0.73
+
+- Добавлен общий combat runtime update pipeline для 2D runtime и экспериментального 3D renderer-а.
+- Экспериментальный `--renderer 3d` теперь использует существующие enemy perception, sound alert, chase movement, pathfinding и tactical positioning update-шаги.
+- Удалено дублирование урезанного projectile/enemy update loop в 3D-режиме без добавления нового AI.
+- 2D runtime переведён на тот же общий helper без изменения поведения рендера.

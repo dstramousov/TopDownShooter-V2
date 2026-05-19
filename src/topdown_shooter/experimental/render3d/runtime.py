@@ -11,6 +11,7 @@ from topdown_shooter.experimental.render3d.renderer import Render3DRenderer
 from topdown_shooter.experimental.render3d.scene import Render3DSceneBuilder
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.world.collision import TileCollisionService
+from topdown_shooter.world.pathfinding import GridPathfinder
 from topdown_shooter.world.player import PlayerState
 from topdown_shooter.world.player_controller import PlayerController
 from topdown_shooter.world.runtime_map import RuntimeMap
@@ -48,6 +49,7 @@ class ExperimentalRender3DRuntime:
             tile_size_px=self._runtime_map.tile_size_px,
             collision_radius_px=self._config.player.collision_radius_px,
         )
+        enemy_pathfinder = GridPathfinder(self._runtime_map)
         camera = Render3DFollowCamera(
             config=self._config.render3d,
             tile_size_px=self._runtime_map.tile_size_px,
@@ -98,4 +100,6 @@ class ExperimentalRender3DRuntime:
             enemy_system=enemy_system,
             projectile_system=projectile_system,
             weapon_controller=weapon_controller,
+            collision_service=collision_service,
+            enemy_pathfinder=enemy_pathfinder,
         )

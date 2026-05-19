@@ -69,9 +69,9 @@ def test_render3d_config_loads_from_default_config() -> None:
     assert config.render3d.controls.view_mode_toggle == "KEY_V"
     assert config.render3d.controls.distance_fade_toggle == "KEY_L"
     assert config.render3d.distance_fade.enabled is True
-    assert config.render3d.distance_fade.fade_start_ratio == 0.55
-    assert config.render3d.distance_fade.min_brightness == 0.65
-    assert config.render3d.distance_fade.fog_density == 0.8
+    assert config.render3d.distance_fade.fade_start_ratio == 0.25
+    assert config.render3d.distance_fade.min_brightness == 0.25
+    assert config.render3d.distance_fade.fog_density == 2.5
     assert config.render3d.distance_fade.keep_markers_bright is True
     assert config.render3d.enemies.draw_enemy_markers is True
     assert config.render3d.enemies.max_visible_enemies == 128

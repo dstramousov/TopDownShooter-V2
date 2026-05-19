@@ -13,11 +13,14 @@ from topdown_shooter.combat.projectiles import (
 )
 from topdown_shooter.combat.weapons import WeaponController
 from topdown_shooter.config.runtime_config import RuntimeConfig
+from topdown_shooter.gameplay.combat_runtime import update_combat_runtime
 from topdown_shooter.experimental.render3d.camera import Render3DFollowCamera
 from topdown_shooter.experimental.render3d.scene import Render3DSceneBuilder, Render3DSceneSnapshot
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.rendering.raylib_window import import_raylib
+from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.coordinates import WorldCoord
+from topdown_shooter.world.pathfinding import GridPathfinder
 from topdown_shooter.world.player import PlayerState
 from topdown_shooter.world.player_aim import PlayerAimState
 from topdown_shooter.world.player_controller import PlayerController, PlayerMoveIntent
@@ -112,6 +115,8 @@ class Render3DRenderer:
         enemy_system: EnemySystem,
         projectile_system: ProjectileSystem,
         weapon_controller: WeaponController,
+        collision_service: TileCollisionService,
+        enemy_pathfinder: GridPathfinder,
     ) -> None:
         """Run the first interactive 3D follow-camera preview.
 
@@ -123,6 +128,8 @@ class Render3DRenderer:
             enemy_system: Runtime enemies drawn as 3D markers.
             projectile_system: Runtime projectile system used for 3D fire preview.
             weapon_controller: Weapon controller used by the isolated 3D experiment.
+            collision_service: Tile collision service shared by runtime systems.
+            enemy_pathfinder: Grid pathfinder used by the existing enemy AI.
         """
         raylib = self._raylib
         window = self._config.window
@@ -145,25 +152,18 @@ class Render3DRenderer:
                     weapon_controller=weapon_controller,
                     frame_time=frame_time,
                 )
-                projectile_system.update(frame_time)
-                enemy_system.update(
-                    frame_time,
-                    squad_alert_broadcast_delay_seconds=(
-                        self._config.enemies.squad_alert_broadcast_delay_seconds
-                    ),
-                    squad_alert_broadcast_radius_px=(
-                        self._config.enemies.squad_alert_broadcast_radius_px
-                    ),
-                )
-                enemy_system.apply_projectile_hits(
-                    projectiles=projectile_system.projectiles,
-                    enemy_collision_radius_px=self._config.enemies.marker_radius_px,
-                    squad_alert_broadcast_delay_seconds=(
-                        self._config.enemies.squad_alert_broadcast_delay_seconds
-                    ),
-                    squad_alert_broadcast_radius_px=(
-                        self._config.enemies.squad_alert_broadcast_radius_px
-                    ),
+                update_combat_runtime(
+                    player=player,
+                    enemy_system=enemy_system,
+                    projectile_system=projectile_system,
+                    weapon_controller=weapon_controller,
+                    collision_service=collision_service,
+                    pathfinder=enemy_pathfinder,
+                    runtime_map=self._runtime_map,
+                    config=self._config,
+                    frame_time=frame_time,
+                    weapon_fire_events=self._weapon_fire_events_last_update,
+                    player_speed_px_per_second=self._player_speed_px_per_second(),
                 )
                 scene = scene_builder.build_snapshot(player.tile)
                 visible_enemies = self._visible_enemies(
@@ -492,6 +492,13 @@ class Render3DRenderer:
             y=player.world_position.y + self._last_facing_y * self._runtime_map.tile_size_px,
         )
         player.aim = PlayerAimState.from_positions(player.world_position, aim_target)
+
+    def _player_speed_px_per_second(self) -> float:
+        """Return current experimental player movement speed in pixels per second."""
+        return math.hypot(
+            self._velocity_x_px_per_second,
+            self._velocity_y_px_per_second,
+        )
 
     def _update_camera_relative_basis(self, camera_state: object) -> None:
         """Refresh the movement basis from the current 3D camera view."""

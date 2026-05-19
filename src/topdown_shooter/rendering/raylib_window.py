@@ -7,6 +7,7 @@ from topdown_shooter.combat.projectiles import ProjectileSystem
 from topdown_shooter.combat.weapons import WeaponConfigLoader, WeaponController, WeaponState
 from topdown_shooter.config.runtime_config import KeyChordConfig, RuntimeConfig
 from topdown_shooter.debug.overlay import DebugOverlay
+from topdown_shooter.gameplay.combat_runtime import update_combat_runtime
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.rendering.camera import CameraRig
 from topdown_shooter.rendering.enemy_renderer import EnemyRenderer
@@ -205,135 +206,19 @@ class RaylibWindow:
                 input_camera = self._camera_rig.build_raylib_camera(raylib)
                 self._update_player_aim(input_camera)
                 self._update_combat_controls(frame_time)
-                self._projectile_system.update(frame_time)
-                self._enemy_system.update(
-                    frame_time,
-                    squad_alert_broadcast_delay_seconds=(
-                        self._config.enemies.squad_alert_broadcast_delay_seconds
-                    ),
-                    squad_alert_broadcast_radius_px=(
-                        self._config.enemies.squad_alert_broadcast_radius_px
-                    ),
-                )
-                if self._weapon_fire_events_last_update > 0:
-                    self._enemy_system.alert_enemies_by_sound(
-                        origin=self._player.world_position,
-                        noise_radius_px=self._weapon_controller.stats.noise_radius_px,
-                        squad_alert_broadcast_delay_seconds=(
-                            self._config.enemies.squad_alert_broadcast_delay_seconds
-                        ),
-                        squad_alert_broadcast_radius_px=(
-                            self._config.enemies.squad_alert_broadcast_radius_px
-                        ),
-                    )
-                self._enemy_system.apply_projectile_hits(
-                    projectiles=self._projectile_system.projectiles,
-                    enemy_collision_radius_px=self._config.enemies.marker_radius_px,
-                    squad_alert_broadcast_delay_seconds=(
-                        self._config.enemies.squad_alert_broadcast_delay_seconds
-                    ),
-                    squad_alert_broadcast_radius_px=(
-                        self._config.enemies.squad_alert_broadcast_radius_px
-                    ),
-                )
-                self._enemy_system.update_perception(
-                    player_position=self._player.world_position,
+                update_combat_runtime(
+                    player=self._player,
+                    enemy_system=self._enemy_system,
+                    projectile_system=self._projectile_system,
+                    weapon_controller=self._weapon_controller,
                     collision_service=self._collision_service,
-                    vision_range_px=self._config.enemies.vision_range_px,
-                    vision_angle_degrees=self._config.enemies.vision_angle_degrees,
-                    line_of_sight_sample_step_px=(
-                        self._config.enemies.line_of_sight_sample_step_px
-                    ),
-                    squad_alert_broadcast_delay_seconds=(
-                        self._config.enemies.squad_alert_broadcast_delay_seconds
-                    ),
-                    squad_alert_broadcast_radius_px=(
-                        self._config.enemies.squad_alert_broadcast_radius_px
-                    ),
-                )
-                self._enemy_system.update_chase_movement(
-                    player_position=self._player.world_position,
-                    collision_service=self._collision_service,
-                    frame_time=frame_time,
-                    chase_speed_px_per_second=self._config.enemies.chase_speed_px_per_second,
-                    enemy_collision_radius_px=self._config.enemies.marker_radius_px,
-                    tile_size_px=self._runtime_map.tile_size_px,
-                    preferred_combat_distance_px=(
-                        self._config.enemies.preferred_combat_distance_px
-                    ),
-                    combat_distance_tolerance_px=(
-                        self._config.enemies.combat_distance_tolerance_px
-                    ),
-                    minimum_combat_distance_px=(
-                        self._config.enemies.minimum_combat_distance_px
-                    ),
-                    movement_direction_smoothing=(
-                        self._config.enemies.movement_direction_smoothing
-                    ),
-                    approach_weight=self._config.enemies.approach_weight,
-                    strafe_weight=self._config.enemies.strafe_weight,
-                    retreat_weight=self._config.enemies.retreat_weight,
-                    strafe_switch_min_seconds=(
-                        self._config.enemies.strafe_switch_min_seconds
-                    ),
-                    strafe_switch_max_seconds=(
-                        self._config.enemies.strafe_switch_max_seconds
-                    ),
-                    line_of_sight_sample_step_px=(
-                        self._config.enemies.line_of_sight_sample_step_px
-                    ),
                     pathfinder=self._enemy_pathfinder,
-                    pathfinding_enabled=self._config.enemies.pathfinding_enabled,
-                    path_rebuild_interval_seconds=(
-                        self._config.enemies.path_rebuild_interval_seconds
-                    ),
-                    path_target_rebuild_distance_px=(
-                        self._config.enemies.path_target_rebuild_distance_px
-                    ),
-                    path_max_iterations=self._config.enemies.path_max_iterations,
-                    path_waypoint_reach_distance_px=(
-                        self._config.enemies.path_waypoint_reach_distance_px
-                    ),
+                    runtime_map=self._runtime_map,
+                    config=self._config,
+                    frame_time=frame_time,
+                    weapon_fire_events=self._weapon_fire_events_last_update,
                     player_speed_px_per_second=self._player_speed_px_per_second,
-                    tactical_positioning_enabled=(
-                        self._config.enemies.tactical_positioning_enabled
-                    ),
-                    player_stationary_speed_threshold_px_per_second=(
-                        self._config.enemies.player_stationary_speed_threshold_px_per_second
-                    ),
-                    player_stationary_time_seconds=(
-                        self._config.enemies.player_stationary_time_seconds
-                    ),
-                    tactical_slot_count=self._config.enemies.tactical_slot_count,
-                    tactical_surround_distance_px=(
-                        self._config.enemies.tactical_surround_distance_px
-                    ),
-                    tactical_reassign_interval_seconds=(
-                        self._config.enemies.tactical_reassign_interval_seconds
-                    ),
-                    tactical_slot_reached_distance_px=(
-                        self._config.enemies.tactical_slot_reached_distance_px
-                    ),
-                    tactical_min_slot_spacing_px=(
-                        self._config.enemies.tactical_min_slot_spacing_px
-                    ),
-                    tactical_min_slot_angle_degrees=(
-                        self._config.enemies.tactical_min_slot_angle_degrees
-                    ),
-                    tactical_slot_commitment_seconds=(
-                        self._config.enemies.tactical_slot_commitment_seconds
-                    ),
-                    tactical_player_reposition_distance_px=(
-                        self._config.enemies.tactical_player_reposition_distance_px
-                    ),
-                    lost_sight_timeout_seconds=(
-                        self._config.enemies.lost_sight_timeout_seconds
-                    ),
-                    return_home_reached_distance_px=(
-                        self._config.enemies.return_home_reached_distance_px
-                    ),
                 )
-                self._projectile_system.prune_dead()
                 self._camera_rig.update_follow_target(
                     player_position=self._player.world_position,
                     frame_time=frame_time,
