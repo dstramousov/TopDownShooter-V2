@@ -237,7 +237,8 @@
     "controls": {
       "camera_reset": "KEY_C",
       "view_mode_toggle": "KEY_V",
-      "distance_fade_toggle": "KEY_L"
+      "distance_fade_toggle": "KEY_L",
+      "enemy_vision_toggle": "KEY_O"
     },
     "view_mode": "gameplay",
     "distance_fade": {
@@ -246,6 +247,16 @@
       "min_brightness": 0.25,
       "fog_density": 2.5,
       "keep_markers_bright": true
+    },
+    "enemy_vision": {
+      "enabled": true,
+      "max_visible_cones": 64,
+      "cone_segments": 14,
+      "height_tiles": 0.08,
+      "range_scale": 1.0,
+      "idle_alpha": 70,
+      "alert_alpha": 105,
+      "combat_alpha": 145
     }
   }
 }

@@ -546,3 +546,10 @@
 - Экспериментальный `--renderer 3d` теперь использует существующие enemy perception, sound alert, chase movement, pathfinding и tactical positioning update-шаги.
 - Удалено дублирование урезанного projectile/enemy update loop в 3D-режиме без добавления нового AI.
 - 2D runtime переведён на тот же общий helper без изменения поведения рендера.
+
+## v0.0.73 -> v0.0.74
+
+- Добавлены углы обзора противников в экспериментальный 3D renderer.
+- Добавлено переключение enemy vision cones по клавише O.
+- Настройки визуализации вынесены в секцию `render3d.enemy_vision`.
+- Конусы используют существующие параметры enemy perception range/angle и не меняют AI, агр или баланс.

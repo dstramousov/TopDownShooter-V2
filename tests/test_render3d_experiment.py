@@ -68,6 +68,7 @@ def test_render3d_config_loads_from_default_config() -> None:
     assert config.render3d.controls.camera_reset == "KEY_C"
     assert config.render3d.controls.view_mode_toggle == "KEY_V"
     assert config.render3d.controls.distance_fade_toggle == "KEY_L"
+    assert config.render3d.controls.enemy_vision_toggle == "KEY_O"
     assert config.render3d.distance_fade.enabled is True
     assert config.render3d.distance_fade.fade_start_ratio == 0.25
     assert config.render3d.distance_fade.min_brightness == 0.25
@@ -78,6 +79,14 @@ def test_render3d_config_loads_from_default_config() -> None:
     assert config.render3d.enemies.marker_radius_tiles == 0.28
     assert config.render3d.enemies.marker_height_tiles == 1.15
     assert config.render3d.enemies.direction_line_length_tiles == 1.1
+    assert config.render3d.enemy_vision.enabled is True
+    assert config.render3d.enemy_vision.max_visible_cones == 64
+    assert config.render3d.enemy_vision.cone_segments == 14
+    assert config.render3d.enemy_vision.height_tiles == 0.08
+    assert config.render3d.enemy_vision.range_scale == 1.0
+    assert config.render3d.enemy_vision.idle_alpha == 70
+    assert config.render3d.enemy_vision.alert_alpha == 105
+    assert config.render3d.enemy_vision.combat_alpha == 145
     assert config.render3d.projectiles.draw_aim_line is True
     assert config.render3d.projectiles.aim_line_length_tiles == 8.0
     assert config.render3d.projectiles.draw_projectiles is True
@@ -233,6 +242,79 @@ def test_render3d_facing_relative_movement_normalizes_diagonal() -> None:
     assert round((movement_x * movement_x + movement_y * movement_y) ** 0.5, 6) == 1.0
     assert movement_x > 0.0
     assert movement_y < 0.0
+
+
+def test_render3d_enemy_vision_color_uses_awareness_alpha() -> None:
+    """Enemy vision colors should use configured awareness alpha values."""
+    runtime_map = _build_runtime_map()
+    config = RuntimeConfigLoader().load_default()
+    renderer = object.__new__(Render3DRenderer)
+    renderer._config = config
+    renderer._runtime_map = runtime_map
+
+    class FakeColor:
+        """Minimal raylib-like color used by the unit test."""
+
+        def __init__(self, r: int, g: int, b: int, a: int = 255) -> None:
+            """Initialize fake color channels."""
+            self.r = r
+            self.g = g
+            self.b = b
+            self.a = a
+
+    class FakeRaylib:
+        """Minimal raylib-like color factory used by the unit test."""
+
+        YELLOW = FakeColor(255, 255, 0)
+        ORANGE = FakeColor(255, 165, 0)
+        RED = FakeColor(255, 0, 0)
+        Color = FakeColor
+
+    renderer._raylib = FakeRaylib()
+    idle_enemy = EnemyState(
+        enemy_id="idle",
+        spawn_id="spawn_idle",
+        zone_id="zone",
+        spawn_type="test",
+        role="rifle",
+        tile=TileCoord(0, 0),
+        world_position=WorldCoord(0.0, 0.0),
+        max_health=100.0,
+        health=100.0,
+        facing_angle_degrees=0.0,
+    )
+    alert_enemy = EnemyState(
+        enemy_id="alert",
+        spawn_id="spawn_alert",
+        zone_id="zone",
+        spawn_type="test",
+        role="rifle",
+        tile=TileCoord(0, 0),
+        world_position=WorldCoord(0.0, 0.0),
+        max_health=100.0,
+        health=100.0,
+        facing_angle_degrees=0.0,
+        alerted=True,
+        awareness_state="searching",
+    )
+    engaged_enemy = EnemyState(
+        enemy_id="engaged",
+        spawn_id="spawn_engaged",
+        zone_id="zone",
+        spawn_type="test",
+        role="rifle",
+        tile=TileCoord(0, 0),
+        world_position=WorldCoord(0.0, 0.0),
+        max_health=100.0,
+        health=100.0,
+        facing_angle_degrees=0.0,
+        alerted=True,
+        awareness_state="engaged",
+    )
+
+    assert renderer._enemy_vision_color(idle_enemy).a == config.render3d.enemy_vision.idle_alpha
+    assert renderer._enemy_vision_color(alert_enemy).a == config.render3d.enemy_vision.alert_alpha
+    assert renderer._enemy_vision_color(engaged_enemy).a == config.render3d.enemy_vision.combat_alpha
 
 
 def test_render3d_visible_enemies_are_radius_limited() -> None:

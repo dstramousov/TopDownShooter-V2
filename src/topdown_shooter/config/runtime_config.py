@@ -407,11 +407,13 @@ class Render3DControlsConfig:
         camera_reset: Key name used to reset only the 3D follow camera smoothing.
         view_mode_toggle: Key name used to cycle 3D view modes.
         distance_fade_toggle: Key name used to toggle distance fade.
+        enemy_vision_toggle: Key name used to toggle enemy vision cones.
     """
 
     camera_reset: str
     view_mode_toggle: str
     distance_fade_toggle: str
+    enemy_vision_toggle: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -490,6 +492,31 @@ class Render3DEnemyConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class Render3DEnemyVisionConfig:
+    """Experimental 3D enemy vision cone visualization settings.
+
+    Attributes:
+        enabled: Whether enemy vision cones start enabled.
+        max_visible_cones: Maximum enemy vision cones drawn per frame.
+        cone_segments: Number of arc segments used for one cone.
+        height_tiles: Height above the map where vision lines are drawn.
+        range_scale: Multiplier applied to the runtime enemy vision range.
+        idle_alpha: Alpha used for idle enemy cones.
+        alert_alpha: Alpha used for alerted/searching enemy cones.
+        combat_alpha: Alpha used for engaged enemy cones.
+    """
+
+    enabled: bool
+    max_visible_cones: int
+    cone_segments: int
+    height_tiles: float
+    range_scale: float
+    idle_alpha: int
+    alert_alpha: int
+    combat_alpha: int
+
+
+@dataclass(frozen=True, slots=True)
 class Render3DConfig:
     """Experimental 3D renderer settings.
 
@@ -509,6 +536,7 @@ class Render3DConfig:
         controls: Experimental 3D control bindings.
         distance_fade: Experimental 3D distance fade settings.
         enemies: Experimental 3D enemy marker settings.
+        enemy_vision: Experimental 3D enemy vision cone settings.
         projectiles: Experimental 3D projectile marker settings.
         combat_visuals: Experimental 3D combat readability settings.
     """
@@ -526,6 +554,7 @@ class Render3DConfig:
     controls: Render3DControlsConfig
     distance_fade: Render3DDistanceFadeConfig
     enemies: Render3DEnemyConfig
+    enemy_vision: Render3DEnemyVisionConfig
     projectiles: Render3DProjectileConfig
     combat_visuals: Render3DCombatVisualsConfig
 
@@ -992,6 +1021,7 @@ class RuntimeConfigLoader:
         controls = self._require_dict(render3d, "controls")
         distance_fade = self._require_dict(render3d, "distance_fade")
         enemies = self._require_dict(render3d, "enemies")
+        enemy_vision = self._require_dict(render3d, "enemy_vision")
         projectiles = self._require_dict(render3d, "projectiles")
         combat_visuals = self._require_dict(render3d, "combat_visuals")
         render_mode = self._require_render3d_mode(render3d, "render_mode")
@@ -1080,6 +1110,10 @@ class RuntimeConfigLoader:
                 distance_fade_toggle=self._require_str(
                     controls,
                     "distance_fade_toggle",
+                ),
+                enemy_vision_toggle=self._require_str(
+                    controls,
+                    "enemy_vision_toggle",
                 ),
             ),
             distance_fade=Render3DDistanceFadeConfig(
@@ -1203,7 +1237,50 @@ class RuntimeConfigLoader:
                     "direction_line_length_tiles",
                 ),
             ),
+            enemy_vision=Render3DEnemyVisionConfig(
+                enabled=self._require_bool(enemy_vision, "enabled"),
+                max_visible_cones=self._require_positive_int(
+                    enemy_vision,
+                    "max_visible_cones",
+                ),
+                cone_segments=self._require_positive_int(
+                    enemy_vision,
+                    "cone_segments",
+                ),
+                height_tiles=self._require_non_negative_float(
+                    enemy_vision,
+                    "height_tiles",
+                ),
+                range_scale=self._require_positive_float(
+                    enemy_vision,
+                    "range_scale",
+                ),
+                idle_alpha=self._require_alpha_int(enemy_vision, "idle_alpha"),
+                alert_alpha=self._require_alpha_int(enemy_vision, "alert_alpha"),
+                combat_alpha=self._require_alpha_int(enemy_vision, "combat_alpha"),
+            ),
         )
+
+    def _require_alpha_int(self, data: dict[str, Any], field: str) -> int:
+        """Read a color alpha channel value from 0 to 255.
+
+        Args:
+            data: Source mapping.
+            field: Field name to read.
+
+        Returns:
+            Validated integer alpha value.
+
+        Raises:
+            RuntimeConfigError: If the value is outside the allowed range.
+        """
+        value = self._require_non_negative_int(data, field)
+        if value > 255:
+            raise RuntimeConfigError(
+                "Runtime config field "
+                f"'{field}' must be less than or equal to 255.",
+            )
+        return value
 
     def _require_render3d_movement_basis(self, data: dict[str, Any], field: str) -> str:
         """Read and validate an experimental 3D movement basis.

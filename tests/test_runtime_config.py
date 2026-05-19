@@ -164,6 +164,15 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.render3d.combat_visuals.draw_impact_rings is True
     assert config.render3d.combat_visuals.enemy_hit_flash_seconds == 0.12
     assert config.render3d.combat_visuals.draw_enemy_hit_markers is True
+    assert config.render3d.controls.enemy_vision_toggle == "KEY_O"
+    assert config.render3d.enemy_vision.enabled is True
+    assert config.render3d.enemy_vision.max_visible_cones == 64
+    assert config.render3d.enemy_vision.cone_segments == 14
+    assert config.render3d.enemy_vision.height_tiles == 0.08
+    assert config.render3d.enemy_vision.range_scale == 1.0
+    assert config.render3d.enemy_vision.idle_alpha == 70
+    assert config.render3d.enemy_vision.alert_alpha == 105
+    assert config.render3d.enemy_vision.combat_alpha == 145
     assert config.render3d.projectiles.projectile_height_tiles == 0.72
     assert config.render3d.projectiles.draw_impacts is True
     assert config.render3d.projectiles.impact_height_tiles == 0.55

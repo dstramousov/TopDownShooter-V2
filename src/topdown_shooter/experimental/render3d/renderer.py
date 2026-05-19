@@ -96,6 +96,9 @@ class Render3DRenderer:
         self._key_distance_fade = self._resolve_key(
             config.render3d.controls.distance_fade_toggle,
         )
+        self._key_enemy_vision = self._resolve_key(
+            config.render3d.controls.enemy_vision_toggle,
+        )
         self._key_hud = self._resolve_key("KEY_H")
         self._fire_primary_button = self._resolve_mouse_button(config.controls.fire_primary)
         self._reload_key = self._resolve_key(config.controls.reload)
@@ -105,6 +108,7 @@ class Render3DRenderer:
         self._weapon_fire_events_last_update = 0
         self._show_debug_hud = config.render3d.show_debug_hud
         self._distance_fade_enabled = config.render3d.distance_fade.enabled
+        self._enemy_vision_enabled = config.render3d.enemy_vision.enabled
 
     def run_follow_preview(
         self,
@@ -210,6 +214,7 @@ class Render3DRenderer:
                 raylib.begin_mode_3d(camera)
                 self._draw_scene(scene)
                 if self._view_mode_draws_gameplay_markers():
+                    self._draw_enemy_vision_cones(visible_enemies)
                     self._draw_enemy_markers(visible_enemies)
                     self._draw_projectile_markers(visible_projectiles)
                     self._draw_impact_markers(visible_impacts)
@@ -277,6 +282,8 @@ class Render3DRenderer:
             self._view_mode = self._next_view_mode(self._view_mode)
         if raylib.is_key_pressed(self._key_distance_fade):
             self._distance_fade_enabled = not self._distance_fade_enabled
+        if raylib.is_key_pressed(self._key_enemy_vision):
+            self._enemy_vision_enabled = not self._enemy_vision_enabled
         if raylib.is_key_pressed(self._key_hud):
             self._show_debug_hud = not self._show_debug_hud
 
@@ -718,6 +725,81 @@ class Render3DRenderer:
             for _, enemy in candidates[: enemy_config.max_visible_enemies]
         )
 
+    def _draw_enemy_vision_cones(self, enemies: tuple[EnemyState, ...]) -> None:
+        """Draw gameplay enemy vision cones from the existing perception config.
+
+        Args:
+            enemies: Visible enemies whose runtime vision cones should be drawn.
+        """
+        vision_config = self._config.render3d.enemy_vision
+        if not self._enemy_vision_enabled or not enemies:
+            return
+
+        raylib = self._raylib
+        render_config = self._config.render3d
+        tile_size = render_config.tile_size
+        height_scale = render_config.height_scale
+        tile_size_px = self._runtime_map.tile_size_px
+        cone_range = (
+            self._config.enemies.vision_range_px
+            / tile_size_px
+            * tile_size
+            * vision_config.range_scale
+        )
+        half_angle = math.radians(self._config.enemies.vision_angle_degrees) * 0.5
+        segments = max(2, vision_config.cone_segments)
+        cone_y = vision_config.height_tiles * height_scale
+
+        for enemy in enemies[: vision_config.max_visible_cones]:
+            origin = raylib.Vector3(
+                enemy.world_position.x / tile_size_px * tile_size,
+                cone_y,
+                enemy.world_position.y / tile_size_px * tile_size,
+            )
+            facing = math.radians(enemy.facing_angle_degrees)
+            color = self._enemy_vision_color(enemy)
+            previous_point = None
+            for index in range(segments + 1):
+                ratio = index / segments
+                angle = facing - half_angle + ratio * half_angle * 2.0
+                point = raylib.Vector3(
+                    origin.x + math.cos(angle) * cone_range,
+                    cone_y,
+                    origin.z + math.sin(angle) * cone_range,
+                )
+                if index in {0, segments}:
+                    raylib.draw_line_3d(origin, point, color)
+                if previous_point is not None:
+                    raylib.draw_line_3d(previous_point, point, color)
+                previous_point = point
+
+    def _enemy_vision_color(self, enemy: EnemyState) -> object:
+        """Return enemy vision cone color based on runtime awareness state."""
+        vision_config = self._config.render3d.enemy_vision
+        if enemy.awareness_state == "engaged":
+            alpha = vision_config.combat_alpha
+            base_color = self._raylib.RED
+        elif enemy.alerted or enemy.awareness_state in {"searching", "returning"}:
+            alpha = vision_config.alert_alpha
+            base_color = self._raylib.ORANGE
+        else:
+            alpha = vision_config.idle_alpha
+            base_color = self._raylib.YELLOW
+        return self._color_with_alpha(base_color, alpha)
+
+    def _color_with_alpha(self, color: object, alpha: int) -> object:
+        """Return a raylib color with the requested alpha channel."""
+        raylib = self._raylib
+        try:
+            return raylib.Color(
+                int(color.r),
+                int(color.g),
+                int(color.b),
+                max(0, min(255, int(alpha))),
+            )
+        except AttributeError:
+            return color
+
     def _draw_enemy_markers(self, enemies: tuple[EnemyState, ...]) -> None:
         """Draw visible enemies as simple 3D gameplay markers.
 
@@ -1088,7 +1170,7 @@ class Render3DRenderer:
         lines = [
             f"3D view: {self._view_mode}",
             f"FPS: {raylib.get_fps()}",
-            "V view mode | L fog | H HUD | C camera reset | ESC close",
+            "V view mode | L fog | O vision | H HUD | C camera reset | ESC close",
         ]
         if self._view_mode == self.GAMEPLAY_VIEW_MODE:
             weapon_stats = weapon_controller.stats
@@ -1100,6 +1182,7 @@ class Render3DRenderer:
                     f"projectiles: {len(visible_projectiles)}/{len(projectiles)} visible",
                     f"fog: {'on' if self._distance_fade_enabled else 'off'} "
                     f"density {self._config.render3d.distance_fade.fog_density:.2f}",
+                    f"enemy vision: {'on' if self._enemy_vision_enabled else 'off'}",
                     "mouse X aim | LMB fire | R reload | 1/2/3 weapons",
                 ),
             )
@@ -1146,6 +1229,7 @@ class Render3DRenderer:
             f"view radius: {self._config.render3d.view_radius_tiles} tiles",
             f"distance fog: {'on' if self._distance_fade_enabled else 'off'} "
             f"density {self._config.render3d.distance_fade.fog_density:.2f}",
+            f"enemy vision: {'on' if self._enemy_vision_enabled else 'off'}",
             f"camera look-ahead: {self._config.render3d.camera.movement_look_ahead_tiles:.1f} tiles",
             f"visible primitives: {len(scene.primitives)}",
             f"enemies: {len(visible_enemies)}/{len(enemies)} visible",
@@ -1157,7 +1241,8 @@ class Render3DRenderer:
             f"culled tiles: {scene.culled_tile_count}/{scene.total_tile_count}",
             "movement: facing-relative strafe",
             "mouse X aim | LMB fire | R reload | 1/2/3 weapons",
-            "W/S forward/back | A/D strafe | V view mode | L fog | C reset camera",
+            "W/S forward/back | A/D strafe | V view mode | L fog | O vision",
+            "C reset camera",
             "1 top | 2 low | H HUD | ESC close",
         ]
         y = 12
