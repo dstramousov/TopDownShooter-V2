@@ -174,5 +174,20 @@
     "tactical_player_reposition_distance_px": 56.0,
     "draw_tactical_slots": false,
     "max_debug_tactical_slots": 8
+  },
+  "render3d": {
+    "enabled": false,
+    "view_radius_tiles": 60,
+    "tile_size": 1.0,
+    "height_scale": 1.0,
+    "render_mode": "optimized",
+    "show_debug_hud": true,
+    "max_visible_primitives": 3000,
+    "camera": {
+      "height": 28.0,
+      "distance": 18.0,
+      "look_ahead_tiles": 4.0,
+      "follow_smoothing": 0.18
+    }
   }
 }

@@ -441,3 +441,10 @@
 - Kept optimized render mode as the default viewer mode.
 - Added `T` hotkey and HUD/config support for `optimized` / `per_tile` render modes.
 - Limited per-tile rendering to the camera render radius to avoid full-map draw call spikes.
+
+## v0.0.58 -> v0.0.59
+
+- Added the experimental `render3d` runtime config section for the 3D system branch.
+- Added `--renderer 2d|3d` to select the runtime renderer backend while keeping 2D as the default.
+- Added an isolated `topdown_shooter.experimental.render3d` scaffold with follow camera, scene culling, and a minimal 3D preview renderer.
+- Kept the existing 2D runtime path unchanged unless `--renderer 3d` is explicitly requested.

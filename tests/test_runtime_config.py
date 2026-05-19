@@ -134,3 +134,14 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.hud.padding == 8
     assert config.hud.font_size == 16
     assert config.hud.background_alpha == 150
+    assert config.render3d.enabled is False
+    assert config.render3d.view_radius_tiles == 60
+    assert config.render3d.tile_size == 1.0
+    assert config.render3d.height_scale == 1.0
+    assert config.render3d.render_mode == "optimized"
+    assert config.render3d.show_debug_hud is True
+    assert config.render3d.max_visible_primitives == 3000
+    assert config.render3d.camera.height == 28.0
+    assert config.render3d.camera.distance == 18.0
+    assert config.render3d.camera.look_ahead_tiles == 4.0
+    assert config.render3d.camera.follow_smoothing == 0.18

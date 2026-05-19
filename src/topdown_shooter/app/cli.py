@@ -44,6 +44,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Open a minimal raylib window and render the generated map.",
     )
+    parser.add_argument(
+        "--renderer",
+        choices=("2d", "3d"),
+        default="2d",
+        help="Runtime renderer backend used by --run. Defaults to 2d.",
+    )
     return parser
 
 
@@ -65,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
             summary = inspect_map_package(args.map_package_dir)
             sys.stdout.write(f"{summary}\n")
             return 0
-        run_game(args.map_package_dir)
+        run_game(args.map_package_dir, renderer=args.renderer)
         return 0
     except MapPackageError as exc:
         sys.stderr.write(f"ERROR: Map package operation failed:\n{exc}\n")

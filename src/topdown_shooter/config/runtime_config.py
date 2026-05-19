@@ -329,6 +329,49 @@ class FpsCounterConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class Render3DCameraConfig:
+    """Experimental 3D follow-camera settings.
+
+    Attributes:
+        height: Camera height above the player in 3D tile units.
+        distance: Camera distance behind the player in 3D tile units.
+        look_ahead_tiles: Forward look-ahead distance in tile units.
+        follow_smoothing: Camera smoothing factor reserved for follow updates.
+    """
+
+    height: float
+    distance: float
+    look_ahead_tiles: float
+    follow_smoothing: float
+
+
+@dataclass(frozen=True, slots=True)
+class Render3DConfig:
+    """Experimental 3D renderer settings.
+
+    Attributes:
+        enabled: Whether the experimental 3D renderer is enabled by config.
+        view_radius_tiles: Radius around the player/camera used for 3D culling.
+        tile_size: 3D world size of one map tile.
+        height_scale: Multiplier for generated 3D primitive heights.
+        render_mode: Default 3D render mode. Supported values are ``optimized``
+            and ``per_tile``.
+        show_debug_hud: Whether the 3D debug HUD is drawn.
+        max_visible_primitives: Safety cap for visible primitive rendering.
+        camera: Follow-camera settings.
+    """
+
+    enabled: bool
+    view_radius_tiles: int
+    tile_size: float
+    height_scale: float
+    render_mode: str
+    show_debug_hud: bool
+    max_visible_primitives: int
+    camera: Render3DCameraConfig
+
+
+@dataclass(frozen=True, slots=True)
 class KeyChordConfig:
     """A configurable key chord.
 
@@ -405,6 +448,7 @@ class RuntimeConfig:
         debug_overlay: Debug overlay display settings.
         hud: Player HUD display settings.
         fps_counter: Standalone FPS counter display settings.
+        render3d: Experimental 3D renderer settings.
         controls: Control bindings.
     """
 
@@ -418,6 +462,7 @@ class RuntimeConfig:
     debug_overlay: DebugOverlayConfig
     hud: HudConfig
     fps_counter: FpsCounterConfig
+    render3d: Render3DConfig
     controls: ControlsConfig
 
 
@@ -479,6 +524,7 @@ class RuntimeConfigLoader:
         debug_overlay = self._require_dict(raw_config, "debug_overlay")
         hud = self._require_dict(raw_config, "hud")
         fps_counter = self._require_dict(raw_config, "fps_counter")
+        render3d = self._require_dict(raw_config, "render3d")
         controls = self._require_dict(raw_config, "controls")
         return RuntimeConfig(
             window=WindowConfig(
@@ -745,6 +791,7 @@ class RuntimeConfigLoader:
                 font_size=self._require_positive_int(fps_counter, "font_size"),
                 position=self._require_str(fps_counter, "position"),
             ),
+            render3d=self._build_render3d_config(render3d),
             controls=ControlsConfig(
                 quit=self._require_str(controls, "quit"),
                 debug_overlay=self._require_key_chord(controls, "debug_overlay"),
@@ -771,6 +818,63 @@ class RuntimeConfigLoader:
                 weapon_slot_3=self._require_str(controls, "weapon_slot_3"),
             ),
         )
+
+    def _build_render3d_config(self, render3d: dict[str, Any]) -> Render3DConfig:
+        """Build typed experimental 3D renderer config from raw data.
+
+        Args:
+            render3d: Raw 3D renderer configuration dictionary.
+
+        Returns:
+            Experimental 3D renderer configuration.
+        """
+        camera = self._require_dict(render3d, "camera")
+        render_mode = self._require_render3d_mode(render3d, "render_mode")
+        return Render3DConfig(
+            enabled=self._require_bool(render3d, "enabled"),
+            view_radius_tiles=self._require_positive_int(render3d, "view_radius_tiles"),
+            tile_size=self._require_positive_float(render3d, "tile_size"),
+            height_scale=self._require_positive_float(render3d, "height_scale"),
+            render_mode=render_mode,
+            show_debug_hud=self._require_bool(render3d, "show_debug_hud"),
+            max_visible_primitives=self._require_positive_int(
+                render3d,
+                "max_visible_primitives",
+            ),
+            camera=Render3DCameraConfig(
+                height=self._require_positive_float(camera, "height"),
+                distance=self._require_positive_float(camera, "distance"),
+                look_ahead_tiles=self._require_non_negative_float(
+                    camera,
+                    "look_ahead_tiles",
+                ),
+                follow_smoothing=self._require_non_negative_float(
+                    camera,
+                    "follow_smoothing",
+                ),
+            ),
+        )
+
+    def _require_render3d_mode(self, data: dict[str, Any], field: str) -> str:
+        """Read and validate an experimental 3D render mode.
+
+        Args:
+            data: Source mapping.
+            field: Field name to read.
+
+        Returns:
+            Validated render mode.
+
+        Raises:
+            RuntimeConfigError: If the render mode value is unsupported.
+        """
+        value = self._require_str(data, field)
+        if value not in {"optimized", "per_tile"}:
+            raise RuntimeConfigError(
+                "Runtime config field "
+                f"'{field}' must be 'optimized' or 'per_tile'.",
+            )
+        return value
 
     def _require_debug_overlay_layout(self, data: dict[str, Any], field: str) -> str:
         """Read and validate a debug overlay layout value.
