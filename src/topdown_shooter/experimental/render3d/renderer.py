@@ -10,7 +10,7 @@ from topdown_shooter.experimental.render3d.camera import Render3DFollowCamera
 from topdown_shooter.experimental.render3d.scene import Render3DSceneBuilder, Render3DSceneSnapshot
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.rendering.raylib_window import import_raylib
-from topdown_shooter.world.coordinates import TileCoord, WorldCoord
+from topdown_shooter.world.coordinates import WorldCoord
 from topdown_shooter.world.player import PlayerState
 from topdown_shooter.world.player_aim import PlayerAimState
 from topdown_shooter.world.player_controller import PlayerController, PlayerMoveIntent
@@ -131,7 +131,7 @@ class Render3DRenderer:
                 raylib.clear_background(raylib.BLACK)
                 raylib.begin_mode_3d(camera)
                 self._draw_scene(scene)
-                self._draw_player_marker(player.tile, self._last_facing_x, self._last_facing_y)
+                self._draw_player_marker(player.world_position, self._last_facing_x, self._last_facing_y)
                 raylib.end_mode_3d()
                 if self._show_debug_hud:
                     self._draw_debug_hud(scene)
@@ -218,10 +218,12 @@ class Render3DRenderer:
         tile_size = self._config.render3d.tile_size
         height_scale = self._config.render3d.height_scale
         ground_y = -0.03 * height_scale
-        ground_width = self._runtime_map.width_tiles * tile_size
-        ground_depth = self._runtime_map.height_tiles * tile_size
+        ground_width = (scene.max_x - scene.min_x + 1) * tile_size
+        ground_depth = (scene.max_y - scene.min_y + 1) * tile_size
+        ground_center_x = (scene.min_x + scene.max_x + 1) * 0.5 * tile_size
+        ground_center_z = (scene.min_y + scene.max_y + 1) * 0.5 * tile_size
         raylib.draw_cube(
-            raylib.Vector3(ground_width * 0.5, ground_y, ground_depth * 0.5),
+            raylib.Vector3(ground_center_x, ground_y, ground_center_z),
             ground_width,
             0.04 * height_scale,
             ground_depth,
@@ -253,40 +255,46 @@ class Render3DRenderer:
 
     def _draw_player_marker(
         self,
-        player_tile: TileCoord,
+        player_position: WorldCoord,
         facing_x: float,
         facing_y: float,
     ) -> None:
         """Draw the player marker and facing direction.
 
         Args:
-            player_tile: Current player tile.
+            player_position: Current continuous player world position in pixels.
             facing_x: Current facing X direction.
             facing_y: Current facing Y direction.
         """
         raylib = self._raylib
         tile_size = self._config.render3d.tile_size
         height_scale = self._config.render3d.height_scale
+        tile_size_px = self._runtime_map.tile_size_px
         center = raylib.Vector3(
-            (player_tile.x + 0.5) * tile_size,
+            player_position.x / tile_size_px * tile_size,
             0.7 * height_scale,
-            (player_tile.y + 0.5) * tile_size,
+            player_position.y / tile_size_px * tile_size,
         )
-        raylib.draw_cylinder(
-            center,
+        raylib.draw_sphere(
+            raylib.Vector3(center.x, center.y + 0.1 * height_scale, center.z),
             tile_size * 0.34,
-            tile_size * 0.24,
-            1.4 * height_scale,
-            16,
             raylib.YELLOW,
         )
+        raylib.draw_cylinder(
+            raylib.Vector3(center.x, center.y - 0.35 * height_scale, center.z),
+            tile_size * 0.26,
+            tile_size * 0.22,
+            0.75 * height_scale,
+            16,
+            raylib.GOLD,
+        )
         direction_end = raylib.Vector3(
-            center.x + facing_x * tile_size * 1.3,
-            center.y + 0.35 * height_scale,
-            center.z + facing_y * tile_size * 1.3,
+            center.x + facing_x * tile_size * 1.4,
+            center.y + 0.3 * height_scale,
+            center.z + facing_y * tile_size * 1.4,
         )
         raylib.draw_line_3d(center, direction_end, raylib.ORANGE)
-        raylib.draw_sphere(direction_end, tile_size * 0.16, raylib.ORANGE)
+        raylib.draw_sphere(direction_end, tile_size * 0.18, raylib.ORANGE)
 
     def _draw_debug_hud(self, scene: Render3DSceneSnapshot) -> None:
         """Draw the experimental renderer debug HUD.
@@ -302,6 +310,7 @@ class Render3DRenderer:
             f"mode: {self._config.render3d.render_mode}",
             f"view radius: {self._config.render3d.view_radius_tiles} tiles",
             f"visible primitives: {len(scene.primitives)}",
+            f"radius center: player tile {scene.center_tile.x},{scene.center_tile.y}",
             f"culled tiles: {scene.culled_tile_count}/{scene.total_tile_count}",
             "WASD/arrows move | 1 top | 2 low | R reset | H HUD | ESC close",
         ]

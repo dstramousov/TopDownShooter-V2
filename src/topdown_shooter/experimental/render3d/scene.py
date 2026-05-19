@@ -32,11 +32,21 @@ class Render3DSceneSnapshot:
 
     Attributes:
         primitives: Visible tile primitives.
+        center_tile: Tile coordinate used as the culling center.
+        min_x: Minimum tile X included in the view bounds.
+        max_x: Maximum tile X included in the view bounds.
+        min_y: Minimum tile Y included in the view bounds.
+        max_y: Maximum tile Y included in the view bounds.
         total_tile_count: Total runtime map tile count.
-        culled_tile_count: Number of tiles outside the 3D view radius.
+        culled_tile_count: Number of tiles outside the rendered snapshot.
     """
 
     primitives: tuple[Render3DTilePrimitive, ...]
+    center_tile: TileCoord
+    min_x: int
+    max_x: int
+    min_y: int
+    max_y: int
     total_tile_count: int
     culled_tile_count: int
 
@@ -69,35 +79,59 @@ class Render3DSceneBuilder:
         min_y = max(0, center_tile.y - radius)
         max_y = min(self._runtime_map.height_tiles - 1, center_tile.y + radius)
         radius_squared = radius * radius
-        primitives: list[Render3DTilePrimitive] = []
+        candidates: list[tuple[int, Render3DTilePrimitive]] = []
         for y in range(min_y, max_y + 1):
             row = self._runtime_map.tiles[y]
             for x in range(min_x, max_x + 1):
                 dx = x - center_tile.x
                 dy = y - center_tile.y
-                if dx * dx + dy * dy > radius_squared:
+                distance_squared = dx * dx + dy * dy
+                if distance_squared > radius_squared:
                     continue
                 tile = row[x]
-                primitives.append(
-                    Render3DTilePrimitive(
-                        x=x,
-                        y=y,
-                        symbol=tile.symbol,
-                        walkable=tile.walkable,
+                candidates.append(
+                    (
+                        distance_squared,
+                        Render3DTilePrimitive(
+                            x=x,
+                            y=y,
+                            symbol=tile.symbol,
+                            walkable=tile.walkable,
+                        ),
                     ),
                 )
-                if len(primitives) >= self._config.max_visible_primitives:
-                    return self._build_snapshot(tuple(primitives))
-        return self._build_snapshot(tuple(primitives))
+        candidates.sort(key=lambda item: item[0])
+        primitives = tuple(
+            primitive
+            for _, primitive in candidates[: self._config.max_visible_primitives]
+        )
+        return self._build_snapshot(
+            primitives=primitives,
+            center_tile=center_tile,
+            min_x=min_x,
+            max_x=max_x,
+            min_y=min_y,
+            max_y=max_y,
+        )
 
     def _build_snapshot(
         self,
         primitives: tuple[Render3DTilePrimitive, ...],
+        center_tile: TileCoord,
+        min_x: int,
+        max_x: int,
+        min_y: int,
+        max_y: int,
     ) -> Render3DSceneSnapshot:
         """Create a snapshot with derived counts.
 
         Args:
             primitives: Visible tile primitives.
+            center_tile: Tile coordinate used as the culling center.
+            min_x: Minimum tile X included in the view bounds.
+            max_x: Maximum tile X included in the view bounds.
+            min_y: Minimum tile Y included in the view bounds.
+            max_y: Maximum tile Y included in the view bounds.
 
         Returns:
             Scene snapshot with culling counters.
@@ -105,6 +139,11 @@ class Render3DSceneBuilder:
         total_tile_count = self._runtime_map.width_tiles * self._runtime_map.height_tiles
         return Render3DSceneSnapshot(
             primitives=primitives,
+            center_tile=center_tile,
+            min_x=min_x,
+            max_x=max_x,
+            min_y=min_y,
+            max_y=max_y,
             total_tile_count=total_tile_count,
             culled_tile_count=total_tile_count - len(primitives),
         )

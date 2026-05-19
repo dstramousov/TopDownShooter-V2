@@ -78,4 +78,24 @@ def test_render3d_scene_builder_limits_visible_tiles_by_radius() -> None:
     assert snapshot.total_tile_count == 6
     assert len(snapshot.primitives) == 6
     assert snapshot.culled_tile_count == 0
+    assert snapshot.center_tile == TileCoord(0, 0)
+    assert snapshot.min_x == 0
+    assert snapshot.max_x == 2
+    assert snapshot.min_y == 0
+    assert snapshot.max_y == 1
     assert {primitive.symbol for primitive in snapshot.primitives} == {"S", "+", "#", "T", "G"}
+
+
+def test_render3d_scene_builder_keeps_nearest_tiles_when_capped() -> None:
+    """Scene builder should cap visible tiles by distance from the player center."""
+    from dataclasses import replace
+
+    runtime_map = _build_runtime_map()
+    base_config = RuntimeConfigLoader().load_default().render3d
+    config = replace(base_config, max_visible_primitives=2)
+    builder = Render3DSceneBuilder(runtime_map=runtime_map, config=config)
+
+    snapshot = builder.build_snapshot(TileCoord(1, 0))
+
+    assert len(snapshot.primitives) == 2
+    assert {(primitive.x, primitive.y) for primitive in snapshot.primitives} == {(1, 0), (0, 0)}

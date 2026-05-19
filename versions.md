@@ -456,3 +456,10 @@
 - Added player movement in the 3D experiment with WASD and arrow-key aliases while preserving the 2D runtime path.
 - Improved the 3D player marker with a facing line and added `H` to toggle the 3D debug HUD.
 - Extended the `render3d.camera` config section with top-down camera settings and tuned the default low-follow camera closer to the player.
+
+## v0.0.60 -> v0.0.61
+
+- Changed experimental 3D scene culling to prioritize tiles nearest to the player before applying the visible primitive cap.
+- Limited the 3D ground plane to the current player-centered view bounds instead of drawing one full-map ground slab.
+- Drew the 3D player marker from the continuous world position rather than the integer tile center for smooth movement.
+- Updated the 3D HUD with the player-centered radius tile coordinate.
