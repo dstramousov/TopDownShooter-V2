@@ -420,3 +420,10 @@
 - Added Q/E vertical camera controls alongside Ctrl/Space.
 - Added mouse wheel height control for quick approach/retreat during 3D map flyover.
 - Updated the viewer HUD controls hint.
+
+## v0.0.55 -> v0.0.56
+
+- Added `res/map_3d_viewer_config.json` for 3D viewer window, camera, and render settings.
+- Added camera-centered render radius culling to `res/map_3d_viewer.py`.
+- Added `F` to toggle render radius and `[` / `]` to change radius size at runtime.
+- Updated the HUD with visible/total primitive counts and render radius state.

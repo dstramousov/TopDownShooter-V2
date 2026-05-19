@@ -14,7 +14,7 @@ from typing import Any, Final
 
 LOGGER = logging.getLogger("map_3d_viewer")
 
-TILE_SIZE: Final[float] = 1.0
+DEFAULT_CONFIG_PATH: Final[Path] = Path(__file__).with_name("map_3d_viewer_config.json")
 FLOOR_HEIGHT: Final[float] = 0.06
 WALL_HEIGHT: Final[float] = 1.55
 TREE_HEIGHT: Final[float] = 1.35
@@ -23,14 +23,95 @@ WATER_HEIGHT: Final[float] = 0.03
 DECOR_HEIGHT: Final[float] = 0.22
 SPAWN_MARKER_HEIGHT: Final[float] = 2.0
 GOAL_MARKER_HEIGHT: Final[float] = 2.4
-CAMERA_MOUSE_SENSITIVITY: Final[float] = 0.003
-CAMERA_BASE_SPEED: Final[float] = 12.0
-CAMERA_FAST_MULTIPLIER: Final[float] = 3.0
-CAMERA_WHEEL_HEIGHT_STEP: Final[float] = 3.0
-CAMERA_MIN_HEIGHT: Final[float] = 0.3
 CAMERA_PITCH_LIMIT: Final[float] = math.radians(88.0)
 BASE_GROUND_TILE: Final[str] = "+"
 GROUND_THICKNESS: Final[float] = 0.04
+
+
+@dataclass(frozen=True)
+class WindowConfig:
+    """Viewer window settings.
+
+    Attributes:
+        width: Window width in pixels.
+        height: Window height in pixels.
+        target_fps: Target frame rate for raylib.
+    """
+
+    width: int = 1280
+    height: int = 720
+    target_fps: int = 60
+
+
+@dataclass(frozen=True)
+class CameraConfig:
+    """Fly-camera settings.
+
+    Attributes:
+        mouse_sensitivity: Mouse look sensitivity.
+        base_speed: Base camera movement speed in world units per second.
+        fast_multiplier: Speed multiplier while Shift is pressed.
+        wheel_height_step: Height delta per mouse wheel step.
+        min_height: Minimum allowed camera height.
+        start_height_min: Minimum starting camera height.
+        start_height_map_factor: Starting height multiplier based on map height.
+        start_distance_min: Minimum starting Z distance.
+        start_distance_map_factor: Starting Z distance multiplier based on map height.
+        start_pitch_degrees: Initial camera pitch in degrees.
+    """
+
+    mouse_sensitivity: float = 0.003
+    base_speed: float = 12.0
+    fast_multiplier: float = 3.0
+    wheel_height_step: float = 3.0
+    min_height: float = 0.3
+    start_height_min: float = 18.0
+    start_height_map_factor: float = 0.20
+    start_distance_min: float = 20.0
+    start_distance_map_factor: float = 0.35
+    start_pitch_degrees: float = -35.0
+
+
+@dataclass(frozen=True)
+class RenderConfig:
+    """3D map render settings.
+
+    Attributes:
+        tile_size: Tile size in world units.
+        draw_grid_by_default: Whether grid and wire overlays start enabled.
+        use_render_radius: Whether camera-centered primitive culling starts enabled.
+        render_radius_tiles: Default render radius in tiles.
+        render_radius_step_tiles: Radius change step for keyboard controls.
+        render_radius_min_tiles: Minimum runtime render radius.
+        render_radius_max_tiles: Maximum runtime render radius.
+        draw_enemy_spawns: Whether enemy spawn markers are visible.
+        draw_objective: Whether start and goal markers are visible.
+    """
+
+    tile_size: float = 1.0
+    draw_grid_by_default: bool = False
+    use_render_radius: bool = True
+    render_radius_tiles: int = 60
+    render_radius_step_tiles: int = 10
+    render_radius_min_tiles: int = 20
+    render_radius_max_tiles: int = 300
+    draw_enemy_spawns: bool = True
+    draw_objective: bool = True
+
+
+@dataclass(frozen=True)
+class ViewerConfig:
+    """Full viewer configuration.
+
+    Attributes:
+        window: Window settings.
+        camera: Fly-camera settings.
+        render: 3D render settings.
+    """
+
+    window: WindowConfig = WindowConfig()
+    camera: CameraConfig = CameraConfig()
+    render: RenderConfig = RenderConfig()
 
 
 @dataclass(frozen=True)
@@ -48,8 +129,6 @@ class TacticalMap:
     height: int
     tile_grid: tuple[str, ...]
     enemy_spawn_zones: tuple[dict[str, Any], ...]
-
-
 
 
 @dataclass(frozen=True)
@@ -95,7 +174,7 @@ class ViewerScene:
 
     @property
     def primitive_count(self) -> int:
-        """Return the total number of scene primitives drawn every frame."""
+        """Return the total number of scene primitives including the ground slab."""
 
         return (
             len(self.tile_primitives)
@@ -111,9 +190,15 @@ class ViewerState:
 
     Attributes:
         show_grid: Whether the expensive debug grid and tile wires are visible.
+        use_render_radius: Whether camera-centered primitive culling is enabled.
+        render_radius_tiles: Current render radius in tiles.
+        visible_primitive_count: Number of primitives drawn in the last frame.
     """
 
-    show_grid: bool = False
+    show_grid: bool
+    use_render_radius: bool
+    render_radius_tiles: int
+    visible_primitive_count: int = 0
 
 
 @dataclass
@@ -154,18 +239,274 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Path to tactical_map.json.",
     )
     parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_CONFIG_PATH,
+        help="Path to map_3d_viewer_config.json.",
+    )
+    parser.add_argument(
         "--window-width",
         type=int,
-        default=1280,
-        help="Viewer window width in pixels.",
+        default=None,
+        help="Override viewer window width in pixels.",
     )
     parser.add_argument(
         "--window-height",
         type=int,
-        default=720,
-        help="Viewer window height in pixels.",
+        default=None,
+        help="Override viewer window height in pixels.",
     )
     return parser.parse_args(argv)
+
+
+def load_viewer_config(path: Path) -> ViewerConfig:
+    """Load viewer configuration from JSON or return defaults when missing.
+
+    Args:
+        path: Viewer config JSON path.
+
+    Returns:
+        Parsed viewer configuration.
+
+    Raises:
+        ValueError: If the config root is not a JSON object.
+        OSError: If the config file exists but cannot be read.
+        json.JSONDecodeError: If JSON parsing fails.
+    """
+
+    if not path.exists():
+        LOGGER.warning("Viewer config not found at %s; using defaults.", path)
+        return ViewerConfig()
+
+    with path.open("r", encoding="utf-8") as file:
+        payload = json.load(file)
+    if not isinstance(payload, dict):
+        raise ValueError("Viewer config root must be a JSON object.")
+
+    window_payload = _get_dict(payload, "window")
+    camera_payload = _get_dict(payload, "camera")
+    render_payload = _get_dict(payload, "render")
+
+    return ViewerConfig(
+        window=WindowConfig(
+            width=_get_int(window_payload, "width", WindowConfig.width, minimum=320),
+            height=_get_int(window_payload, "height", WindowConfig.height, minimum=240),
+            target_fps=_get_int(window_payload, "target_fps", WindowConfig.target_fps, minimum=1),
+        ),
+        camera=CameraConfig(
+            mouse_sensitivity=_get_float(
+                camera_payload,
+                "mouse_sensitivity",
+                CameraConfig.mouse_sensitivity,
+                minimum=0.0001,
+            ),
+            base_speed=_get_float(camera_payload, "base_speed", CameraConfig.base_speed, minimum=0.1),
+            fast_multiplier=_get_float(
+                camera_payload,
+                "fast_multiplier",
+                CameraConfig.fast_multiplier,
+                minimum=1.0,
+            ),
+            wheel_height_step=_get_float(
+                camera_payload,
+                "wheel_height_step",
+                CameraConfig.wheel_height_step,
+                minimum=0.1,
+            ),
+            min_height=_get_float(camera_payload, "min_height", CameraConfig.min_height, minimum=0.0),
+            start_height_min=_get_float(
+                camera_payload,
+                "start_height_min",
+                CameraConfig.start_height_min,
+                minimum=1.0,
+            ),
+            start_height_map_factor=_get_float(
+                camera_payload,
+                "start_height_map_factor",
+                CameraConfig.start_height_map_factor,
+                minimum=0.0,
+            ),
+            start_distance_min=_get_float(
+                camera_payload,
+                "start_distance_min",
+                CameraConfig.start_distance_min,
+                minimum=1.0,
+            ),
+            start_distance_map_factor=_get_float(
+                camera_payload,
+                "start_distance_map_factor",
+                CameraConfig.start_distance_map_factor,
+                minimum=0.0,
+            ),
+            start_pitch_degrees=_get_float(
+                camera_payload,
+                "start_pitch_degrees",
+                CameraConfig.start_pitch_degrees,
+            ),
+        ),
+        render=RenderConfig(
+            tile_size=_get_float(render_payload, "tile_size", RenderConfig.tile_size, minimum=0.1),
+            draw_grid_by_default=_get_bool(
+                render_payload,
+                "draw_grid_by_default",
+                RenderConfig.draw_grid_by_default,
+            ),
+            use_render_radius=_get_bool(
+                render_payload,
+                "use_render_radius",
+                RenderConfig.use_render_radius,
+            ),
+            render_radius_tiles=_get_int(
+                render_payload,
+                "render_radius_tiles",
+                RenderConfig.render_radius_tiles,
+                minimum=1,
+            ),
+            render_radius_step_tiles=_get_int(
+                render_payload,
+                "render_radius_step_tiles",
+                RenderConfig.render_radius_step_tiles,
+                minimum=1,
+            ),
+            render_radius_min_tiles=_get_int(
+                render_payload,
+                "render_radius_min_tiles",
+                RenderConfig.render_radius_min_tiles,
+                minimum=1,
+            ),
+            render_radius_max_tiles=_get_int(
+                render_payload,
+                "render_radius_max_tiles",
+                RenderConfig.render_radius_max_tiles,
+                minimum=1,
+            ),
+            draw_enemy_spawns=_get_bool(
+                render_payload,
+                "draw_enemy_spawns",
+                RenderConfig.draw_enemy_spawns,
+            ),
+            draw_objective=_get_bool(render_payload, "draw_objective", RenderConfig.draw_objective),
+        ),
+    )
+
+
+def _get_dict(payload: dict[str, Any], key: str) -> dict[str, Any]:
+    """Return a nested object from JSON config.
+
+    Args:
+        payload: Config root object.
+        key: Nested object key.
+
+    Returns:
+        Nested object or an empty object when missing or invalid.
+    """
+
+    value = payload.get(key, {})
+    if not isinstance(value, dict):
+        LOGGER.warning("Ignoring non-object config section: %s", key)
+        return {}
+    return value
+
+
+def _get_int(payload: dict[str, Any], key: str, default: int, minimum: int | None = None) -> int:
+    """Read an integer config value with validation.
+
+    Args:
+        payload: Config section object.
+        key: Config key.
+        default: Fallback value.
+        minimum: Optional inclusive minimum.
+
+    Returns:
+        Validated integer value.
+    """
+
+    value = payload.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, int):
+        LOGGER.warning("Invalid integer config value for %s; using %s.", key, default)
+        return default
+    if minimum is not None and value < minimum:
+        LOGGER.warning("Config value %s is below %s; using %s.", key, minimum, default)
+        return default
+    return value
+
+
+def _get_float(
+    payload: dict[str, Any],
+    key: str,
+    default: float,
+    minimum: float | None = None,
+) -> float:
+    """Read a numeric config value with validation.
+
+    Args:
+        payload: Config section object.
+        key: Config key.
+        default: Fallback value.
+        minimum: Optional inclusive minimum.
+
+    Returns:
+        Validated float value.
+    """
+
+    value = payload.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        LOGGER.warning("Invalid numeric config value for %s; using %s.", key, default)
+        return default
+    result = float(value)
+    if minimum is not None and result < minimum:
+        LOGGER.warning("Config value %s is below %s; using %s.", key, minimum, default)
+        return default
+    return result
+
+
+def _get_bool(payload: dict[str, Any], key: str, default: bool) -> bool:
+    """Read a boolean config value with validation.
+
+    Args:
+        payload: Config section object.
+        key: Config key.
+        default: Fallback value.
+
+    Returns:
+        Validated boolean value.
+    """
+
+    value = payload.get(key, default)
+    if not isinstance(value, bool):
+        LOGGER.warning("Invalid boolean config value for %s; using %s.", key, default)
+        return default
+    return value
+
+
+def normalize_viewer_config(config: ViewerConfig) -> ViewerConfig:
+    """Normalize dependent config values.
+
+    Args:
+        config: Source config.
+
+    Returns:
+        Config with coherent render radius bounds and current radius.
+    """
+
+    radius_min = min(config.render.render_radius_min_tiles, config.render.render_radius_max_tiles)
+    radius_max = max(config.render.render_radius_min_tiles, config.render.render_radius_max_tiles)
+    radius = max(radius_min, min(radius_max, config.render.render_radius_tiles))
+    return ViewerConfig(
+        window=config.window,
+        camera=config.camera,
+        render=RenderConfig(
+            tile_size=config.render.tile_size,
+            draw_grid_by_default=config.render.draw_grid_by_default,
+            use_render_radius=config.render.use_render_radius,
+            render_radius_tiles=radius,
+            render_radius_step_tiles=config.render.render_radius_step_tiles,
+            render_radius_min_tiles=radius_min,
+            render_radius_max_tiles=radius_max,
+            draw_enemy_spawns=config.render.draw_enemy_spawns,
+            draw_objective=config.render.draw_objective,
+        ),
+    )
 
 
 def load_tactical_map(path: Path) -> TacticalMap:
@@ -214,20 +555,27 @@ def load_tactical_map(path: Path) -> TacticalMap:
     )
 
 
-def grid_to_world(tile_x: float, tile_y: float, tactical_map: TacticalMap) -> tuple[float, float]:
+def grid_to_world(
+    tile_x: float,
+    tile_y: float,
+    tactical_map: TacticalMap,
+    config: ViewerConfig,
+) -> tuple[float, float]:
     """Convert tile coordinates to centered X/Z world coordinates.
 
     Args:
         tile_x: Tile X coordinate.
         tile_y: Tile Y coordinate.
         tactical_map: Source tactical map.
+        config: Viewer config with tile scale.
 
     Returns:
         A tuple containing world X and world Z coordinates.
     """
 
-    world_x = (tile_x - tactical_map.width / 2.0) * TILE_SIZE
-    world_z = (tile_y - tactical_map.height / 2.0) * TILE_SIZE
+    tile_size = config.render.tile_size
+    world_x = (tile_x - tactical_map.width / 2.0) * tile_size
+    world_z = (tile_y - tactical_map.height / 2.0) * tile_size
     return world_x, world_z
 
 
@@ -272,26 +620,27 @@ def get_tile_style(tile: str) -> tuple[float, tuple[int, int, int, int], bool]:
     return styles.get(tile, (FLOOR_HEIGHT, (70, 70, 70, 255), False))
 
 
-def update_fly_camera(raylib: Any, state: FlyCameraState) -> Any:
+def update_fly_camera(raylib: Any, state: FlyCameraState, config: ViewerConfig) -> Any:
     """Update free-fly camera state from keyboard and mouse input.
 
     Args:
         raylib: Imported pyray module.
         state: Mutable camera state.
+        config: Viewer config.
 
     Returns:
         Updated pyray Camera3D object.
     """
 
     mouse_delta = raylib.get_mouse_delta()
-    state.yaw -= mouse_delta.x * CAMERA_MOUSE_SENSITIVITY
-    state.pitch -= mouse_delta.y * CAMERA_MOUSE_SENSITIVITY
+    state.yaw -= mouse_delta.x * config.camera.mouse_sensitivity
+    state.pitch -= mouse_delta.y * config.camera.mouse_sensitivity
     state.pitch = max(-CAMERA_PITCH_LIMIT, min(CAMERA_PITCH_LIMIT, state.pitch))
 
     frame_time = raylib.get_frame_time()
-    speed = CAMERA_BASE_SPEED * frame_time
+    speed = config.camera.base_speed * frame_time
     if raylib.is_key_down(raylib.KEY_LEFT_SHIFT) or raylib.is_key_down(raylib.KEY_RIGHT_SHIFT):
-        speed *= CAMERA_FAST_MULTIPLIER
+        speed *= config.camera.fast_multiplier
 
     forward_x = math.sin(state.yaw)
     forward_z = math.cos(state.yaw)
@@ -321,8 +670,8 @@ def update_fly_camera(raylib: Any, state: FlyCameraState) -> Any:
 
     wheel_move = raylib.get_mouse_wheel_move()
     if wheel_move:
-        state.y -= wheel_move * CAMERA_WHEEL_HEIGHT_STEP
-    state.y = max(CAMERA_MIN_HEIGHT, state.y)
+        state.y -= wheel_move * config.camera.wheel_height_step
+    state.y = max(config.camera.min_height, state.y)
 
     target_x = state.x + math.cos(state.pitch) * math.sin(state.yaw)
     target_y = state.y + math.sin(state.pitch)
@@ -339,6 +688,7 @@ def update_fly_camera(raylib: Any, state: FlyCameraState) -> Any:
 
 def make_tile_primitive(
     tactical_map: TacticalMap,
+    config: ViewerConfig,
     tile_x: int,
     tile_y: int,
     tile: str,
@@ -348,6 +698,7 @@ def make_tile_primitive(
 
     Args:
         tactical_map: Source tactical map.
+        config: Viewer config with tile scale.
         tile_x: First tile X coordinate in the run.
         tile_y: Tile Y coordinate.
         tile: Tile character.
@@ -358,14 +709,15 @@ def make_tile_primitive(
     """
 
     height, rgba, draw_wires = get_tile_style(tile)
-    world_x, world_z = grid_to_world(tile_x + run_length / 2.0, tile_y + 0.5, tactical_map)
+    tile_size = config.render.tile_size
+    world_x, world_z = grid_to_world(tile_x + run_length / 2.0, tile_y + 0.5, tactical_map, config)
     return RenderPrimitive(
         x=world_x,
         y=height / 2.0,
         z=world_z,
-        width=TILE_SIZE * run_length * 0.96,
+        width=tile_size * run_length * 0.96,
         height=height,
-        depth=TILE_SIZE * 0.96,
+        depth=tile_size * 0.96,
         rgba=rgba,
         has_wires=draw_wires,
     )
@@ -373,6 +725,7 @@ def make_tile_primitive(
 
 def make_marker_primitive(
     tactical_map: TacticalMap,
+    config: ViewerConfig,
     tile_x: int,
     tile_y: int,
     height: float,
@@ -383,34 +736,37 @@ def make_marker_primitive(
 
     Args:
         tactical_map: Source tactical map.
+        config: Viewer config with tile scale.
         tile_x: Tile X coordinate.
         tile_y: Tile Y coordinate.
         height: Marker height.
         rgba: Marker color.
-        size: Marker width and depth.
+        size: Marker width and depth in tile units.
 
     Returns:
         Precomputed marker primitive.
     """
 
-    world_x, world_z = grid_to_world(tile_x + 0.5, tile_y + 0.5, tactical_map)
+    tile_size = config.render.tile_size
+    world_x, world_z = grid_to_world(tile_x + 0.5, tile_y + 0.5, tactical_map, config)
     return RenderPrimitive(
         x=world_x,
         y=height / 2.0,
         z=world_z,
-        width=size,
+        width=size * tile_size,
         height=height,
-        depth=size,
+        depth=size * tile_size,
         rgba=rgba,
         has_wires=True,
     )
 
 
-def build_viewer_scene(tactical_map: TacticalMap) -> ViewerScene:
+def build_viewer_scene(tactical_map: TacticalMap, config: ViewerConfig) -> ViewerScene:
     """Precompute scene primitives once instead of rebuilding tile data every frame.
 
     Args:
         tactical_map: Source tactical map.
+        config: Viewer config.
 
     Returns:
         Precomputed viewer scene.
@@ -438,12 +794,13 @@ def build_viewer_scene(tactical_map: TacticalMap) -> ViewerScene:
                 run_length += 1
 
             tile_primitives.append(
-                make_tile_primitive(tactical_map, tile_x, tile_y, tile, run_length)
+                make_tile_primitive(tactical_map, config, tile_x, tile_y, tile, run_length)
             )
             if tile == "S":
                 start_goal_markers.append(
                     make_marker_primitive(
                         tactical_map,
+                        config,
                         tile_x,
                         tile_y,
                         SPAWN_MARKER_HEIGHT,
@@ -455,6 +812,7 @@ def build_viewer_scene(tactical_map: TacticalMap) -> ViewerScene:
                 start_goal_markers.append(
                     make_marker_primitive(
                         tactical_map,
+                        config,
                         tile_x,
                         tile_y,
                         GOAL_MARKER_HEIGHT,
@@ -473,6 +831,7 @@ def build_viewer_scene(tactical_map: TacticalMap) -> ViewerScene:
         enemy_spawn_markers.append(
             make_marker_primitive(
                 tactical_map,
+                config,
                 tile_x,
                 tile_y,
                 1.5,
@@ -507,19 +866,21 @@ def _is_tile_position(value: object) -> bool:
     )
 
 
-def draw_base_ground(raylib: Any, tactical_map: TacticalMap) -> None:
+def draw_base_ground(raylib: Any, tactical_map: TacticalMap, config: ViewerConfig) -> None:
     """Draw one cheap base ground slab for the whole map.
 
     Args:
         raylib: Imported pyray module.
         tactical_map: Source tactical map.
+        config: Viewer config with tile scale.
     """
 
+    tile_size = config.render.tile_size
     raylib.draw_cube(
         raylib.Vector3(0.0, -GROUND_THICKNESS / 2.0, 0.0),
-        tactical_map.width * TILE_SIZE,
+        tactical_map.width * tile_size,
         GROUND_THICKNESS,
-        tactical_map.height * TILE_SIZE,
+        tactical_map.height * tile_size,
         make_color(raylib, (57, 117, 61, 255)),
     )
 
@@ -550,38 +911,139 @@ def draw_primitive(raylib: Any, primitive: RenderPrimitive, show_wires: bool) ->
         )
 
 
-def update_viewer_state(raylib: Any, state: ViewerState) -> None:
+def update_viewer_state(raylib: Any, state: ViewerState, config: ViewerConfig) -> None:
     """Update viewer toggles from keyboard input.
 
     Args:
         raylib: Imported pyray module.
         state: Mutable viewer state.
+        config: Viewer config.
     """
 
     if raylib.is_key_pressed(raylib.KEY_G):
         state.show_grid = not state.show_grid
+    if raylib.is_key_pressed(raylib.KEY_F):
+        state.use_render_radius = not state.use_render_radius
+    if raylib.is_key_pressed(raylib.KEY_LEFT_BRACKET):
+        state.render_radius_tiles = max(
+            config.render.render_radius_min_tiles,
+            state.render_radius_tiles - config.render.render_radius_step_tiles,
+        )
+    if raylib.is_key_pressed(raylib.KEY_RIGHT_BRACKET):
+        state.render_radius_tiles = min(
+            config.render.render_radius_max_tiles,
+            state.render_radius_tiles + config.render.render_radius_step_tiles,
+        )
 
 
-def draw_scene(raylib: Any, tactical_map: TacticalMap, scene: ViewerScene, state: ViewerState) -> None:
-    """Draw the full tactical map scene.
+def is_primitive_visible(
+    primitive: RenderPrimitive,
+    camera_state: FlyCameraState,
+    state: ViewerState,
+    config: ViewerConfig,
+) -> bool:
+    """Check whether a primitive is inside the camera-centered render radius.
+
+    Args:
+        primitive: Primitive to test.
+        camera_state: Current camera state.
+        state: Mutable viewer state.
+        config: Viewer config.
+
+    Returns:
+        True when the primitive should be drawn.
+    """
+
+    if not state.use_render_radius:
+        return True
+
+    radius = state.render_radius_tiles * config.render.tile_size
+    dx = primitive.x - camera_state.x
+    dz = primitive.z - camera_state.z
+    half_extent = max(primitive.width, primitive.depth) * 0.5
+    return dx * dx + dz * dz <= (radius + half_extent) * (radius + half_extent)
+
+
+def iter_visible_primitives(
+    primitives: tuple[RenderPrimitive, ...],
+    camera_state: FlyCameraState,
+    state: ViewerState,
+    config: ViewerConfig,
+) -> tuple[RenderPrimitive, ...]:
+    """Filter primitives by the active render radius.
+
+    Args:
+        primitives: Source primitive sequence.
+        camera_state: Current camera state.
+        state: Mutable viewer state.
+        config: Viewer config.
+
+    Returns:
+        Visible primitives for the current frame.
+    """
+
+    if not state.use_render_radius:
+        return primitives
+    return tuple(
+        primitive
+        for primitive in primitives
+        if is_primitive_visible(primitive, camera_state, state, config)
+    )
+
+
+def draw_scene(
+    raylib: Any,
+    tactical_map: TacticalMap,
+    scene: ViewerScene,
+    state: ViewerState,
+    camera_state: FlyCameraState,
+    config: ViewerConfig,
+) -> None:
+    """Draw the tactical map scene.
 
     Args:
         raylib: Imported pyray module.
         tactical_map: Source tactical map.
         scene: Precomputed scene primitives.
         state: Mutable viewer state.
+        camera_state: Current camera state.
+        config: Viewer config.
     """
 
-    draw_base_ground(raylib, tactical_map)
-    for primitive in scene.tile_primitives:
+    visible_count = 1
+    draw_base_ground(raylib, tactical_map, config)
+
+    tile_primitives = iter_visible_primitives(scene.tile_primitives, camera_state, state, config)
+    for primitive in tile_primitives:
         draw_primitive(raylib, primitive, state.show_grid)
-    for primitive in scene.start_goal_markers:
-        draw_primitive(raylib, primitive, state.show_grid)
-    for primitive in scene.enemy_spawn_markers:
-        draw_primitive(raylib, primitive, state.show_grid)
+    visible_count += len(tile_primitives)
+
+    if config.render.draw_objective:
+        objective_primitives = iter_visible_primitives(
+            scene.start_goal_markers,
+            camera_state,
+            state,
+            config,
+        )
+        for primitive in objective_primitives:
+            draw_primitive(raylib, primitive, state.show_grid)
+        visible_count += len(objective_primitives)
+
+    if config.render.draw_enemy_spawns:
+        enemy_primitives = iter_visible_primitives(
+            scene.enemy_spawn_markers,
+            camera_state,
+            state,
+            config,
+        )
+        for primitive in enemy_primitives:
+            draw_primitive(raylib, primitive, state.show_grid)
+        visible_count += len(enemy_primitives)
+
+    state.visible_primitive_count = visible_count
 
     if state.show_grid:
-        raylib.draw_grid(max(tactical_map.width, tactical_map.height), TILE_SIZE)
+        raylib.draw_grid(max(tactical_map.width, tactical_map.height), config.render.tile_size)
 
 
 def draw_hud(
@@ -603,15 +1065,20 @@ def draw_hud(
 
     text_color = make_color(raylib, (235, 235, 235, 255))
     shadow_color = make_color(raylib, (20, 20, 20, 255))
+    radius_text = (
+        f"radius on/{state.render_radius_tiles} tiles"
+        if state.use_render_radius
+        else f"radius off/{state.render_radius_tiles} tiles"
+    )
     lines = [
         f"Map 3D Viewer: {map_path.name} ({tactical_map.width}x{tactical_map.height})",
         "WASD move | Mouse look | Space/E up | Ctrl/Q down | Wheel height | Shift fast",
-        "G grid | Esc exit",
+        "G grid | F radius | [/] radius size | Esc exit",
         (
-            f"Draw: {scene.primitive_count} primitives, "
-            f"skipped {scene.base_tile_count} base grass tiles, "
-            f"grid {'on' if state.show_grid else 'off'}"
+            f"Draw: {state.visible_primitive_count}/{scene.primitive_count} visible primitives, "
+            f"skipped {scene.base_tile_count} base grass tiles"
         ),
+        f"Render: {radius_text}, grid {'on' if state.show_grid else 'off'}",
         "Tiles: # walls, T trees, b bushes, w water, S start, G goal, red enemy spawns",
     ]
     for index, line in enumerate(lines):
@@ -629,39 +1096,60 @@ def draw_hud(
     raylib.draw_text(fps_text, fps_x, fps_y, fps_font_size, text_color)
 
 
-def run_viewer(raylib: Any, tactical_map: TacticalMap, map_path: Path, width: int, height: int) -> None:
+def make_initial_camera_state(tactical_map: TacticalMap, config: ViewerConfig) -> FlyCameraState:
+    """Create the initial camera state for a loaded map.
+
+    Args:
+        tactical_map: Source tactical map.
+        config: Viewer config.
+
+    Returns:
+        Initial fly-camera state.
+    """
+
+    return FlyCameraState(
+        x=0.0,
+        y=max(config.camera.start_height_min, tactical_map.height * config.camera.start_height_map_factor),
+        z=-max(config.camera.start_distance_min, tactical_map.height * config.camera.start_distance_map_factor),
+        yaw=0.0,
+        pitch=math.radians(config.camera.start_pitch_degrees),
+    )
+
+
+def run_viewer(raylib: Any, tactical_map: TacticalMap, map_path: Path, config: ViewerConfig) -> None:
     """Run the raylib viewer loop.
 
     Args:
         raylib: Imported pyray module.
         tactical_map: Source tactical map.
         map_path: Loaded map file path.
-        width: Window width in pixels.
-        height: Window height in pixels.
+        config: Viewer config.
     """
 
-    raylib.init_window(width, height, "TopDownShooter V2 - Map 3D Viewer")
-    raylib.set_target_fps(60)
+    raylib.init_window(
+        config.window.width,
+        config.window.height,
+        "TopDownShooter V2 - Map 3D Viewer",
+    )
+    raylib.set_target_fps(config.window.target_fps)
     raylib.disable_cursor()
 
-    scene = build_viewer_scene(tactical_map)
-    viewer_state = ViewerState()
-    camera_state = FlyCameraState(
-        x=0.0,
-        y=max(18.0, tactical_map.height * 0.20),
-        z=-max(20.0, tactical_map.height * 0.35),
-        yaw=0.0,
-        pitch=math.radians(-35.0),
+    scene = build_viewer_scene(tactical_map, config)
+    viewer_state = ViewerState(
+        show_grid=config.render.draw_grid_by_default,
+        use_render_radius=config.render.use_render_radius,
+        render_radius_tiles=config.render.render_radius_tiles,
     )
+    camera_state = make_initial_camera_state(tactical_map, config)
 
     try:
         while not raylib.window_should_close():
-            update_viewer_state(raylib, viewer_state)
-            camera = update_fly_camera(raylib, camera_state)
+            update_viewer_state(raylib, viewer_state, config)
+            camera = update_fly_camera(raylib, camera_state, config)
             raylib.begin_drawing()
             raylib.clear_background(make_color(raylib, (18, 20, 24, 255)))
             raylib.begin_mode_3d(camera)
-            draw_scene(raylib, tactical_map, scene, viewer_state)
+            draw_scene(raylib, tactical_map, scene, viewer_state, camera_state, config)
             raylib.end_mode_3d()
             draw_hud(raylib, tactical_map, scene, viewer_state, map_path)
             raylib.end_drawing()
@@ -704,8 +1192,19 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         tactical_map = load_tactical_map(args.map_path)
+        config = normalize_viewer_config(load_viewer_config(args.config))
+        if args.window_width is not None or args.window_height is not None:
+            config = ViewerConfig(
+                window=WindowConfig(
+                    width=args.window_width or config.window.width,
+                    height=args.window_height or config.window.height,
+                    target_fps=config.window.target_fps,
+                ),
+                camera=config.camera,
+                render=config.render,
+            )
         raylib = import_pyray()
-        run_viewer(raylib, tactical_map, args.map_path, args.window_width, args.window_height)
+        run_viewer(raylib, tactical_map, args.map_path, config)
     except (OSError, ValueError, json.JSONDecodeError, RuntimeError) as exc:
         LOGGER.error("%s", exc)
         return 1

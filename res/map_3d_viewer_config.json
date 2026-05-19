@@ -1,0 +1,30 @@
+{
+  "window": {
+    "width": 1280,
+    "height": 720,
+    "target_fps": 60
+  },
+  "camera": {
+    "mouse_sensitivity": 0.003,
+    "base_speed": 12.0,
+    "fast_multiplier": 3.0,
+    "wheel_height_step": 3.0,
+    "min_height": 0.3,
+    "start_height_min": 18.0,
+    "start_height_map_factor": 0.2,
+    "start_distance_min": 20.0,
+    "start_distance_map_factor": 0.35,
+    "start_pitch_degrees": -35.0
+  },
+  "render": {
+    "tile_size": 1.0,
+    "draw_grid_by_default": false,
+    "use_render_radius": true,
+    "render_radius_tiles": 60,
+    "render_radius_step_tiles": 10,
+    "render_radius_min_tiles": 20,
+    "render_radius_max_tiles": 300,
+    "draw_enemy_spawns": true,
+    "draw_objective": true
+  }
+}
