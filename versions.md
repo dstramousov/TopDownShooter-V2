@@ -504,3 +504,16 @@
 - Подключены существующие `ProjectileSystem` и `WeaponController` к изолированному 3D experiment runtime без изменения 2D-runtime.
 - Настройки projectile/aim-маркеров вынесены в секцию `render3d.projectiles`.
 - HUD экспериментального 3D-режима показывает видимые projectiles, impacts и текущий weapon/ammo.
+
+## v0.0.67 -> v0.0.68
+
+- Улучшена читаемость боя в экспериментальном `--renderer 3d` режиме.
+- Добавлены настраиваемые 3D projectile tracers, impact rings и enemy hit markers.
+- Враги получают короткий hit flash при попадании без изменения AI, урона и 2D-runtime.
+- Настройки вынесены в секцию `render3d.combat_visuals`.
+
+## v0.0.68 -> v0.0.69
+
+- Перенесён reset camera в экспериментальном 3D-режиме с `R` на `C`.
+- `R` оставлена только для reload в экспериментальном 3D renderer-е.
+- Добавлена настройка `render3d.controls.camera_reset` и обновлена подсказка в 3D HUD.

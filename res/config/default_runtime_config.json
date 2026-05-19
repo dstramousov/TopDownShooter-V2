@@ -220,6 +220,22 @@
       "projectile_height_tiles": 0.72,
       "draw_impacts": true,
       "impact_height_tiles": 0.55
+    },
+    "combat_visuals": {
+      "draw_projectile_tracers": true,
+      "projectile_tracer_length_tiles": 2.8,
+      "projectile_tracer_height_offset_tiles": 0.08,
+      "draw_impact_rings": true,
+      "impact_ring_radius_tiles": 0.34,
+      "impact_ring_height_tiles": 0.08,
+      "enemy_hit_flash_seconds": 0.12,
+      "draw_enemy_hit_markers": true,
+      "max_visible_enemy_hit_markers": 64,
+      "enemy_hit_marker_radius_tiles": 0.34,
+      "enemy_hit_marker_height_tiles": 1.35
+    },
+    "controls": {
+      "camera_reset": "KEY_C"
     }
   }
 }

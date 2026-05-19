@@ -158,6 +158,11 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.render3d.projectiles.draw_projectiles is True
     assert config.render3d.projectiles.max_visible_projectiles == 256
     assert config.render3d.projectiles.projectile_radius_tiles == 0.08
+    assert config.render3d.combat_visuals.draw_projectile_tracers is True
+    assert config.render3d.combat_visuals.projectile_tracer_length_tiles == 2.8
+    assert config.render3d.combat_visuals.draw_impact_rings is True
+    assert config.render3d.combat_visuals.enemy_hit_flash_seconds == 0.12
+    assert config.render3d.combat_visuals.draw_enemy_hit_markers is True
     assert config.render3d.projectiles.projectile_height_tiles == 0.72
     assert config.render3d.projectiles.draw_impacts is True
     assert config.render3d.projectiles.impact_height_tiles == 0.55

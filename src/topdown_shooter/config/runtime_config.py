@@ -380,6 +380,15 @@ class Render3DPlayerMovementConfig:
     movement_relative_to: str
 
 
+@dataclass(frozen=True, slots=True)
+class Render3DControlsConfig:
+    """Experimental 3D renderer control bindings.
+
+    Attributes:
+        camera_reset: Key name used to reset only the 3D follow camera smoothing.
+    """
+
+    camera_reset: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -408,6 +417,37 @@ class Render3DProjectileConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class Render3DCombatVisualsConfig:
+    """Experimental 3D combat readability settings.
+
+    Attributes:
+        draw_projectile_tracers: Whether projectiles draw longer direction tracers.
+        projectile_tracer_length_tiles: Projectile tracer length in 3D tile units.
+        projectile_tracer_height_offset_tiles: Extra tracer height above projectile markers.
+        draw_impact_rings: Whether impacts draw expanding ground rings.
+        impact_ring_radius_tiles: Base impact ring radius in 3D tile units.
+        impact_ring_height_tiles: Impact ring height above the map in 3D tile units.
+        enemy_hit_flash_seconds: Duration for enemy hit flash in 3D seconds.
+        draw_enemy_hit_markers: Whether enemy hit markers are drawn in 3D.
+        max_visible_enemy_hit_markers: Maximum enemy hit markers drawn per frame.
+        enemy_hit_marker_radius_tiles: Enemy hit marker radius in 3D tile units.
+        enemy_hit_marker_height_tiles: Enemy hit marker height above the map.
+    """
+
+    draw_projectile_tracers: bool
+    projectile_tracer_length_tiles: float
+    projectile_tracer_height_offset_tiles: float
+    draw_impact_rings: bool
+    impact_ring_radius_tiles: float
+    impact_ring_height_tiles: float
+    enemy_hit_flash_seconds: float
+    draw_enemy_hit_markers: bool
+    max_visible_enemy_hit_markers: int
+    enemy_hit_marker_radius_tiles: float
+    enemy_hit_marker_height_tiles: float
+
+
+@dataclass(frozen=True, slots=True)
 class Render3DEnemyConfig:
     """Experimental 3D enemy marker settings.
 
@@ -425,6 +465,7 @@ class Render3DEnemyConfig:
     marker_height_tiles: float
     direction_line_length_tiles: float
 
+
 @dataclass(frozen=True, slots=True)
 class Render3DConfig:
     """Experimental 3D renderer settings.
@@ -440,8 +481,10 @@ class Render3DConfig:
         max_visible_primitives: Safety cap for visible primitive rendering.
         camera: Follow-camera settings.
         player_movement: Experimental 3D player movement settings.
+        controls: Experimental 3D control bindings.
         enemies: Experimental 3D enemy marker settings.
         projectiles: Experimental 3D projectile marker settings.
+        combat_visuals: Experimental 3D combat readability settings.
     """
 
     enabled: bool
@@ -453,8 +496,10 @@ class Render3DConfig:
     max_visible_primitives: int
     camera: Render3DCameraConfig
     player_movement: Render3DPlayerMovementConfig
+    controls: Render3DControlsConfig
     enemies: Render3DEnemyConfig
     projectiles: Render3DProjectileConfig
+    combat_visuals: Render3DCombatVisualsConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -916,8 +961,10 @@ class RuntimeConfigLoader:
         """
         camera = self._require_dict(render3d, "camera")
         player_movement = self._require_dict(render3d, "player_movement")
+        controls = self._require_dict(render3d, "controls")
         enemies = self._require_dict(render3d, "enemies")
         projectiles = self._require_dict(render3d, "projectiles")
+        combat_visuals = self._require_dict(render3d, "combat_visuals")
         render_mode = self._require_render3d_mode(render3d, "render_mode")
         return Render3DConfig(
             enabled=self._require_bool(render3d, "enabled"),
@@ -996,6 +1043,9 @@ class RuntimeConfigLoader:
                     "movement_relative_to",
                 ),
             ),
+            controls=Render3DControlsConfig(
+                camera_reset=self._require_str(controls, "camera_reset"),
+            ),
             projectiles=Render3DProjectileConfig(
                 draw_aim_line=self._require_bool(
                     projectiles,
@@ -1028,6 +1078,52 @@ class RuntimeConfigLoader:
                 impact_height_tiles=self._require_positive_float(
                     projectiles,
                     "impact_height_tiles",
+                ),
+            ),
+            combat_visuals=Render3DCombatVisualsConfig(
+                draw_projectile_tracers=self._require_bool(
+                    combat_visuals,
+                    "draw_projectile_tracers",
+                ),
+                projectile_tracer_length_tiles=self._require_positive_float(
+                    combat_visuals,
+                    "projectile_tracer_length_tiles",
+                ),
+                projectile_tracer_height_offset_tiles=self._require_non_negative_float(
+                    combat_visuals,
+                    "projectile_tracer_height_offset_tiles",
+                ),
+                draw_impact_rings=self._require_bool(
+                    combat_visuals,
+                    "draw_impact_rings",
+                ),
+                impact_ring_radius_tiles=self._require_positive_float(
+                    combat_visuals,
+                    "impact_ring_radius_tiles",
+                ),
+                impact_ring_height_tiles=self._require_non_negative_float(
+                    combat_visuals,
+                    "impact_ring_height_tiles",
+                ),
+                enemy_hit_flash_seconds=self._require_positive_float(
+                    combat_visuals,
+                    "enemy_hit_flash_seconds",
+                ),
+                draw_enemy_hit_markers=self._require_bool(
+                    combat_visuals,
+                    "draw_enemy_hit_markers",
+                ),
+                max_visible_enemy_hit_markers=self._require_positive_int(
+                    combat_visuals,
+                    "max_visible_enemy_hit_markers",
+                ),
+                enemy_hit_marker_radius_tiles=self._require_positive_float(
+                    combat_visuals,
+                    "enemy_hit_marker_radius_tiles",
+                ),
+                enemy_hit_marker_height_tiles=self._require_non_negative_float(
+                    combat_visuals,
+                    "enemy_hit_marker_height_tiles",
                 ),
             ),
             enemies=Render3DEnemyConfig(

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 
-from topdown_shooter.combat.enemies import EnemyState, EnemySystem
+from topdown_shooter.combat.enemies import EnemyHitMarkerState, EnemyState, EnemySystem
 from topdown_shooter.combat.projectiles import (
     ImpactMarkerState,
     ProjectileState,
@@ -82,7 +82,7 @@ class Render3DRenderer:
         )
         self._key_one = self._resolve_key("KEY_ONE")
         self._key_two = self._resolve_key("KEY_TWO")
-        self._key_reset = self._resolve_key("KEY_R")
+        self._key_reset = self._resolve_key(config.render3d.controls.camera_reset)
         self._key_hud = self._resolve_key("KEY_H")
         self._fire_primary_button = self._resolve_mouse_button(config.controls.fire_primary)
         self._reload_key = self._resolve_key(config.controls.reload)
@@ -135,6 +135,15 @@ class Render3DRenderer:
                     frame_time=frame_time,
                 )
                 projectile_system.update(frame_time)
+                enemy_system.update(
+                    frame_time,
+                    squad_alert_broadcast_delay_seconds=(
+                        self._config.enemies.squad_alert_broadcast_delay_seconds
+                    ),
+                    squad_alert_broadcast_radius_px=(
+                        self._config.enemies.squad_alert_broadcast_radius_px
+                    ),
+                )
                 enemy_system.apply_projectile_hits(
                     projectiles=projectile_system.projectiles,
                     enemy_collision_radius_px=self._config.enemies.marker_radius_px,
@@ -156,6 +165,10 @@ class Render3DRenderer:
                 )
                 visible_impacts = self._visible_impacts(
                     impacts=projectile_system.impacts,
+                    player_position=player.world_position,
+                )
+                visible_enemy_hit_markers = self._visible_enemy_hit_markers(
+                    hit_markers=enemy_system.hit_markers,
                     player_position=player.world_position,
                 )
                 camera_state = camera_controller.build_state(
@@ -186,6 +199,7 @@ class Render3DRenderer:
                 raylib.begin_mode_3d(camera)
                 self._draw_scene(scene)
                 self._draw_enemy_markers(visible_enemies)
+                self._draw_enemy_hit_markers(visible_enemy_hit_markers)
                 self._draw_projectile_markers(visible_projectiles)
                 self._draw_impact_markers(visible_impacts)
                 self._draw_aim_line(player.world_position, self._last_facing_x, self._last_facing_y)
@@ -200,6 +214,8 @@ class Render3DRenderer:
                         visible_projectiles=visible_projectiles,
                         impacts=projectile_system.impacts,
                         visible_impacts=visible_impacts,
+                        enemy_hit_markers=enemy_system.hit_markers,
+                        visible_enemy_hit_markers=visible_enemy_hit_markers,
                         weapon_controller=weapon_controller,
                     )
                 raylib.end_drawing()
@@ -595,7 +611,7 @@ class Render3DRenderer:
                 marker_height * 0.5,
                 enemy.world_position.y / tile_size_px * tile_size,
             )
-            color = raylib.RED if enemy.alerted else raylib.MAROON
+            color = self._enemy_marker_color(enemy)
             raylib.draw_cylinder(
                 center,
                 marker_radius,
@@ -604,11 +620,18 @@ class Render3DRenderer:
                 12,
                 color,
             )
+            head_center = raylib.Vector3(center.x, marker_height + marker_radius, center.z)
             raylib.draw_sphere(
-                raylib.Vector3(center.x, marker_height + marker_radius, center.z),
+                head_center,
                 marker_radius * 0.85,
-                raylib.RED,
+                color,
             )
+            if self._is_enemy_hit_flashing(enemy):
+                raylib.draw_sphere(
+                    head_center,
+                    marker_radius * 1.25,
+                    raylib.YELLOW,
+                )
             facing_radians = math.radians(enemy.facing_angle_degrees)
             direction_end = raylib.Vector3(
                 center.x + math.cos(facing_radians) * direction_length,
@@ -621,6 +644,39 @@ class Render3DRenderer:
                 raylib.PINK,
             )
 
+
+    def _visible_enemy_hit_markers(
+        self,
+        hit_markers: tuple[EnemyHitMarkerState, ...],
+        player_position: WorldCoord,
+    ) -> tuple[EnemyHitMarkerState, ...]:
+        """Return visible enemy hit markers inside the player-centered radius.
+
+        Args:
+            hit_markers: Active enemy hit markers.
+            player_position: Current player position in world pixels.
+
+        Returns:
+            Distance-sorted visible enemy hit markers.
+        """
+        combat_config = self._config.render3d.combat_visuals
+        if not combat_config.draw_enemy_hit_markers:
+            return ()
+        candidates: list[tuple[float, EnemyHitMarkerState]] = []
+        radius_squared = self._view_radius_px_squared()
+        for marker in hit_markers:
+            if not marker.alive:
+                continue
+            dx = marker.position.x - player_position.x
+            dy = marker.position.y - player_position.y
+            distance_squared = dx * dx + dy * dy
+            if distance_squared <= radius_squared:
+                candidates.append((distance_squared, marker))
+        candidates.sort(key=lambda item: item[0])
+        return tuple(
+            marker
+            for _, marker in candidates[: combat_config.max_visible_enemy_hit_markers]
+        )
 
     def _visible_projectiles(
         self,
@@ -685,6 +741,40 @@ class Render3DRenderer:
         candidates.sort(key=lambda item: item[0])
         return tuple(impact for _, impact in candidates)
 
+    def _draw_enemy_hit_markers(self, hit_markers: tuple[EnemyHitMarkerState, ...]) -> None:
+        """Draw short-lived enemy hit feedback markers.
+
+        Args:
+            hit_markers: Visible enemy hit markers to draw.
+        """
+        if not hit_markers:
+            return
+        raylib = self._raylib
+        render_config = self._config.render3d
+        combat_config = render_config.combat_visuals
+        tile_size = render_config.tile_size
+        height_scale = render_config.height_scale
+        tile_size_px = self._runtime_map.tile_size_px
+        marker_y = combat_config.enemy_hit_marker_height_tiles * height_scale
+        base_radius = combat_config.enemy_hit_marker_radius_tiles * tile_size
+        for marker in hit_markers:
+            progress = self._age_progress(marker.age_seconds, marker.lifetime_seconds)
+            radius = base_radius * (1.0 + progress * 0.7)
+            center = raylib.Vector3(
+                marker.position.x / tile_size_px * tile_size,
+                marker_y,
+                marker.position.y / tile_size_px * tile_size,
+            )
+            raylib.draw_sphere(center, radius * 0.35, raylib.YELLOW)
+            raylib.draw_cylinder_wires(
+                center,
+                radius,
+                radius,
+                0.05 * height_scale,
+                18,
+                raylib.GOLD,
+            )
+
     def _draw_projectile_markers(self, projectiles: tuple[ProjectileState, ...]) -> None:
         """Draw active projectiles as short 3D tracer markers.
 
@@ -702,17 +792,36 @@ class Render3DRenderer:
         projectile_y = projectile_config.projectile_height_tiles * height_scale
         radius = projectile_config.projectile_radius_tiles * tile_size
         for projectile in projectiles:
-            start = raylib.Vector3(
-                projectile.previous_position.x / tile_size_px * tile_size,
-                projectile_y,
-                projectile.previous_position.y / tile_size_px * tile_size,
-            )
+            combat_config = render_config.combat_visuals
             end = raylib.Vector3(
                 projectile.position.x / tile_size_px * tile_size,
                 projectile_y,
                 projectile.position.y / tile_size_px * tile_size,
             )
-            raylib.draw_line_3d(start, end, raylib.SKYBLUE)
+            if combat_config.draw_projectile_tracers:
+                tracer_length = combat_config.projectile_tracer_length_tiles * tile_size
+                tracer_y = projectile_y + (
+                    combat_config.projectile_tracer_height_offset_tiles * height_scale
+                )
+                start = raylib.Vector3(
+                    end.x - projectile.direction_x * tracer_length,
+                    tracer_y,
+                    end.z - projectile.direction_y * tracer_length,
+                )
+                tracer_end = raylib.Vector3(end.x, tracer_y, end.z)
+                raylib.draw_line_3d(start, tracer_end, raylib.SKYBLUE)
+                raylib.draw_line_3d(
+                    raylib.Vector3(start.x, projectile_y, start.z),
+                    end,
+                    raylib.BLUE,
+                )
+            else:
+                start = raylib.Vector3(
+                    projectile.previous_position.x / tile_size_px * tile_size,
+                    projectile_y,
+                    projectile.previous_position.y / tile_size_px * tile_size,
+                )
+                raylib.draw_line_3d(start, end, raylib.SKYBLUE)
             raylib.draw_sphere(end, max(radius, 0.03 * tile_size), raylib.RAYWHITE)
 
     def _draw_impact_markers(self, impacts: tuple[ImpactMarkerState, ...]) -> None:
@@ -737,7 +846,26 @@ class Render3DRenderer:
                 impact.position.y / tile_size_px * tile_size,
             )
             radius = max(impact.radius_px / tile_size_px * tile_size, 0.08 * tile_size)
-            raylib.draw_sphere(center, radius, raylib.ORANGE)
+            progress = self._age_progress(impact.age_seconds, impact.lifetime_seconds)
+            raylib.draw_sphere(center, radius * (1.0 + progress * 0.35), raylib.ORANGE)
+            combat_config = render_config.combat_visuals
+            if combat_config.draw_impact_rings:
+                ring_radius = (
+                    combat_config.impact_ring_radius_tiles * tile_size * (1.0 + progress)
+                )
+                ring_center = raylib.Vector3(
+                    center.x,
+                    combat_config.impact_ring_height_tiles * height_scale,
+                    center.z,
+                )
+                raylib.draw_cylinder_wires(
+                    ring_center,
+                    ring_radius,
+                    ring_radius,
+                    0.04 * height_scale,
+                    20,
+                    raylib.GOLD,
+                )
 
     def _draw_aim_line(self, player_position: WorldCoord, facing_x: float, facing_y: float) -> None:
         """Draw the current 3D aim line from the player marker.
@@ -824,6 +952,8 @@ class Render3DRenderer:
         visible_projectiles: tuple[ProjectileState, ...],
         impacts: tuple[ImpactMarkerState, ...],
         visible_impacts: tuple[ImpactMarkerState, ...],
+        enemy_hit_markers: tuple[EnemyHitMarkerState, ...],
+        visible_enemy_hit_markers: tuple[EnemyHitMarkerState, ...],
         weapon_controller: WeaponController,
     ) -> None:
         """Draw the experimental renderer debug HUD.
@@ -836,6 +966,8 @@ class Render3DRenderer:
             visible_projectiles: Projectiles currently inside the 3D view radius.
             impacts: All active impact markers owned by the experiment.
             visible_impacts: Impacts currently inside the 3D view radius.
+            enemy_hit_markers: All active enemy hit markers owned by the experiment.
+            visible_enemy_hit_markers: Enemy hit markers currently inside the 3D view radius.
             weapon_controller: Weapon controller used for current weapon diagnostics.
         """
         raylib = self._raylib
@@ -851,17 +983,41 @@ class Render3DRenderer:
             f"enemies: {len(visible_enemies)}/{len(enemies)} visible",
             f"projectiles: {len(visible_projectiles)}/{len(projectiles)} visible",
             f"impacts: {len(visible_impacts)}/{len(impacts)} visible",
+            f"enemy hits: {len(visible_enemy_hit_markers)}/{len(enemy_hit_markers)} visible",
             f"weapon: {weapon_stats.weapon_id} ammo {weapon_stats.ammo_in_magazine}/{weapon_stats.magazine_size}",
             f"radius center: player tile {scene.center_tile.x},{scene.center_tile.y}",
             f"culled tiles: {scene.culled_tile_count}/{scene.total_tile_count}",
             "movement: facing-relative strafe",
             "mouse X aim | LMB fire | R reload | 1/2/3 weapons",
-            "W/S forward/back | A/D strafe | 1 top | 2 low | H HUD | ESC close",
+            "W/S forward/back | A/D strafe | C reset camera | 1 top | 2 low | H HUD | ESC close",
         ]
         y = 12
         for line in lines:
             raylib.draw_text(line, 12, y, 18, raylib.RAYWHITE)
             y += 22
+
+    def _enemy_marker_color(self, enemy: EnemyState) -> object:
+        """Return the current enemy marker color, including hit flash feedback."""
+        raylib = self._raylib
+        if self._is_enemy_hit_flashing(enemy):
+            return raylib.ORANGE
+        return raylib.RED if enemy.alerted else raylib.MAROON
+
+    def _is_enemy_hit_flashing(self, enemy: EnemyState) -> bool:
+        """Return whether an enemy is inside the configured 3D hit flash window."""
+        if enemy.last_hit_age_seconds is None:
+            return False
+        return (
+            enemy.last_hit_age_seconds
+            <= self._config.render3d.combat_visuals.enemy_hit_flash_seconds
+        )
+
+    @staticmethod
+    def _age_progress(age_seconds: float, lifetime_seconds: float) -> float:
+        """Return normalized marker age clamped to the 0..1 range."""
+        if lifetime_seconds <= 0.0:
+            return 1.0
+        return max(0.0, min(1.0, age_seconds / lifetime_seconds))
 
     def _tile_color(self, symbol: str) -> object:
         """Return a simple debug color for a map tile symbol.

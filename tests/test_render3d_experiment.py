@@ -1,6 +1,6 @@
 """Tests for the experimental 3D renderer scaffold."""
 
-from topdown_shooter.combat.enemies import EnemyState
+from topdown_shooter.combat.enemies import EnemyHitMarkerState, EnemyState
 from topdown_shooter.combat.projectiles import ImpactMarkerState, ProjectileState
 from topdown_shooter.config.runtime_config import RuntimeConfigLoader
 from topdown_shooter.experimental.render3d.camera import Render3DFollowCamera
@@ -64,6 +64,7 @@ def test_render3d_config_loads_from_default_config() -> None:
     assert config.render3d.player_movement.mouse_turn_sensitivity == 0.004
     assert config.render3d.player_movement.invert_mouse_x is False
     assert config.render3d.player_movement.movement_relative_to == "facing"
+    assert config.render3d.controls.camera_reset == "KEY_C"
     assert config.render3d.enemies.draw_enemy_markers is True
     assert config.render3d.enemies.max_visible_enemies == 128
     assert config.render3d.enemies.marker_radius_tiles == 0.28
@@ -77,6 +78,17 @@ def test_render3d_config_loads_from_default_config() -> None:
     assert config.render3d.projectiles.projectile_height_tiles == 0.72
     assert config.render3d.projectiles.draw_impacts is True
     assert config.render3d.projectiles.impact_height_tiles == 0.55
+    assert config.render3d.combat_visuals.draw_projectile_tracers is True
+    assert config.render3d.combat_visuals.projectile_tracer_length_tiles == 2.8
+    assert config.render3d.combat_visuals.projectile_tracer_height_offset_tiles == 0.08
+    assert config.render3d.combat_visuals.draw_impact_rings is True
+    assert config.render3d.combat_visuals.impact_ring_radius_tiles == 0.34
+    assert config.render3d.combat_visuals.impact_ring_height_tiles == 0.08
+    assert config.render3d.combat_visuals.enemy_hit_flash_seconds == 0.12
+    assert config.render3d.combat_visuals.draw_enemy_hit_markers is True
+    assert config.render3d.combat_visuals.max_visible_enemy_hit_markers == 64
+    assert config.render3d.combat_visuals.enemy_hit_marker_radius_tiles == 0.34
+    assert config.render3d.combat_visuals.enemy_hit_marker_height_tiles == 1.35
 
 
 def test_render3d_camera_builds_follow_state() -> None:
@@ -363,3 +375,48 @@ def test_render3d_visible_impacts_are_radius_limited() -> None:
     )
 
     assert visible == (near_impact,)
+
+
+def test_render3d_visible_enemy_hit_markers_are_radius_limited() -> None:
+    """Enemy hit marker filtering should keep active markers inside radius."""
+    from dataclasses import replace
+
+    runtime_map = _build_runtime_map()
+    config = RuntimeConfigLoader().load_default()
+    render_config = replace(config.render3d, view_radius_tiles=1)
+    runtime_config = replace(config, render3d=render_config)
+    renderer = object.__new__(Render3DRenderer)
+    renderer._config = runtime_config
+    renderer._runtime_map = runtime_map
+
+    near_marker = EnemyHitMarkerState(
+        position=WorldCoord(8.0, 0.0),
+        radius_px=3.0,
+        lifetime_seconds=0.2,
+    )
+    far_marker = EnemyHitMarkerState(
+        position=WorldCoord(64.0, 64.0),
+        radius_px=3.0,
+        lifetime_seconds=0.2,
+    )
+    dead_marker = EnemyHitMarkerState(
+        position=WorldCoord(4.0, 4.0),
+        radius_px=3.0,
+        lifetime_seconds=0.2,
+        alive=False,
+    )
+
+    visible = renderer._visible_enemy_hit_markers(
+        hit_markers=(far_marker, dead_marker, near_marker),
+        player_position=WorldCoord(0.0, 0.0),
+    )
+
+    assert visible == (near_marker,)
+
+
+def test_render3d_age_progress_is_clamped() -> None:
+    """Marker age progress should stay inside the 0..1 range."""
+    assert Render3DRenderer._age_progress(-1.0, 2.0) == 0.0
+    assert Render3DRenderer._age_progress(1.0, 2.0) == 0.5
+    assert Render3DRenderer._age_progress(3.0, 2.0) == 1.0
+    assert Render3DRenderer._age_progress(3.0, 0.0) == 1.0
