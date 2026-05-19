@@ -1,6 +1,7 @@
 """Tests for the experimental 3D renderer scaffold."""
 
 from topdown_shooter.combat.enemies import EnemyState
+from topdown_shooter.combat.projectiles import ImpactMarkerState, ProjectileState
 from topdown_shooter.config.runtime_config import RuntimeConfigLoader
 from topdown_shooter.experimental.render3d.camera import Render3DFollowCamera
 from topdown_shooter.experimental.render3d.renderer import Render3DInputState, Render3DRenderer
@@ -50,7 +51,7 @@ def test_render3d_config_loads_from_default_config() -> None:
     assert config.render3d.view_radius_tiles == 60
     assert config.render3d.render_mode == "optimized"
     assert config.render3d.max_visible_primitives == 3000
-    assert config.render3d.camera.height == 18.0
+    assert config.render3d.camera.height == 13.0
     assert config.render3d.camera.distance == 12.0
     assert config.render3d.camera.movement_look_ahead_tiles == 3.5
     assert config.render3d.camera.look_ahead_smoothing == 0.2
@@ -68,6 +69,14 @@ def test_render3d_config_loads_from_default_config() -> None:
     assert config.render3d.enemies.marker_radius_tiles == 0.28
     assert config.render3d.enemies.marker_height_tiles == 1.15
     assert config.render3d.enemies.direction_line_length_tiles == 1.1
+    assert config.render3d.projectiles.draw_aim_line is True
+    assert config.render3d.projectiles.aim_line_length_tiles == 8.0
+    assert config.render3d.projectiles.draw_projectiles is True
+    assert config.render3d.projectiles.max_visible_projectiles == 256
+    assert config.render3d.projectiles.projectile_radius_tiles == 0.08
+    assert config.render3d.projectiles.projectile_height_tiles == 0.72
+    assert config.render3d.projectiles.draw_impacts is True
+    assert config.render3d.projectiles.impact_height_tiles == 0.55
 
 
 def test_render3d_camera_builds_follow_state() -> None:
@@ -262,3 +271,95 @@ def test_render3d_visible_enemies_are_radius_limited() -> None:
     )
 
     assert visible == (near_enemy,)
+
+
+def test_render3d_visible_projectiles_are_radius_limited() -> None:
+    """Projectile marker filtering should keep active projectiles inside radius."""
+    from dataclasses import replace
+
+    runtime_map = _build_runtime_map()
+    config = RuntimeConfigLoader().load_default()
+    render_config = replace(config.render3d, view_radius_tiles=1)
+    runtime_config = replace(config, render3d=render_config)
+    renderer = object.__new__(Render3DRenderer)
+    renderer._config = runtime_config
+    renderer._runtime_map = runtime_map
+
+    near_projectile = ProjectileState(
+        position=WorldCoord(8.0, 0.0),
+        previous_position=WorldCoord(0.0, 0.0),
+        direction_x=1.0,
+        direction_y=0.0,
+        speed_px_per_second=100.0,
+        max_distance_px=200.0,
+        lifetime_seconds=1.0,
+        radius_px=2.0,
+        damage=5.0,
+    )
+    far_projectile = ProjectileState(
+        position=WorldCoord(64.0, 64.0),
+        previous_position=WorldCoord(48.0, 64.0),
+        direction_x=1.0,
+        direction_y=0.0,
+        speed_px_per_second=100.0,
+        max_distance_px=200.0,
+        lifetime_seconds=1.0,
+        radius_px=2.0,
+        damage=5.0,
+    )
+    dead_projectile = ProjectileState(
+        position=WorldCoord(4.0, 4.0),
+        previous_position=WorldCoord(0.0, 4.0),
+        direction_x=1.0,
+        direction_y=0.0,
+        speed_px_per_second=100.0,
+        max_distance_px=200.0,
+        lifetime_seconds=1.0,
+        radius_px=2.0,
+        damage=5.0,
+        alive=False,
+    )
+
+    visible = renderer._visible_projectiles(
+        projectiles=(far_projectile, dead_projectile, near_projectile),
+        player_position=WorldCoord(0.0, 0.0),
+    )
+
+    assert visible == (near_projectile,)
+
+
+def test_render3d_visible_impacts_are_radius_limited() -> None:
+    """Impact marker filtering should keep active impacts inside radius."""
+    from dataclasses import replace
+
+    runtime_map = _build_runtime_map()
+    config = RuntimeConfigLoader().load_default()
+    render_config = replace(config.render3d, view_radius_tiles=1)
+    runtime_config = replace(config, render3d=render_config)
+    renderer = object.__new__(Render3DRenderer)
+    renderer._config = runtime_config
+    renderer._runtime_map = runtime_map
+
+    near_impact = ImpactMarkerState(
+        position=WorldCoord(8.0, 0.0),
+        radius_px=3.0,
+        lifetime_seconds=0.2,
+    )
+    far_impact = ImpactMarkerState(
+        position=WorldCoord(64.0, 64.0),
+        radius_px=3.0,
+        lifetime_seconds=0.2,
+    )
+    dead_impact = ImpactMarkerState(
+        position=WorldCoord(4.0, 4.0),
+        radius_px=3.0,
+        lifetime_seconds=0.2,
+        alive=False,
+    )
+
+    visible = renderer._visible_impacts(
+        impacts=(far_impact, dead_impact, near_impact),
+        player_position=WorldCoord(0.0, 0.0),
+    )
+
+    assert visible == (near_impact,)

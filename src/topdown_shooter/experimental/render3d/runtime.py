@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from topdown_shooter.combat.enemies import EnemySystem
+from topdown_shooter.combat.projectiles import ProjectileSystem
+from topdown_shooter.combat.weapons import WeaponConfigLoader, WeaponController, WeaponState
 from topdown_shooter.config.runtime_config import RuntimeConfig
 from topdown_shooter.experimental.render3d.camera import Render3DFollowCamera
 from topdown_shooter.experimental.render3d.renderer import Render3DRenderer
@@ -54,6 +56,17 @@ class ExperimentalRender3DRuntime:
             runtime_map=self._runtime_map,
             config=self._config.render3d,
         )
+        projectile_system = ProjectileSystem(
+            collision_service=collision_service,
+            impact_markers_enabled=self._config.projectile_impacts.enabled,
+            impact_lifetime_seconds=self._config.projectile_impacts.lifetime_seconds,
+            impact_radius_px=self._config.projectile_impacts.radius_px,
+        )
+        weapon_database = WeaponConfigLoader().load(self._config.weapons.database_path)
+        weapon_controller = WeaponController(
+            projectile_system=projectile_system,
+            state=WeaponState.from_database(weapon_database),
+        )
         enemy_system = EnemySystem.from_tactical_map(
             tactical_map=self._package.tactical_map,
             runtime_map=self._runtime_map,
@@ -83,4 +96,6 @@ class ExperimentalRender3DRuntime:
             scene_builder=scene_builder,
             camera_controller=camera,
             enemy_system=enemy_system,
+            projectile_system=projectile_system,
+            weapon_controller=weapon_controller,
         )

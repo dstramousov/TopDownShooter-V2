@@ -210,6 +210,16 @@
       "marker_radius_tiles": 0.28,
       "marker_height_tiles": 1.15,
       "direction_line_length_tiles": 1.1
+    },
+    "projectiles": {
+      "draw_aim_line": true,
+      "aim_line_length_tiles": 8.0,
+      "draw_projectiles": true,
+      "max_visible_projectiles": 256,
+      "projectile_radius_tiles": 0.08,
+      "projectile_height_tiles": 0.72,
+      "draw_impacts": true,
+      "impact_height_tiles": 0.55
     }
   }
 }

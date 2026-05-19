@@ -141,7 +141,7 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.render3d.render_mode == "optimized"
     assert config.render3d.show_debug_hud is True
     assert config.render3d.max_visible_primitives == 3000
-    assert config.render3d.camera.height == 18.0
+    assert config.render3d.camera.height == 13.0
     assert config.render3d.camera.distance == 12.0
     assert config.render3d.camera.top_down_height == 70.0
     assert config.render3d.camera.top_down_back_offset_tiles == 0.25
@@ -153,3 +153,11 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.render3d.player_movement.acceleration_tiles_per_second_squared == 28.0
     assert config.render3d.player_movement.deceleration_tiles_per_second_squared == 34.0
     assert config.render3d.player_movement.turn_speed_degrees_per_second == 220.0
+    assert config.render3d.projectiles.draw_aim_line is True
+    assert config.render3d.projectiles.aim_line_length_tiles == 8.0
+    assert config.render3d.projectiles.draw_projectiles is True
+    assert config.render3d.projectiles.max_visible_projectiles == 256
+    assert config.render3d.projectiles.projectile_radius_tiles == 0.08
+    assert config.render3d.projectiles.projectile_height_tiles == 0.72
+    assert config.render3d.projectiles.draw_impacts is True
+    assert config.render3d.projectiles.impact_height_tiles == 0.55

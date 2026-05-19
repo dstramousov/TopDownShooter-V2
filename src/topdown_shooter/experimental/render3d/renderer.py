@@ -6,6 +6,12 @@ from dataclasses import dataclass
 import math
 
 from topdown_shooter.combat.enemies import EnemyState, EnemySystem
+from topdown_shooter.combat.projectiles import (
+    ImpactMarkerState,
+    ProjectileState,
+    ProjectileSystem,
+)
+from topdown_shooter.combat.weapons import WeaponController
 from topdown_shooter.config.runtime_config import RuntimeConfig
 from topdown_shooter.experimental.render3d.camera import Render3DFollowCamera
 from topdown_shooter.experimental.render3d.scene import Render3DSceneBuilder, Render3DSceneSnapshot
@@ -78,6 +84,12 @@ class Render3DRenderer:
         self._key_two = self._resolve_key("KEY_TWO")
         self._key_reset = self._resolve_key("KEY_R")
         self._key_hud = self._resolve_key("KEY_H")
+        self._fire_primary_button = self._resolve_mouse_button(config.controls.fire_primary)
+        self._reload_key = self._resolve_key(config.controls.reload)
+        self._weapon_slot_1_key = self._resolve_key(config.controls.weapon_slot_1)
+        self._weapon_slot_2_key = self._resolve_key(config.controls.weapon_slot_2)
+        self._weapon_slot_3_key = self._resolve_key(config.controls.weapon_slot_3)
+        self._weapon_fire_events_last_update = 0
         self._show_debug_hud = config.render3d.show_debug_hud
 
     def run_follow_preview(
@@ -87,6 +99,8 @@ class Render3DRenderer:
         scene_builder: Render3DSceneBuilder,
         camera_controller: Render3DFollowCamera,
         enemy_system: EnemySystem,
+        projectile_system: ProjectileSystem,
+        weapon_controller: WeaponController,
     ) -> None:
         """Run the first interactive 3D follow-camera preview.
 
@@ -96,6 +110,8 @@ class Render3DRenderer:
             scene_builder: View-radius scene builder.
             camera_controller: Smoothed 3D follow-camera controller.
             enemy_system: Runtime enemies drawn as 3D markers.
+            projectile_system: Runtime projectile system used for 3D fire preview.
+            weapon_controller: Weapon controller used by the isolated 3D experiment.
         """
         raylib = self._raylib
         window = self._config.window
@@ -113,9 +129,33 @@ class Render3DRenderer:
                 self._update_facing_from_mouse()
                 input_state = self._read_input_state()
                 self._update_player(player, player_controller, input_state, frame_time)
+                self._update_combat_controls(
+                    player=player,
+                    weapon_controller=weapon_controller,
+                    frame_time=frame_time,
+                )
+                projectile_system.update(frame_time)
+                enemy_system.apply_projectile_hits(
+                    projectiles=projectile_system.projectiles,
+                    enemy_collision_radius_px=self._config.enemies.marker_radius_px,
+                    squad_alert_broadcast_delay_seconds=(
+                        self._config.enemies.squad_alert_broadcast_delay_seconds
+                    ),
+                    squad_alert_broadcast_radius_px=(
+                        self._config.enemies.squad_alert_broadcast_radius_px
+                    ),
+                )
                 scene = scene_builder.build_snapshot(player.tile)
                 visible_enemies = self._visible_enemies(
                     enemies=enemy_system.enemies,
+                    player_position=player.world_position,
+                )
+                visible_projectiles = self._visible_projectiles(
+                    projectiles=projectile_system.projectiles,
+                    player_position=player.world_position,
+                )
+                visible_impacts = self._visible_impacts(
+                    impacts=projectile_system.impacts,
                     player_position=player.world_position,
                 )
                 camera_state = camera_controller.build_state(
@@ -146,10 +186,22 @@ class Render3DRenderer:
                 raylib.begin_mode_3d(camera)
                 self._draw_scene(scene)
                 self._draw_enemy_markers(visible_enemies)
+                self._draw_projectile_markers(visible_projectiles)
+                self._draw_impact_markers(visible_impacts)
+                self._draw_aim_line(player.world_position, self._last_facing_x, self._last_facing_y)
                 self._draw_player_marker(player.world_position, self._last_facing_x, self._last_facing_y)
                 raylib.end_mode_3d()
                 if self._show_debug_hud:
-                    self._draw_debug_hud(scene, enemy_system.enemies, visible_enemies)
+                    self._draw_debug_hud(
+                        scene=scene,
+                        enemies=enemy_system.enemies,
+                        visible_enemies=visible_enemies,
+                        projectiles=projectile_system.projectiles,
+                        visible_projectiles=visible_projectiles,
+                        impacts=projectile_system.impacts,
+                        visible_impacts=visible_impacts,
+                        weapon_controller=weapon_controller,
+                    )
                 raylib.end_drawing()
         finally:
             self._enable_cursor()
@@ -232,6 +284,38 @@ class Render3DRenderer:
                 speed_px_per_second=velocity_length,
             )
         self._update_player_aim(player)
+
+
+    def _update_combat_controls(
+        self,
+        player: PlayerState,
+        weapon_controller: WeaponController,
+        frame_time: float,
+    ) -> None:
+        """Update isolated 3D experiment weapon controls.
+
+        Args:
+            player: Current player state used as projectile origin and aim source.
+            weapon_controller: Weapon controller owned by the 3D experiment.
+            frame_time: Current frame duration in seconds.
+        """
+        raylib = self._raylib
+        if raylib.is_key_pressed(self._weapon_slot_1_key):
+            weapon_controller.switch_to_slot(1)
+        if raylib.is_key_pressed(self._weapon_slot_2_key):
+            weapon_controller.switch_to_slot(2)
+        if raylib.is_key_pressed(self._weapon_slot_3_key):
+            weapon_controller.switch_to_slot(3)
+        if raylib.is_key_pressed(self._reload_key):
+            weapon_controller.reload_current()
+
+        self._weapon_fire_events_last_update = weapon_controller.update(
+            fire_held=raylib.is_mouse_button_down(self._fire_primary_button),
+            frame_time=frame_time,
+            origin=player.world_position,
+            direction_x=player.aim.direction_x,
+            direction_y=player.aim.direction_y,
+        )
 
     def _update_facing_from_mouse(self) -> None:
         """Rotate visual facing from horizontal mouse movement."""
@@ -537,6 +621,157 @@ class Render3DRenderer:
                 raylib.PINK,
             )
 
+
+    def _visible_projectiles(
+        self,
+        projectiles: tuple[ProjectileState, ...],
+        player_position: WorldCoord,
+    ) -> tuple[ProjectileState, ...]:
+        """Return visible active projectiles inside the player-centered radius.
+
+        Args:
+            projectiles: Active runtime projectiles.
+            player_position: Current player position in world pixels.
+
+        Returns:
+            Distance-sorted visible projectiles.
+        """
+        projectile_config = self._config.render3d.projectiles
+        if not projectile_config.draw_projectiles:
+            return ()
+        candidates: list[tuple[float, ProjectileState]] = []
+        radius_squared = self._view_radius_px_squared()
+        for projectile in projectiles:
+            if not projectile.alive:
+                continue
+            dx = projectile.position.x - player_position.x
+            dy = projectile.position.y - player_position.y
+            distance_squared = dx * dx + dy * dy
+            if distance_squared <= radius_squared:
+                candidates.append((distance_squared, projectile))
+        candidates.sort(key=lambda item: item[0])
+        return tuple(
+            projectile
+            for _, projectile in candidates[: projectile_config.max_visible_projectiles]
+        )
+
+    def _visible_impacts(
+        self,
+        impacts: tuple[ImpactMarkerState, ...],
+        player_position: WorldCoord,
+    ) -> tuple[ImpactMarkerState, ...]:
+        """Return visible impact markers inside the player-centered radius.
+
+        Args:
+            impacts: Active projectile impact markers.
+            player_position: Current player position in world pixels.
+
+        Returns:
+            Distance-sorted visible impact markers.
+        """
+        projectile_config = self._config.render3d.projectiles
+        if not projectile_config.draw_impacts:
+            return ()
+        candidates: list[tuple[float, ImpactMarkerState]] = []
+        radius_squared = self._view_radius_px_squared()
+        for impact in impacts:
+            if not impact.alive:
+                continue
+            dx = impact.position.x - player_position.x
+            dy = impact.position.y - player_position.y
+            distance_squared = dx * dx + dy * dy
+            if distance_squared <= radius_squared:
+                candidates.append((distance_squared, impact))
+        candidates.sort(key=lambda item: item[0])
+        return tuple(impact for _, impact in candidates)
+
+    def _draw_projectile_markers(self, projectiles: tuple[ProjectileState, ...]) -> None:
+        """Draw active projectiles as short 3D tracer markers.
+
+        Args:
+            projectiles: Visible projectiles to draw.
+        """
+        if not projectiles:
+            return
+        raylib = self._raylib
+        render_config = self._config.render3d
+        projectile_config = render_config.projectiles
+        tile_size = render_config.tile_size
+        height_scale = render_config.height_scale
+        tile_size_px = self._runtime_map.tile_size_px
+        projectile_y = projectile_config.projectile_height_tiles * height_scale
+        radius = projectile_config.projectile_radius_tiles * tile_size
+        for projectile in projectiles:
+            start = raylib.Vector3(
+                projectile.previous_position.x / tile_size_px * tile_size,
+                projectile_y,
+                projectile.previous_position.y / tile_size_px * tile_size,
+            )
+            end = raylib.Vector3(
+                projectile.position.x / tile_size_px * tile_size,
+                projectile_y,
+                projectile.position.y / tile_size_px * tile_size,
+            )
+            raylib.draw_line_3d(start, end, raylib.SKYBLUE)
+            raylib.draw_sphere(end, max(radius, 0.03 * tile_size), raylib.RAYWHITE)
+
+    def _draw_impact_markers(self, impacts: tuple[ImpactMarkerState, ...]) -> None:
+        """Draw projectile impact markers in the 3D experiment.
+
+        Args:
+            impacts: Visible impact markers to draw.
+        """
+        if not impacts:
+            return
+        raylib = self._raylib
+        render_config = self._config.render3d
+        projectile_config = render_config.projectiles
+        tile_size = render_config.tile_size
+        height_scale = render_config.height_scale
+        tile_size_px = self._runtime_map.tile_size_px
+        impact_y = projectile_config.impact_height_tiles * height_scale
+        for impact in impacts:
+            center = raylib.Vector3(
+                impact.position.x / tile_size_px * tile_size,
+                impact_y,
+                impact.position.y / tile_size_px * tile_size,
+            )
+            radius = max(impact.radius_px / tile_size_px * tile_size, 0.08 * tile_size)
+            raylib.draw_sphere(center, radius, raylib.ORANGE)
+
+    def _draw_aim_line(self, player_position: WorldCoord, facing_x: float, facing_y: float) -> None:
+        """Draw the current 3D aim line from the player marker.
+
+        Args:
+            player_position: Current player world position in pixels.
+            facing_x: Current facing X direction.
+            facing_y: Current facing Y direction.
+        """
+        projectile_config = self._config.render3d.projectiles
+        if not projectile_config.draw_aim_line:
+            return
+        raylib = self._raylib
+        render_config = self._config.render3d
+        tile_size = render_config.tile_size
+        height_scale = render_config.height_scale
+        tile_size_px = self._runtime_map.tile_size_px
+        start = raylib.Vector3(
+            player_position.x / tile_size_px * tile_size,
+            projectile_config.projectile_height_tiles * height_scale,
+            player_position.y / tile_size_px * tile_size,
+        )
+        end = raylib.Vector3(
+            start.x + facing_x * projectile_config.aim_line_length_tiles * tile_size,
+            start.y,
+            start.z + facing_y * projectile_config.aim_line_length_tiles * tile_size,
+        )
+        raylib.draw_line_3d(start, end, raylib.GOLD)
+
+    def _view_radius_px_squared(self) -> float:
+        """Return squared 3D view radius in world pixels."""
+        radius_px = self._config.render3d.view_radius_tiles * self._runtime_map.tile_size_px
+        return radius_px * radius_px
+
     def _draw_player_marker(
         self,
         player_position: WorldCoord,
@@ -585,6 +820,11 @@ class Render3DRenderer:
         scene: Render3DSceneSnapshot,
         enemies: tuple[EnemyState, ...],
         visible_enemies: tuple[EnemyState, ...],
+        projectiles: tuple[ProjectileState, ...],
+        visible_projectiles: tuple[ProjectileState, ...],
+        impacts: tuple[ImpactMarkerState, ...],
+        visible_impacts: tuple[ImpactMarkerState, ...],
+        weapon_controller: WeaponController,
     ) -> None:
         """Draw the experimental renderer debug HUD.
 
@@ -592,8 +832,14 @@ class Render3DRenderer:
             scene: Visible 3D scene snapshot.
             enemies: All runtime enemies owned by the experiment.
             visible_enemies: Enemy markers currently inside the 3D view radius.
+            projectiles: All active projectiles owned by the experiment.
+            visible_projectiles: Projectiles currently inside the 3D view radius.
+            impacts: All active impact markers owned by the experiment.
+            visible_impacts: Impacts currently inside the 3D view radius.
+            weapon_controller: Weapon controller used for current weapon diagnostics.
         """
         raylib = self._raylib
+        weapon_stats = weapon_controller.stats
         lines = [
             "3D renderer experiment",
             f"FPS: {raylib.get_fps()}",
@@ -603,11 +849,14 @@ class Render3DRenderer:
             f"camera look-ahead: {self._config.render3d.camera.movement_look_ahead_tiles:.1f} tiles",
             f"visible primitives: {len(scene.primitives)}",
             f"enemies: {len(visible_enemies)}/{len(enemies)} visible",
+            f"projectiles: {len(visible_projectiles)}/{len(projectiles)} visible",
+            f"impacts: {len(visible_impacts)}/{len(impacts)} visible",
+            f"weapon: {weapon_stats.weapon_id} ammo {weapon_stats.ammo_in_magazine}/{weapon_stats.magazine_size}",
             f"radius center: player tile {scene.center_tile.x},{scene.center_tile.y}",
             f"culled tiles: {scene.culled_tile_count}/{scene.total_tile_count}",
             "movement: facing-relative strafe",
-            "mouse X aim | W/S forward/back | A/D strafe",
-            "1 top | 2 low | R reset | H HUD | ESC close",
+            "mouse X aim | LMB fire | R reload | 1/2/3 weapons",
+            "W/S forward/back | A/D strafe | 1 top | 2 low | H HUD | ESC close",
         ]
         y = 12
         for line in lines:
@@ -653,6 +902,14 @@ class Render3DRenderer:
         warning_level = getattr(self._raylib, "LOG_WARNING", None)
         if callable(set_level) and isinstance(warning_level, int):
             set_level(warning_level)
+
+
+    def _resolve_mouse_button(self, button_name: str) -> int:
+        """Resolve a raylib mouse button constant by name."""
+        button_value = getattr(self._raylib, button_name, None)
+        if not isinstance(button_value, int):
+            raise RuntimeError(f"Unknown raylib mouse binding: {button_name}")
+        return button_value
 
     def _resolve_key(self, key_name: str) -> int:
         """Resolve a raylib key constant by name."""

@@ -383,6 +383,31 @@ class Render3DPlayerMovementConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class Render3DProjectileConfig:
+    """Experimental 3D projectile and aim marker settings.
+
+    Attributes:
+        draw_aim_line: Whether the player aim line is drawn.
+        aim_line_length_tiles: Aim line length in 3D tile units.
+        draw_projectiles: Whether active projectile markers are drawn.
+        max_visible_projectiles: Maximum projectile markers drawn per frame.
+        projectile_radius_tiles: Projectile marker radius in 3D tile units.
+        projectile_height_tiles: Projectile marker height above the map in 3D tile units.
+        draw_impacts: Whether projectile impact markers are drawn.
+        impact_height_tiles: Impact marker height above the map in 3D tile units.
+    """
+
+    draw_aim_line: bool
+    aim_line_length_tiles: float
+    draw_projectiles: bool
+    max_visible_projectiles: int
+    projectile_radius_tiles: float
+    projectile_height_tiles: float
+    draw_impacts: bool
+    impact_height_tiles: float
+
+
+@dataclass(frozen=True, slots=True)
 class Render3DEnemyConfig:
     """Experimental 3D enemy marker settings.
 
@@ -416,6 +441,7 @@ class Render3DConfig:
         camera: Follow-camera settings.
         player_movement: Experimental 3D player movement settings.
         enemies: Experimental 3D enemy marker settings.
+        projectiles: Experimental 3D projectile marker settings.
     """
 
     enabled: bool
@@ -428,6 +454,7 @@ class Render3DConfig:
     camera: Render3DCameraConfig
     player_movement: Render3DPlayerMovementConfig
     enemies: Render3DEnemyConfig
+    projectiles: Render3DProjectileConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -890,6 +917,7 @@ class RuntimeConfigLoader:
         camera = self._require_dict(render3d, "camera")
         player_movement = self._require_dict(render3d, "player_movement")
         enemies = self._require_dict(render3d, "enemies")
+        projectiles = self._require_dict(render3d, "projectiles")
         render_mode = self._require_render3d_mode(render3d, "render_mode")
         return Render3DConfig(
             enabled=self._require_bool(render3d, "enabled"),
@@ -966,6 +994,40 @@ class RuntimeConfigLoader:
                 movement_relative_to=self._require_render3d_movement_basis(
                     player_movement,
                     "movement_relative_to",
+                ),
+            ),
+            projectiles=Render3DProjectileConfig(
+                draw_aim_line=self._require_bool(
+                    projectiles,
+                    "draw_aim_line",
+                ),
+                aim_line_length_tiles=self._require_positive_float(
+                    projectiles,
+                    "aim_line_length_tiles",
+                ),
+                draw_projectiles=self._require_bool(
+                    projectiles,
+                    "draw_projectiles",
+                ),
+                max_visible_projectiles=self._require_positive_int(
+                    projectiles,
+                    "max_visible_projectiles",
+                ),
+                projectile_radius_tiles=self._require_positive_float(
+                    projectiles,
+                    "projectile_radius_tiles",
+                ),
+                projectile_height_tiles=self._require_positive_float(
+                    projectiles,
+                    "projectile_height_tiles",
+                ),
+                draw_impacts=self._require_bool(
+                    projectiles,
+                    "draw_impacts",
+                ),
+                impact_height_tiles=self._require_positive_float(
+                    projectiles,
+                    "impact_height_tiles",
                 ),
             ),
             enemies=Render3DEnemyConfig(

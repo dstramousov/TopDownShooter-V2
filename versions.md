@@ -496,3 +496,11 @@
 - Враги отрисовываются только внутри player-centered view radius и ограничены отдельным safety cap.
 - Настройки enemy-маркеров вынесены в секцию `render3d.enemies`.
 - HUD экспериментального 3D-режима показывает количество видимых врагов.
+
+## v0.0.66 -> v0.0.67
+
+- Добавлена визуализация aim line в экспериментальном `--renderer 3d` режиме.
+- Добавлены 3D-маркеры projectiles и projectile impact markers внутри player-centered view radius.
+- Подключены существующие `ProjectileSystem` и `WeaponController` к изолированному 3D experiment runtime без изменения 2D-runtime.
+- Настройки projectile/aim-маркеров вынесены в секцию `render3d.projectiles`.
+- HUD экспериментального 3D-режима показывает видимые projectiles, impacts и текущий weapon/ammo.
