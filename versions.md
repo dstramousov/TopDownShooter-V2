@@ -636,3 +636,12 @@
 - Отключено стандартное закрытие окна через `Esc` в raylib для 2D и 3D runtime.
 - `Esc` теперь проходит в общий `RuntimeUi` и открывает окно подтверждения выхода вместо мгновенного завершения приложения.
 - Gameplay, AI, projectiles, HUD-layout и баланс не изменялись.
+
+## v0.0.86 -> v0.0.87
+
+- Удалены runtime/cache-файлы из архива проекта: `__pycache__`, `.pyc` и `.pytest_cache`.
+- Удалён устаревший standalone FPS counter и связанный config-блок `fps_counter`; FPS остаётся в общем debug overlay по `F12`.
+- Общая логика разрешения raylib-клавиш/кнопок вынесена в `src/topdown_shooter/rendering/raylib_input.py` и используется 2D, 3D и shared UI.
+- Убран конфликт 3D hotkeys: клавиши `1/2/3` остаются только выбором оружия, старое переключение 3D camera modes через `1/2` удалено.
+- Удалены мёртвые методы и config-поля старой 3D movement-схемы, а также устаревший `run_static_preview()`.
+- Gameplay, AI, projectiles, HUD-layout, баллистика и баланс не изменялись.

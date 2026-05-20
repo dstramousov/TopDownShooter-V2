@@ -90,13 +90,6 @@
     "marker_radius_px": 4.0,
     "line_thickness_px": 2.0
   },
-  "fps_counter": {
-    "enabled": false,
-    "position": "top_right",
-    "margin_x": 12,
-    "margin_y": 12,
-    "font_size": 14
-  },
   "weapons": {
     "database_path": "res/config/weapons.json"
   },
@@ -202,12 +195,8 @@
       "movement_speed_tiles_per_second": 6.0,
       "acceleration_tiles_per_second_squared": 28.0,
       "deceleration_tiles_per_second_squared": 34.0,
-      "turn_speed_degrees_per_second": 220.0,
-      "preserve_facing_while_backpedaling": true,
-      "backpedal_input_threshold": 0.5,
       "mouse_turn_sensitivity": 0.004,
-      "invert_mouse_x": false,
-      "movement_relative_to": "facing"
+      "invert_mouse_x": false
     },
     "enemies": {
       "draw_enemy_markers": true,

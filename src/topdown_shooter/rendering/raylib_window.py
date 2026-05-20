@@ -7,14 +7,18 @@ from dataclasses import replace
 from topdown_shooter.combat.enemies import EnemySystem
 from topdown_shooter.combat.projectiles import ProjectileSystem
 from topdown_shooter.combat.weapons import WeaponConfigLoader, WeaponController, WeaponState
-from topdown_shooter.config.runtime_config import KeyChordConfig, RuntimeConfig
+from topdown_shooter.config.runtime_config import RuntimeConfig
 from topdown_shooter.debug.overlay import DebugOverlay
 from topdown_shooter.gameplay.combat_runtime import update_combat_runtime
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.rendering.camera import CameraRig
 from topdown_shooter.rendering.enemy_renderer import EnemyRenderer
-from topdown_shooter.rendering.fps_counter import FpsCounter
 from topdown_shooter.rendering.map_renderer import MapRenderer
+from topdown_shooter.rendering.raylib_input import (
+    RaylibInputResolver,
+    configure_raylib_logging,
+    is_any_key_down,
+)
 from topdown_shooter.rendering.player_hud import PlayerHud
 from topdown_shooter.rendering.player_renderer import PlayerRenderer
 from topdown_shooter.rendering.projectile_renderer import ProjectileRenderer
@@ -34,10 +38,6 @@ from topdown_shooter.world.runtime_map import RuntimeMap
 
 class RaylibUnavailableError(RuntimeError):
     """Raised when the raylib Python package is not available."""
-
-
-class InvalidControlBindingError(RuntimeError):
-    """Raised when a configured input binding is not known to raylib."""
 
 
 def import_raylib() -> object:
@@ -81,6 +81,7 @@ class RaylibWindow:
         self._runtime_map = runtime_map
         self._package = package
         self._raylib = import_raylib()
+        self._input = RaylibInputResolver(self._raylib)
         self._window_layout = resolve_raylib_window_layout(self._raylib, config.window)
         self._pending_window_position_frames = self._POSITION_RETRY_FRAMES
         self._config = replace(config, window=self._window_layout.window)
@@ -112,11 +113,6 @@ class RaylibWindow:
             help_lines=self._build_help_lines(config),
         )
         self._renderer = MapRenderer(self._raylib)
-        self._fps_counter = FpsCounter(
-            raylib=self._raylib,
-            config=config.fps_counter,
-            window=config.window,
-        )
         self._player = PlayerState.spawn_at_map_start(
             runtime_map,
             max_health=config.player.max_health,
@@ -277,7 +273,6 @@ class RaylibWindow:
                         enemy_stats=self._enemy_system.stats,
                         renderer_name="2D",
                     )
-                self._fps_counter.draw()
                 self._ui.draw()
                 raylib.end_drawing()
         finally:
@@ -421,97 +416,21 @@ class RaylibWindow:
 
     def _configure_raylib_logging(self) -> None:
         """Reduce raylib logging noise before opening the window."""
-        set_level = getattr(self._raylib, "set_trace_log_level", None)
-        warning_level = getattr(self._raylib, "LOG_WARNING", None)
-        if callable(set_level) and isinstance(warning_level, int):
-            set_level(warning_level)
+        configure_raylib_logging(self._raylib)
 
     def _resolve_key(self, key_name: str) -> int:
-        """Resolve a configured key name to a raylib key constant.
-
-        Args:
-            key_name: Raylib key constant name, such as ``KEY_ESCAPE``.
-
-        Returns:
-            Raylib key constant value.
-
-        Raises:
-            InvalidControlBindingError: If the key is not available.
-        """
-        key_value = getattr(self._raylib, key_name, None)
-        if not isinstance(key_value, int):
-            raise InvalidControlBindingError(
-                f"Unknown raylib key binding in runtime config: {key_name}",
-            )
-        return key_value
+        """Resolve a configured key name to a raylib key constant."""
+        return self._input.key(key_name)
 
     def _resolve_mouse_button(self, button_name: str) -> int:
-        """Resolve a configured mouse button name to a raylib constant.
-
-        Args:
-            button_name: Raylib mouse button constant name.
-
-        Returns:
-            Raylib mouse button constant value.
-
-        Raises:
-            InvalidControlBindingError: If the mouse button is not available.
-        """
-        button_value = getattr(self._raylib, button_name, None)
-        if not isinstance(button_value, int):
-            raise InvalidControlBindingError(
-                f"Unknown raylib mouse binding in runtime config: {button_name}",
-            )
-        return button_value
+        """Resolve a configured mouse button name to a raylib constant."""
+        return self._input.mouse_button(button_name)
 
     def _resolve_keys(self, key_names: tuple[str, ...]) -> tuple[int, ...]:
-        """Resolve configured key names to raylib key constants.
-
-        Args:
-            key_names: Raylib key constant names.
-
-        Returns:
-            Raylib key constants.
-        """
-        return tuple(self._resolve_key(key_name) for key_name in key_names)
-
-    def _resolve_key_chord(self, chord: KeyChordConfig) -> tuple[int, tuple[int, ...]]:
-        """Resolve a configured key chord to raylib key constants.
-
-        Args:
-            chord: Configured key chord.
-
-        Returns:
-            Main key and modifier keys.
-        """
-        return (
-            self._resolve_key(chord.key),
-            tuple(self._resolve_key(modifier) for modifier in chord.modifiers),
-        )
+        """Resolve configured key names to raylib key constants."""
+        return self._input.keys(key_names)
 
     def _is_any_key_down(self, keys: tuple[int, ...]) -> bool:
-        """Return whether any configured key is currently down.
+        """Return whether any configured key is currently down."""
+        return is_any_key_down(self._raylib, keys)
 
-        Args:
-            keys: Raylib key constants.
-
-        Returns:
-            True if at least one key is down.
-        """
-        return any(self._raylib.is_key_down(key) for key in keys)
-
-    def _is_key_chord_pressed(self, chord: tuple[int, tuple[int, ...]]) -> bool:
-        """Return whether a configured key chord was pressed this frame.
-
-        Args:
-            chord: Main key and modifier keys.
-
-        Returns:
-            True if the chord was pressed.
-        """
-        key, modifiers = chord
-        if not self._raylib.is_key_pressed(key):
-            return False
-        if not modifiers:
-            return True
-        return any(self._raylib.is_key_down(modifier) for modifier in modifiers)

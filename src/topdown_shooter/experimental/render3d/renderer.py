@@ -12,7 +12,7 @@ from topdown_shooter.combat.projectiles import (
     ProjectileSystem,
 )
 from topdown_shooter.combat.weapons import WeaponController
-from topdown_shooter.config.runtime_config import KeyChordConfig, RuntimeConfig
+from topdown_shooter.config.runtime_config import RuntimeConfig
 from topdown_shooter.gameplay.combat_runtime import update_combat_runtime
 from topdown_shooter.experimental.render3d.camera import Render3DFollowCamera
 from topdown_shooter.experimental.render3d.scene import (
@@ -30,6 +30,11 @@ from topdown_shooter.rendering.camera import (
 )
 from topdown_shooter.rendering.map_renderer import RenderStats
 from topdown_shooter.rendering.player_hud import PlayerHud
+from topdown_shooter.rendering.raylib_input import (
+    RaylibInputResolver,
+    configure_raylib_logging,
+    is_any_key_down,
+)
 from topdown_shooter.rendering.raylib_window import import_raylib
 from topdown_shooter.rendering.window_layout import (
     apply_raylib_window_position,
@@ -84,6 +89,7 @@ class Render3DRenderer:
         self._runtime_map = runtime_map
         self._package = package
         self._raylib = import_raylib()
+        self._input = RaylibInputResolver(self._raylib)
         self._window_layout = resolve_raylib_window_layout(self._raylib, config.window)
         self._pending_window_position_frames = self._POSITION_RETRY_FRAMES
         self._config = replace(config, window=self._window_layout.window)
@@ -112,8 +118,6 @@ class Render3DRenderer:
             config.controls.player_down,
             fallback_key_names=("KEY_DOWN",),
         )
-        self._key_one = self._resolve_key("KEY_ONE")
-        self._key_two = self._resolve_key("KEY_TWO")
         self._key_reset = self._resolve_key(config.render3d.controls.camera_reset)
         self._key_view_mode = self._resolve_key(config.render3d.controls.view_mode_toggle)
         self._key_distance_fade = self._resolve_key(
@@ -346,32 +350,9 @@ class Render3DRenderer:
         apply_raylib_window_position(self._raylib, self._window_layout)
         self._pending_window_position_frames -= 1
 
-    def run_static_preview(
-        self,
-        camera_controller: Render3DFollowCamera,
-        scene_builder: Render3DSceneBuilder,
-        player: PlayerState,
-    ) -> None:
-        """Run the current interactive preview through the legacy entry point.
-
-        Args:
-            camera_controller: Smoothed 3D follow-camera controller.
-            scene_builder: View-radius scene builder.
-            player: Mutable player state used by the experiment.
-        """
-        raise RuntimeError(
-            "run_static_preview() is obsolete; use run_follow_preview() instead.",
-        )
-
     def _update_camera_mode(self, camera_controller: Render3DFollowCamera) -> None:
-        """Apply camera mode hotkeys."""
+        """Apply 3D camera and view hotkeys."""
         raylib = self._raylib
-        if raylib.is_key_pressed(self._key_one):
-            self._camera_mode = Render3DFollowCamera.TOP_DOWN_MODE
-            camera_controller.reset()
-        if raylib.is_key_pressed(self._key_two):
-            self._camera_mode = Render3DFollowCamera.LOW_FOLLOW_MODE
-            camera_controller.reset()
         if raylib.is_key_pressed(self._key_reset):
             camera_controller.reset()
         if raylib.is_key_pressed(self._key_view_mode):
@@ -546,46 +527,6 @@ class Render3DRenderer:
             max_delta=max_delta,
         )
 
-    def _should_update_facing_from_input(self, input_state: Render3DInputState) -> bool:
-        """Return whether movement input should rotate visual facing."""
-        if input_state.move_x == 0.0 and input_state.move_y == 0.0:
-            return False
-        movement_config = self._config.render3d.player_movement
-        if not movement_config.preserve_facing_while_backpedaling:
-            return True
-        return not self._is_backpedal_input(
-            input_state=input_state,
-            threshold=movement_config.backpedal_input_threshold,
-        )
-
-    @staticmethod
-    def _is_backpedal_input(input_state: Render3DInputState, threshold: float) -> bool:
-        """Return whether raw input mostly requests backward movement."""
-        if input_state.move_y <= 0.0:
-            return False
-        return input_state.move_y >= max(abs(input_state.move_x), threshold)
-
-    def _update_facing_toward_velocity(self, frame_time: float) -> None:
-        """Turn visual facing toward current movement without snapping."""
-        velocity_length = math.hypot(
-            self._velocity_x_px_per_second,
-            self._velocity_y_px_per_second,
-        )
-        if velocity_length <= 0.01:
-            return
-        target_x = self._velocity_x_px_per_second / velocity_length
-        target_y = self._velocity_y_px_per_second / velocity_length
-        turn_radians = math.radians(
-            self._config.render3d.player_movement.turn_speed_degrees_per_second,
-        ) * frame_time
-        self._last_facing_x, self._last_facing_y = self._rotate_direction_toward(
-            current_x=self._last_facing_x,
-            current_y=self._last_facing_y,
-            target_x=target_x,
-            target_y=target_y,
-            max_angle=turn_radians,
-        )
-
     def _update_player_aim(self, player: PlayerState) -> None:
         """Update the runtime aim state from smoothed visual facing."""
         aim_target = WorldCoord(
@@ -627,34 +568,6 @@ class Render3DRenderer:
             return target_x, target_y
         ratio = max_delta / delta_length
         return current_x + delta_x * ratio, current_y + delta_y * ratio
-
-    @staticmethod
-    def _rotate_direction_toward(
-        current_x: float,
-        current_y: float,
-        target_x: float,
-        target_y: float,
-        max_angle: float,
-    ) -> tuple[float, float]:
-        """Rotate a normalized direction toward another without overshooting."""
-        current_length = math.hypot(current_x, current_y)
-        target_length = math.hypot(target_x, target_y)
-        if target_length <= 0.0001:
-            return current_x, current_y
-        if current_length <= 0.0001:
-            return target_x / target_length, target_y / target_length
-
-        current_x /= current_length
-        current_y /= current_length
-        target_x /= target_length
-        target_y /= target_length
-        current_angle = math.atan2(current_y, current_x)
-        target_angle = math.atan2(target_y, target_x)
-        delta = (target_angle - current_angle + math.pi) % (math.tau) - math.pi
-        if abs(delta) <= max_angle:
-            return target_x, target_y
-        new_angle = current_angle + math.copysign(max_angle, delta)
-        return math.cos(new_angle), math.sin(new_angle)
 
     def _draw_scene(self, scene: Render3DSceneSnapshot) -> None:
         """Draw visible map primitives.
@@ -884,33 +797,6 @@ class Render3DRenderer:
         if distance <= start:
             return 1.0
         fade_range = max(radius - start, 0.0001)
-        progress = max(0.0, min(1.0, (distance - start) / fade_range))
-        fog_amount = progress ** fade_config.fog_density
-        return 1.0 - (1.0 - fade_config.min_brightness) * fog_amount
-
-    def _distance_brightness_for_world_position(
-        self,
-        position: WorldCoord,
-        player_position: WorldCoord,
-    ) -> float:
-        """Return brightness for a runtime world position around the player."""
-        fade_config = self._config.render3d.distance_fade
-        if (
-            not self._distance_fade_enabled
-            or fade_config.keep_markers_bright
-        ):
-            return 1.0
-        radius_px = self._config.render3d.view_radius_tiles * self._runtime_map.tile_size_px
-        if radius_px <= 0.0001:
-            return 1.0
-        distance = math.hypot(
-            position.x - player_position.x,
-            position.y - player_position.y,
-        )
-        start = radius_px * fade_config.fade_start_ratio
-        if distance <= start:
-            return 1.0
-        fade_range = max(radius_px - start, 0.0001)
         progress = max(0.0, min(1.0, (distance - start) / fade_range))
         fog_amount = progress ** fade_config.fog_density
         return 1.0 - (1.0 - fade_config.min_brightness) * fog_amount
@@ -1596,27 +1482,7 @@ class Render3DRenderer:
 
     def _configure_raylib_logging(self) -> None:
         """Reduce raylib logging noise before opening the 3D experiment window."""
-        set_level = getattr(self._raylib, "set_trace_log_level", None)
-        warning_level = getattr(self._raylib, "LOG_WARNING", None)
-        if callable(set_level) and isinstance(warning_level, int):
-            set_level(warning_level)
-
-
-    def _resolve_key_chord(self, chord: KeyChordConfig) -> tuple[int, tuple[int, ...]]:
-        """Resolve a configured key chord to raylib key constants."""
-        return (
-            self._resolve_key(chord.key),
-            tuple(self._resolve_key(modifier) for modifier in chord.modifiers),
-        )
-
-    def _is_key_chord_pressed(self, chord: tuple[int, tuple[int, ...]]) -> bool:
-        """Return whether a configured key chord was pressed this frame."""
-        key, modifiers = chord
-        if not self._raylib.is_key_pressed(key):
-            return False
-        if not modifiers:
-            return True
-        return any(self._raylib.is_key_down(modifier) for modifier in modifiers)
+        configure_raylib_logging(self._raylib)
 
     def _format_debug_binding(self) -> str:
         """Return the configured debug-overlay binding for diagnostics."""
@@ -1627,17 +1493,11 @@ class Render3DRenderer:
 
     def _resolve_mouse_button(self, button_name: str) -> int:
         """Resolve a raylib mouse button constant by name."""
-        button_value = getattr(self._raylib, button_name, None)
-        if not isinstance(button_value, int):
-            raise RuntimeError(f"Unknown raylib mouse binding: {button_name}")
-        return button_value
+        return self._input.mouse_button(button_name)
 
     def _resolve_key(self, key_name: str) -> int:
         """Resolve a raylib key constant by name."""
-        key_value = getattr(self._raylib, key_name, None)
-        if not isinstance(key_value, int):
-            raise RuntimeError(f"Unknown raylib key binding: {key_name}")
-        return key_value
+        return self._input.key(key_name)
 
     def _resolve_player_keys(
         self,
@@ -1646,8 +1506,8 @@ class Render3DRenderer:
     ) -> tuple[int, ...]:
         """Resolve configured movement keys plus 3D experiment fallbacks."""
         key_names = configured_key_names + fallback_key_names
-        return tuple(self._resolve_key(key_name) for key_name in key_names)
+        return self._input.keys(key_names)
 
     def _is_any_key_down(self, keys: tuple[int, ...]) -> bool:
         """Return whether any key in a tuple is held down."""
-        return any(self._raylib.is_key_down(key) for key in keys)
+        return is_any_key_down(self._raylib, keys)

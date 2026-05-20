@@ -11,10 +11,8 @@ from topdown_shooter.app.inspect_map import inspect_map_package
 from topdown_shooter.app.run_game import run_game
 from topdown_shooter.config.runtime_config import RuntimeConfigError
 from topdown_shooter.map_loading.errors import MapPackageError
-from topdown_shooter.rendering.raylib_window import (
-    InvalidControlBindingError,
-    RaylibUnavailableError,
-)
+from topdown_shooter.rendering.raylib_input import InvalidRaylibBindingError
+from topdown_shooter.rendering.raylib_window import RaylibUnavailableError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -76,6 +74,6 @@ def main(argv: list[str] | None = None) -> int:
     except MapPackageError as exc:
         sys.stderr.write(f"ERROR: Map package operation failed:\n{exc}\n")
         return 1
-    except (RuntimeConfigError, RaylibUnavailableError, InvalidControlBindingError) as exc:
+    except (RuntimeConfigError, RaylibUnavailableError, InvalidRaylibBindingError) as exc:
         sys.stderr.write(f"ERROR: Rendering failed:\n{exc}\n")
         return 1

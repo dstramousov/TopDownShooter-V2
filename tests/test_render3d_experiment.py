@@ -59,12 +59,8 @@ def test_render3d_config_loads_from_default_config() -> None:
     assert config.render3d.camera.top_down_height == 70.0
     assert config.render3d.camera.top_down_back_offset_tiles == 0.25
     assert config.render3d.player_movement.movement_speed_tiles_per_second == 6.0
-    assert config.render3d.player_movement.turn_speed_degrees_per_second == 220.0
-    assert config.render3d.player_movement.preserve_facing_while_backpedaling is True
-    assert config.render3d.player_movement.backpedal_input_threshold == 0.5
     assert config.render3d.player_movement.mouse_turn_sensitivity == 0.004
     assert config.render3d.player_movement.invert_mouse_x is False
-    assert config.render3d.player_movement.movement_relative_to == "facing"
     assert config.render3d.controls.camera_reset == "KEY_C"
     assert config.render3d.controls.view_mode_toggle == "KEY_V"
     assert config.render3d.controls.distance_fade_toggle == "KEY_L"
@@ -203,26 +199,6 @@ def test_render3d_scene_builder_reuses_snapshot_for_same_center_tile() -> None:
 
     assert second_snapshot is first_snapshot
     assert moved_snapshot is not first_snapshot
-
-
-def test_render3d_backpedal_input_keeps_visual_facing() -> None:
-    """Backward and backward-diagonal input should be treated as backpedaling."""
-    assert Render3DRenderer._is_backpedal_input(
-        Render3DInputState(move_x=0.0, move_y=1.0),
-        threshold=0.5,
-    )
-    assert Render3DRenderer._is_backpedal_input(
-        Render3DInputState(move_x=1.0, move_y=1.0),
-        threshold=0.5,
-    )
-    assert not Render3DRenderer._is_backpedal_input(
-        Render3DInputState(move_x=1.0, move_y=0.0),
-        threshold=0.5,
-    )
-    assert not Render3DRenderer._is_backpedal_input(
-        Render3DInputState(move_x=0.0, move_y=-1.0),
-        threshold=0.5,
-    )
 
 
 def test_render3d_facing_relative_movement_supports_strafe() -> None:

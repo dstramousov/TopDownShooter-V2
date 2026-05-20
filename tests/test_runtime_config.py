@@ -125,11 +125,6 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.enemies.tactical_player_reposition_distance_px == 56.0
     assert config.enemies.draw_tactical_slots is False
     assert config.enemies.max_debug_tactical_slots == 8
-    assert config.fps_counter.enabled is False
-    assert config.fps_counter.position == "top_right"
-    assert config.fps_counter.margin_x == 12
-    assert config.fps_counter.margin_y == 12
-    assert config.fps_counter.font_size == 14
     assert config.hud.position == "top"
     assert config.hud.margin_x == 12
     assert config.hud.margin_y == 12
@@ -154,7 +149,6 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.render3d.player_movement.movement_speed_tiles_per_second == 6.0
     assert config.render3d.player_movement.acceleration_tiles_per_second_squared == 28.0
     assert config.render3d.player_movement.deceleration_tiles_per_second_squared == 34.0
-    assert config.render3d.player_movement.turn_speed_degrees_per_second == 220.0
     assert config.render3d.projectiles.draw_aim_line is True
     assert config.render3d.projectiles.aim_line_length_tiles == 8.0
     assert config.render3d.projectiles.draw_projectiles is True

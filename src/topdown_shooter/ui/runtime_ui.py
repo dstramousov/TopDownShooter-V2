@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from topdown_shooter.config.runtime_config import KeyChordConfig, RuntimeConfig
+from topdown_shooter.config.runtime_config import RuntimeConfig
+from topdown_shooter.rendering.raylib_input import RaylibInputResolver, is_key_chord_pressed
 from topdown_shooter.rendering.text import RaylibTextRenderer
 
 
@@ -94,19 +95,20 @@ class RuntimeUi:
         self._exit_yes_selected = False
         self._yes_button = _ButtonRect(0, 0, 0, 0)
         self._no_button = _ButtonRect(0, 0, 0, 0)
-        self._debug_key = self._resolve_key(config.controls.debug_overlay.key)
+        self._input = RaylibInputResolver(raylib)
+        self._debug_key = self._input.optional_key(config.controls.debug_overlay.key)
         self._debug_modifiers = tuple(
-            self._resolve_key(modifier)
+            self._input.optional_key(modifier)
             for modifier in config.controls.debug_overlay.modifiers
         )
-        self._help_key = self._resolve_key(config.controls.help)
-        self._quit_key = self._resolve_key(config.controls.quit)
-        self._enter_key = self._resolve_key("KEY_ENTER")
-        self._left_key = self._resolve_key("KEY_LEFT")
-        self._right_key = self._resolve_key("KEY_RIGHT")
-        self._a_key = self._resolve_key("KEY_A")
-        self._d_key = self._resolve_key("KEY_D")
-        self._mouse_left_button = self._resolve_mouse_button("MOUSE_BUTTON_LEFT")
+        self._help_key = self._input.optional_key(config.controls.help)
+        self._quit_key = self._input.optional_key(config.controls.quit)
+        self._enter_key = self._input.optional_key("KEY_ENTER")
+        self._left_key = self._input.optional_key("KEY_LEFT")
+        self._right_key = self._input.optional_key("KEY_RIGHT")
+        self._a_key = self._input.optional_key("KEY_A")
+        self._d_key = self._input.optional_key("KEY_D")
+        self._mouse_left_button = self._input.optional_mouse_button("MOUSE_BUTTON_LEFT")
 
     @property
     def debug_overlay_enabled(self) -> bool:
@@ -120,7 +122,7 @@ class RuntimeUi:
             Input result that tells the caller whether to exit or pause gameplay.
         """
         should_exit = False
-        if self._is_key_chord_pressed(self._debug_key, self._debug_modifiers):
+        if is_key_chord_pressed(self._raylib, self._debug_key, self._debug_modifiers):
             self._debug_overlay_enabled = not self._debug_overlay_enabled
 
         if self._raylib.is_key_pressed(self._help_key):
@@ -291,25 +293,3 @@ class RuntimeUi:
     def _draw_text(self, text: str, x: int, y: int, font_size: int, color: object) -> None:
         """Draw text with the shared configured font."""
         self._text.draw_text(text, x, y, font_size, color)
-
-    def _resolve_key(self, key_name: str) -> int:
-        """Resolve a raylib key constant by name."""
-        key = getattr(self._raylib, key_name, None)
-        if key is None:
-            return -1
-        return int(key)
-
-    def _resolve_mouse_button(self, button_name: str) -> int:
-        """Resolve a raylib mouse button constant by name."""
-        button = getattr(self._raylib, button_name, None)
-        if button is None:
-            return 0
-        return int(button)
-
-    def _is_key_chord_pressed(self, key: int, modifiers: tuple[int, ...]) -> bool:
-        """Return whether a key chord was pressed this frame."""
-        if key < 0 or not self._raylib.is_key_pressed(key):
-            return False
-        if not modifiers:
-            return True
-        return any(modifier >= 0 and self._raylib.is_key_down(modifier) for modifier in modifiers)

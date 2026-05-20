@@ -327,26 +327,6 @@ class HudConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class FpsCounterConfig:
-    """Standalone FPS counter settings.
-
-    Attributes:
-        enabled: Whether the standalone FPS counter is drawn.
-        margin_x: Horizontal distance from the selected corner.
-        margin_y: Vertical distance from the selected corner.
-        font_size: Counter text font size in pixels.
-        position: Counter anchor position. Supported values are ``top_left``,
-            ``top_right``, ``bottom_left``, and ``bottom_right``.
-    """
-
-    enabled: bool
-    margin_x: int
-    margin_y: int
-    font_size: int
-    position: str
-
-
-@dataclass(frozen=True, slots=True)
 class Render3DCameraConfig:
     """Experimental 3D follow-camera settings.
 
@@ -379,23 +359,15 @@ class Render3DPlayerMovementConfig:
         movement_speed_tiles_per_second: Maximum player speed in tile units.
         acceleration_tiles_per_second_squared: Acceleration toward requested movement.
         deceleration_tiles_per_second_squared: Braking speed when movement input is released.
-        turn_speed_degrees_per_second: Legacy maximum visual facing turn speed.
-        preserve_facing_while_backpedaling: Whether backward movement keeps current facing.
-        backpedal_input_threshold: Minimum backward input value treated as backpedaling.
         mouse_turn_sensitivity: Mouse yaw sensitivity in radians per pixel.
         invert_mouse_x: Whether horizontal mouse yaw should be inverted.
-        movement_relative_to: Movement basis name for the 3D experiment.
     """
 
     movement_speed_tiles_per_second: float
     acceleration_tiles_per_second_squared: float
     deceleration_tiles_per_second_squared: float
-    turn_speed_degrees_per_second: float
-    preserve_facing_while_backpedaling: bool
-    backpedal_input_threshold: float
     mouse_turn_sensitivity: float
     invert_mouse_x: bool
-    movement_relative_to: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -655,7 +627,6 @@ class RuntimeConfig:
         enemies: Enemy marker display settings.
         debug_overlay: Debug overlay display settings.
         hud: Player HUD display settings.
-        fps_counter: Standalone FPS counter display settings.
         render3d: Experimental 3D renderer settings.
         controls: Control bindings.
     """
@@ -669,7 +640,6 @@ class RuntimeConfig:
     enemies: EnemyConfig
     debug_overlay: DebugOverlayConfig
     hud: HudConfig
-    fps_counter: FpsCounterConfig
     render3d: Render3DConfig
     controls: ControlsConfig
 
@@ -731,7 +701,6 @@ class RuntimeConfigLoader:
         enemies = self._require_dict(raw_config, "enemies")
         debug_overlay = self._require_dict(raw_config, "debug_overlay")
         hud = self._require_dict(raw_config, "hud")
-        fps_counter = self._require_dict(raw_config, "fps_counter")
         render3d = self._require_dict(raw_config, "render3d")
         controls = self._require_dict(raw_config, "controls")
         return RuntimeConfig(
@@ -1020,13 +989,6 @@ class RuntimeConfigLoader:
                 font_size=self._require_positive_int(hud, "font_size"),
                 background_alpha=self._require_alpha(hud, "background_alpha"),
             ),
-            fps_counter=FpsCounterConfig(
-                enabled=self._require_bool(fps_counter, "enabled"),
-                margin_x=self._require_non_negative_int(fps_counter, "margin_x"),
-                margin_y=self._require_non_negative_int(fps_counter, "margin_y"),
-                font_size=self._require_positive_int(fps_counter, "font_size"),
-                position=self._require_str(fps_counter, "position"),
-            ),
             render3d=self._build_render3d_config(render3d),
             controls=ControlsConfig(
                 quit=self._require_str(controls, "quit"),
@@ -1128,18 +1090,6 @@ class RuntimeConfigLoader:
                     player_movement,
                     "deceleration_tiles_per_second_squared",
                 ),
-                turn_speed_degrees_per_second=self._require_positive_float(
-                    player_movement,
-                    "turn_speed_degrees_per_second",
-                ),
-                preserve_facing_while_backpedaling=self._require_bool(
-                    player_movement,
-                    "preserve_facing_while_backpedaling",
-                ),
-                backpedal_input_threshold=self._require_non_negative_float(
-                    player_movement,
-                    "backpedal_input_threshold",
-                ),
                 mouse_turn_sensitivity=self._require_positive_float(
                     player_movement,
                     "mouse_turn_sensitivity",
@@ -1147,10 +1097,6 @@ class RuntimeConfigLoader:
                 invert_mouse_x=self._require_bool(
                     player_movement,
                     "invert_mouse_x",
-                ),
-                movement_relative_to=self._require_render3d_movement_basis(
-                    player_movement,
-                    "movement_relative_to",
                 ),
             ),
             controls=Render3DControlsConfig(
@@ -1328,27 +1274,6 @@ class RuntimeConfigLoader:
             raise RuntimeConfigError(
                 "Runtime config field "
                 f"'{field}' must be less than or equal to 255.",
-            )
-        return value
-
-    def _require_render3d_movement_basis(self, data: dict[str, Any], field: str) -> str:
-        """Read and validate an experimental 3D movement basis.
-
-        Args:
-            data: Source mapping.
-            field: Field name to read.
-
-        Returns:
-            Validated movement basis.
-
-        Raises:
-            RuntimeConfigError: If the movement basis value is unsupported.
-        """
-        value = self._require_str(data, field)
-        if value not in {"facing"}:
-            raise RuntimeConfigError(
-                "Runtime config field "
-                f"'{field}' must be 'facing'.",
             )
         return value
 
