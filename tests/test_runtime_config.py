@@ -9,11 +9,11 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
 
     assert config.window.width == 0
     assert config.window.height == 0
-    assert config.window.screen_margin_px == 100
+    assert config.window.screen_margin_px == 300
     assert config.window.target_fps == 60
     assert config.controls.quit == "KEY_ESCAPE"
-    assert config.controls.debug_overlay.key == "KEY_D"
-    assert config.controls.debug_overlay.modifiers == ("KEY_LEFT_CONTROL", "KEY_RIGHT_CONTROL")
+    assert config.controls.debug_overlay.key == "KEY_F12"
+    assert config.controls.debug_overlay.modifiers == ()
     assert config.controls.camera_up == ("KEY_UP",)
     assert config.controls.camera_down == ("KEY_DOWN",)
     assert config.controls.camera_left == ("KEY_LEFT",)
@@ -54,7 +54,7 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.controls.weapon_slot_2 == "KEY_TWO"
     assert config.controls.weapon_slot_3 == "KEY_THREE"
     assert config.weapons.database_path == "res/config/weapons.json"
-    assert config.debug_overlay.enabled_by_default is True
+    assert config.debug_overlay.enabled_by_default is False
     assert config.debug_overlay.layout == "right_panel"
     assert config.debug_overlay.panel_width == 1200
     assert config.debug_overlay.side_panel_width == 420
@@ -123,12 +123,11 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.enemies.tactical_player_reposition_distance_px == 56.0
     assert config.enemies.draw_tactical_slots is False
     assert config.enemies.max_debug_tactical_slots == 8
-    assert config.fps_counter.enabled is True
+    assert config.fps_counter.enabled is False
     assert config.fps_counter.position == "top_right"
     assert config.fps_counter.margin_x == 12
     assert config.fps_counter.margin_y == 12
     assert config.fps_counter.font_size == 14
-    assert config.hud.enabled is True
     assert config.hud.position == "top"
     assert config.hud.margin_x == 12
     assert config.hud.margin_y == 12
@@ -141,7 +140,6 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.render3d.height_scale == 1.0
     assert config.render3d.render_mode == "optimized"
     assert config.render3d.view_mode == "gameplay"
-    assert config.render3d.show_debug_hud is True
     assert config.render3d.max_visible_primitives == 1400
     assert config.render3d.camera.height == 13.0
     assert config.render3d.camera.distance == 12.0

@@ -97,34 +97,44 @@ class DebugOverlay:
     def draw(
         self,
         camera: RuntimeCamera,
-        raylib_camera: object,
+        raylib_camera: object | None,
         player: PlayerState,
         render_stats: RenderStats,
         projectile_stats: ProjectileStats,
         weapon_stats: WeaponStats,
         enemy_stats: EnemyStats,
+        *,
+        renderer_name: str = "2D",
+        mouse: MouseDebugInfo | None = None,
+        extra_sections: tuple[DebugOverlaySection, ...] = (),
     ) -> None:
         """Draw the overlay for the current frame.
 
         Args:
             camera: Current runtime camera state.
-            raylib_camera: Current raylib Camera2D object.
+            raylib_camera: Current raylib Camera2D object for 2D mouse mapping.
             player: Current player state.
             render_stats: Current map render statistics.
             projectile_stats: Current projectile system statistics.
             weapon_stats: Current weapon diagnostics.
             enemy_stats: Current enemy marker diagnostics.
+            renderer_name: Human-readable renderer name displayed in diagnostics.
+            mouse: Optional precomputed mouse diagnostics for non-2D renderers.
+            extra_sections: Optional renderer-specific diagnostics appended to the panel.
         """
         overlay_config = self._config.debug_overlay
+        mouse_info = mouse if mouse is not None else self._read_mouse(raylib_camera)
         columns = self._build_columns(
             fps=self._raylib.get_fps(),
             camera=camera,
-            mouse=self._read_mouse(raylib_camera),
+            mouse=mouse_info,
             player=player,
             render_stats=render_stats,
             projectile_stats=projectile_stats,
             weapon_stats=weapon_stats,
             enemy_stats=enemy_stats,
+            renderer_name=renderer_name,
+            extra_sections=extra_sections,
         )
         if overlay_config.layout == "right_panel":
             self._clamp_scroll_offset(overlay_config, columns)
@@ -194,6 +204,8 @@ class DebugOverlay:
         projectile_stats: ProjectileStats,
         weapon_stats: WeaponStats,
         enemy_stats: EnemyStats,
+        renderer_name: str,
+        extra_sections: tuple[DebugOverlaySection, ...],
     ) -> tuple[tuple[DebugOverlaySection, ...], tuple[DebugOverlaySection, ...]]:
         """Build two balanced debug overlay columns.
 
@@ -206,6 +218,8 @@ class DebugOverlay:
             projectile_stats: Current projectile system statistics.
             weapon_stats: Current weapon diagnostics.
             enemy_stats: Current enemy marker diagnostics.
+            renderer_name: Human-readable renderer name displayed in diagnostics.
+            extra_sections: Optional renderer-specific diagnostics appended to the panel.
 
         Returns:
             Two columns with debug sections.
@@ -221,6 +235,7 @@ class DebugOverlay:
                 title="Runtime",
                 rows=(
                     DebugOverlayRow("Version", __version__),
+                    DebugOverlayRow("Renderer", renderer_name),
                     DebugOverlayRow("Overlay", "on"),
                     DebugOverlayRow("Font", self._format_font_info()),
                 ),
@@ -600,9 +615,9 @@ class DebugOverlay:
                 ),
             ),
         )
-        return left_column, right_column
+        return left_column, right_column + extra_sections
 
-    def _read_mouse(self, raylib_camera: object) -> MouseDebugInfo:
+    def _read_mouse(self, raylib_camera: object | None) -> MouseDebugInfo:
         """Read mouse data and convert it to map coordinates.
 
         Args:
@@ -611,6 +626,8 @@ class DebugOverlay:
         Returns:
             Mouse debug information.
         """
+        if raylib_camera is None:
+            raise ValueError("raylib_camera is required when mouse diagnostics are not provided.")
         screen_vector = self._raylib.get_mouse_position()
         world_vector = self._raylib.get_screen_to_world_2d(screen_vector, raylib_camera)
         world = WorldCoord(x=float(world_vector.x), y=float(world_vector.y))

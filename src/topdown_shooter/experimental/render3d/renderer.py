@@ -12,7 +12,7 @@ from topdown_shooter.combat.projectiles import (
     ProjectileSystem,
 )
 from topdown_shooter.combat.weapons import WeaponController
-from topdown_shooter.config.runtime_config import RuntimeConfig
+from topdown_shooter.config.runtime_config import KeyChordConfig, RuntimeConfig
 from topdown_shooter.gameplay.combat_runtime import update_combat_runtime
 from topdown_shooter.experimental.render3d.camera import Render3DFollowCamera
 from topdown_shooter.experimental.render3d.scene import (
@@ -20,16 +20,23 @@ from topdown_shooter.experimental.render3d.scene import (
     Render3DSceneSnapshot,
     Render3DTilePrimitive,
 )
+from topdown_shooter.debug.overlay import DebugOverlay, DebugOverlayRow, DebugOverlaySection, MouseDebugInfo
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
+from topdown_shooter.rendering.camera import (
+    CameraAimOffset,
+    CameraLookahead,
+    CameraVelocity,
+    RuntimeCamera,
+)
+from topdown_shooter.rendering.map_renderer import RenderStats
 from topdown_shooter.rendering.player_hud import PlayerHud
 from topdown_shooter.rendering.raylib_window import import_raylib
-from topdown_shooter.rendering.text import RaylibTextRenderer
 from topdown_shooter.rendering.window_layout import (
     apply_raylib_window_position,
     resolve_raylib_window_layout,
 )
 from topdown_shooter.world.collision import TileCollisionService
-from topdown_shooter.world.coordinates import WorldCoord
+from topdown_shooter.world.coordinates import ScreenCoord, WorldCoord
 from topdown_shooter.world.pathfinding import GridPathfinder
 from topdown_shooter.world.player import PlayerState
 from topdown_shooter.world.player_aim import PlayerAimState
@@ -114,14 +121,14 @@ class Render3DRenderer:
         self._key_enemy_vision = self._resolve_key(
             config.render3d.controls.enemy_vision_toggle,
         )
-        self._key_hud = self._resolve_key("KEY_H")
+        self._debug_overlay_chord = self._resolve_key_chord(config.controls.debug_overlay)
+        self._debug_overlay_enabled = config.debug_overlay.enabled_by_default
         self._fire_primary_button = self._resolve_mouse_button(config.controls.fire_primary)
         self._reload_key = self._resolve_key(config.controls.reload)
         self._weapon_slot_1_key = self._resolve_key(config.controls.weapon_slot_1)
         self._weapon_slot_2_key = self._resolve_key(config.controls.weapon_slot_2)
         self._weapon_slot_3_key = self._resolve_key(config.controls.weapon_slot_3)
         self._weapon_fire_events_last_update = 0
-        self._show_debug_hud = config.render3d.show_debug_hud
         self._distance_fade_enabled = config.render3d.distance_fade.enabled
         self._enemy_vision_enabled = config.render3d.enemy_vision.enabled
         self._player_hud = PlayerHud(
@@ -131,10 +138,11 @@ class Render3DRenderer:
             font_path=config.debug_overlay.font_path,
             font_spacing=config.debug_overlay.font_spacing,
         )
-        self._hud_text = RaylibTextRenderer(
+        self._debug_overlay = DebugOverlay(
             raylib=self._raylib,
-            font_path=config.debug_overlay.font_path,
-            font_spacing=config.debug_overlay.font_spacing,
+            runtime_map=runtime_map,
+            package=package,
+            config=config,
         )
 
     def run_follow_preview(
@@ -175,6 +183,8 @@ class Render3DRenderer:
                 self._apply_initial_window_position()
                 if raylib.is_key_pressed(raylib.KEY_ESCAPE):
                     break
+                if self._is_key_chord_pressed(self._debug_overlay_chord):
+                    self._debug_overlay_enabled = not self._debug_overlay_enabled
                 frame_time = raylib.get_frame_time()
                 self._update_camera_mode(camera_controller)
                 self._update_facing_from_mouse()
@@ -214,6 +224,11 @@ class Render3DRenderer:
                 visible_enemy_hit_markers = self._visible_enemy_hit_markers(
                     hit_markers=enemy_system.hit_markers,
                     player_position=player.world_position,
+                )
+                render_stats = RenderStats(
+                    visible_tiles=len(scene.primitives),
+                    drawn_tiles=len(scene.primitives),
+                    total_tiles=scene.total_tile_count,
                 )
                 camera_state = camera_controller.build_state(
                     player_position=player.world_position,
@@ -260,29 +275,31 @@ class Render3DRenderer:
                     self._last_facing_y,
                 )
                 raylib.end_mode_3d()
-                if self._show_debug_hud:
-                    if self._view_mode == self.DEBUG_VIEW_MODE:
-                        self._draw_debug_hud(
+                self._player_hud.draw(player, weapon_controller.stats)
+                self._update_debug_overlay_scroll()
+                if self._debug_overlay_enabled:
+                    self._debug_overlay.draw(
+                        camera=self._debug_camera_state(player),
+                        raylib_camera=None,
+                        player=player,
+                        render_stats=render_stats,
+                        projectile_stats=projectile_system.stats,
+                        weapon_stats=weapon_controller.stats,
+                        enemy_stats=enemy_system.stats,
+                        renderer_name="3D",
+                        mouse=self._debug_mouse_info(player),
+                        extra_sections=self._debug_3d_sections(
                             scene=scene,
-                            enemies=enemy_system.enemies,
                             visible_enemies=visible_enemies,
-                            projectiles=projectile_system.projectiles,
                             visible_projectiles=visible_projectiles,
-                            impacts=projectile_system.impacts,
                             visible_impacts=visible_impacts,
-                            enemy_hit_markers=enemy_system.hit_markers,
                             visible_enemy_hit_markers=visible_enemy_hit_markers,
-                            weapon_controller=weapon_controller,
-                        )
-                    else:
-                        self._draw_gameplay_hud(
-                            player=player,
-                            weapon_controller=weapon_controller,
-                        )
+                        ),
+                    )
                 raylib.end_drawing()
         finally:
             self._player_hud.unload()
-            self._hud_text.unload()
+            self._debug_overlay.unload()
             self._enable_cursor()
             raylib.close_window()
 
@@ -327,8 +344,6 @@ class Render3DRenderer:
             self._distance_fade_enabled = not self._distance_fade_enabled
         if raylib.is_key_pressed(self._key_enemy_vision):
             self._enemy_vision_enabled = not self._enemy_vision_enabled
-        if raylib.is_key_pressed(self._key_hud):
-            self._show_debug_hud = not self._show_debug_hud
 
     @classmethod
     def _next_view_mode(cls, current_mode: str) -> str:
@@ -1393,89 +1408,79 @@ class Render3DRenderer:
         raylib.draw_line_3d(center, direction_end, raylib.ORANGE)
         raylib.draw_sphere(direction_end, tile_size * 0.18, raylib.ORANGE)
 
-    def _draw_gameplay_hud(
-        self,
-        player: PlayerState,
-        weapon_controller: WeaponController,
-    ) -> None:
-        """Draw the regular 2D-style player HUD in the 3D renderer."""
-        self._player_hud.draw(player, weapon_controller.stats)
-        if self._view_mode != self.GAMEPLAY_VIEW_MODE:
+    def _update_debug_overlay_scroll(self) -> None:
+        """Scroll the shared debug overlay when it is visible."""
+        if not self._debug_overlay_enabled:
             return
-        hint = "V VIEW | L FOG | O VISION | H HUD"
-        self._draw_hud_text(hint, 12, self._config.window.height - 28, 8, self._raylib.RAYWHITE)
+        wheel_delta = self._raylib.get_mouse_wheel_move()
+        if wheel_delta != 0.0:
+            self._debug_overlay.scroll_by_wheel_delta(wheel_delta)
 
-    def _draw_debug_hud(
+    def _debug_camera_state(self, player: PlayerState) -> RuntimeCamera:
+        """Return a 2D-compatible camera state for the shared debug overlay."""
+        position = player.world_position
+        return RuntimeCamera(
+            target=position,
+            desired_target=position,
+            zoom=1.0,
+            follow_player=True,
+            velocity=CameraVelocity(x=0.0, y=0.0),
+            lookahead_offset=CameraLookahead(x=0.0, y=0.0),
+            aim_offset=CameraAimOffset(x=0.0, y=0.0),
+            dead_zone_radius_px=0.0,
+        )
+
+    def _debug_mouse_info(self, player: PlayerState) -> MouseDebugInfo:
+        """Return mouse diagnostics for the shared overlay in captured 3D mode."""
+        mouse_position = self._raylib.get_mouse_position()
+        runtime_tile = self._runtime_map.tiles[player.tile.y][player.tile.x]
+        return MouseDebugInfo(
+            screen=ScreenCoord(x=float(mouse_position.x), y=float(mouse_position.y)),
+            world=player.world_position,
+            tile=player.tile,
+            tile_symbol=runtime_tile.symbol,
+            tile_walkable=runtime_tile.walkable,
+        )
+
+    def _debug_3d_sections(
         self,
         scene: Render3DSceneSnapshot,
-        enemies: tuple[EnemyState, ...],
         visible_enemies: tuple[EnemyState, ...],
-        projectiles: tuple[ProjectileState, ...],
         visible_projectiles: tuple[ProjectileState, ...],
-        impacts: tuple[ImpactMarkerState, ...],
         visible_impacts: tuple[ImpactMarkerState, ...],
-        enemy_hit_markers: tuple[EnemyHitMarkerState, ...],
         visible_enemy_hit_markers: tuple[EnemyHitMarkerState, ...],
-        weapon_controller: WeaponController,
-    ) -> None:
-        """Draw the experimental renderer debug HUD.
-
-        Args:
-            scene: Visible 3D scene snapshot.
-            enemies: All runtime enemies owned by the experiment.
-            visible_enemies: Enemy markers currently inside the 3D view radius.
-            projectiles: All active projectiles owned by the experiment.
-            visible_projectiles: Projectiles currently inside the 3D view radius.
-            impacts: All active impact markers owned by the experiment.
-            visible_impacts: Impacts currently inside the 3D view radius.
-            enemy_hit_markers: All active enemy hit markers owned by the experiment.
-            visible_enemy_hit_markers: Enemy hit markers currently inside the 3D view radius.
-            weapon_controller: Weapon controller used for current weapon diagnostics.
-        """
-        raylib = self._raylib
-        weapon_stats = weapon_controller.stats
-        lines = [
-            "3D renderer experiment",
-            f"FPS: {raylib.get_fps()}",
-            f"camera: {self._camera_mode}",
-            f"render mode: {self._config.render3d.render_mode}",
-            f"view mode: {self._view_mode}",
-            f"view radius: {self._config.render3d.view_radius_tiles} tiles",
-            f"distance fog: {'on' if self._distance_fade_enabled else 'off'} "
-            f"density {self._config.render3d.distance_fade.fog_density:.2f}",
-            f"enemy vision: {'on' if self._enemy_vision_enabled else 'off'}",
-            "camera look-ahead: "
-            f"{self._config.render3d.camera.movement_look_ahead_tiles:.1f} tiles",
-            f"visible primitives: {len(scene.primitives)}",
-            f"enemies: {len(visible_enemies)}/{len(enemies)} visible",
-            f"projectiles: {len(visible_projectiles)}/{len(projectiles)} visible",
-            f"impacts: {len(visible_impacts)}/{len(impacts)} visible",
-            f"enemy hits: {len(visible_enemy_hit_markers)}/{len(enemy_hit_markers)} visible",
-            f"weapon: {weapon_stats.weapon_id} "
-            f"ammo {weapon_stats.ammo_in_magazine}/{weapon_stats.magazine_size}",
-            f"radius center: player tile {scene.center_tile.x},{scene.center_tile.y}",
-            f"culled tiles: {scene.culled_tile_count}/{scene.total_tile_count}",
-            "movement: facing-relative strafe",
-            "mouse X aim | LMB fire | R reload | 1/2/3 weapons",
-            "W/S forward/back | A/D strafe | V view mode | L fog | O vision",
-            "C reset camera",
-            "1 top | 2 low | H HUD | ESC close",
-        ]
-        y = 12
-        for line in lines:
-            self._draw_hud_text(line, 12, y, 8, raylib.RAYWHITE)
-            y += 16
-
-    def _draw_hud_text(
-        self,
-        text: str,
-        x: int,
-        y: int,
-        font_size: int,
-        color: object,
-    ) -> None:
-        """Draw 3D overlay text with the configured pixel font."""
-        self._hud_text.draw_text(text, x, y, font_size, color)
+    ) -> tuple[DebugOverlaySection, ...]:
+        """Build renderer-specific rows for the shared debug overlay."""
+        return (
+            DebugOverlaySection(
+                title="3D Renderer",
+                rows=(
+                    DebugOverlayRow("Camera", self._camera_mode),
+                    DebugOverlayRow("View mode", self._view_mode),
+                    DebugOverlayRow("Render mode", self._config.render3d.render_mode),
+                    DebugOverlayRow("View radius", f"{self._config.render3d.view_radius_tiles} tiles"),
+                    DebugOverlayRow("Distance fog", "on" if self._distance_fade_enabled else "off"),
+                    DebugOverlayRow("Enemy vision", "on" if self._enemy_vision_enabled else "off"),
+                    DebugOverlayRow("Primitives", str(len(scene.primitives))),
+                    DebugOverlayRow("Culled", f"{scene.culled_tile_count}/{scene.total_tile_count}"),
+                    DebugOverlayRow("Center tile", f"{scene.center_tile.x}, {scene.center_tile.y}"),
+                    DebugOverlayRow("Visible enemies", str(len(visible_enemies))),
+                    DebugOverlayRow("Visible projectiles", str(len(visible_projectiles))),
+                    DebugOverlayRow("Visible impacts", str(len(visible_impacts))),
+                    DebugOverlayRow("Visible enemy hits", str(len(visible_enemy_hit_markers))),
+                ),
+            ),
+            DebugOverlaySection(
+                title="3D Controls",
+                rows=(
+                    DebugOverlayRow("View", self._config.render3d.controls.view_mode_toggle),
+                    DebugOverlayRow("Fog", self._config.render3d.controls.distance_fade_toggle),
+                    DebugOverlayRow("Vision", self._config.render3d.controls.enemy_vision_toggle),
+                    DebugOverlayRow("Reset camera", self._config.render3d.controls.camera_reset),
+                    DebugOverlayRow("Debug overlay", self._format_debug_binding()),
+                ),
+            ),
+        )
 
     def _enemy_marker_color(self, enemy: EnemyState) -> object:
         """Return the current enemy body color, including hit flash feedback."""
@@ -1557,6 +1562,29 @@ class Render3DRenderer:
         if callable(set_level) and isinstance(warning_level, int):
             set_level(warning_level)
 
+
+    def _resolve_key_chord(self, chord: KeyChordConfig) -> tuple[int, tuple[int, ...]]:
+        """Resolve a configured key chord to raylib key constants."""
+        return (
+            self._resolve_key(chord.key),
+            tuple(self._resolve_key(modifier) for modifier in chord.modifiers),
+        )
+
+    def _is_key_chord_pressed(self, chord: tuple[int, tuple[int, ...]]) -> bool:
+        """Return whether a configured key chord was pressed this frame."""
+        key, modifiers = chord
+        if not self._raylib.is_key_pressed(key):
+            return False
+        if not modifiers:
+            return True
+        return any(self._raylib.is_key_down(modifier) for modifier in modifiers)
+
+    def _format_debug_binding(self) -> str:
+        """Return the configured debug-overlay binding for diagnostics."""
+        chord = self._config.controls.debug_overlay
+        if not chord.modifiers:
+            return chord.key
+        return "+".join((*chord.modifiers, chord.key))
 
     def _resolve_mouse_button(self, button_name: str) -> int:
         """Resolve a raylib mouse button constant by name."""

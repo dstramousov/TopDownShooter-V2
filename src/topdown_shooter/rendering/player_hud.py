@@ -65,8 +65,6 @@ class PlayerHud:
             player: Current player state.
             weapon: Current weapon runtime stats.
         """
-        if not self._config.enabled:
-            return
         lines = self._build_lines(player, weapon)
         layout = self._calculate_layout(lines, weapon)
         background = self._raylib.Color(0, 0, 0, self._config.background_alpha)

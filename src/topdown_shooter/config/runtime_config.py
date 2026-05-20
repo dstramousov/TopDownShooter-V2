@@ -309,7 +309,6 @@ class HudConfig:
     """Player HUD display settings.
 
     Attributes:
-        enabled: Whether player HUD is drawn.
         position: HUD anchor position. Supported values are ``top``, ``bottom``,
             ``left``, and ``right``.
         margin_x: Horizontal margin from the selected screen edge.
@@ -319,7 +318,6 @@ class HudConfig:
         background_alpha: Panel background alpha value in the 0..255 range.
     """
 
-    enabled: bool
     position: str
     margin_x: int
     margin_y: int
@@ -549,7 +547,6 @@ class Render3DConfig:
             and ``per_tile``.
         view_mode: Default 3D view mode. Supported values are ``clean``,
             ``gameplay``, and ``debug``.
-        show_debug_hud: Whether the 3D HUD is drawn.
         max_visible_primitives: Safety cap for visible primitive rendering.
         camera: Follow-camera settings.
         player_movement: Experimental 3D player movement settings.
@@ -567,7 +564,6 @@ class Render3DConfig:
     height_scale: float
     render_mode: str
     view_mode: str
-    show_debug_hud: bool
     max_visible_primitives: int
     camera: Render3DCameraConfig
     player_movement: Render3DPlayerMovementConfig
@@ -1013,7 +1009,6 @@ class RuntimeConfigLoader:
                 background_alpha=self._require_alpha(debug_overlay, "background_alpha"),
             ),
             hud=HudConfig(
-                enabled=self._require_bool(hud, "enabled"),
                 position=self._require_str(hud, "position"),
                 margin_x=self._require_non_negative_int(hud, "margin_x"),
                 margin_y=self._require_non_negative_int(hud, "margin_y"),
@@ -1082,7 +1077,6 @@ class RuntimeConfigLoader:
             height_scale=self._require_positive_float(render3d, "height_scale"),
             render_mode=render_mode,
             view_mode=view_mode,
-            show_debug_hud=self._require_bool(render3d, "show_debug_hud"),
             max_visible_primitives=self._require_positive_int(
                 render3d,
                 "max_visible_primitives",

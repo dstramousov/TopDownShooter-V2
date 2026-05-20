@@ -269,6 +269,7 @@ class RaylibWindow:
                         projectile_stats=self._projectile_system.stats,
                         weapon_stats=self._weapon_controller.stats,
                         enemy_stats=self._enemy_system.stats,
+                        renderer_name="2D",
                     )
                 self._fps_counter.draw()
                 raylib.end_drawing()

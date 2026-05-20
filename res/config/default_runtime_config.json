@@ -26,7 +26,7 @@
     "max_health": 100
   },
   "debug_overlay": {
-    "enabled_by_default": true,
+    "enabled_by_default": false,
     "panel_width": 1200,
     "padding": 18,
     "font_size": 8,
@@ -44,11 +44,8 @@
   "controls": {
     "quit": "KEY_ESCAPE",
     "debug_overlay": {
-      "key": "KEY_D",
-      "modifiers": [
-        "KEY_LEFT_CONTROL",
-        "KEY_RIGHT_CONTROL"
-      ]
+      "key": "KEY_F12",
+      "modifiers": []
     },
     "camera_up": [
       "KEY_UP"
@@ -92,7 +89,7 @@
     "line_thickness_px": 2.0
   },
   "fps_counter": {
-    "enabled": true,
+    "enabled": false,
     "position": "top_right",
     "margin_x": 12,
     "margin_y": 12,
@@ -107,7 +104,6 @@
     "radius_px": 5.0
   },
   "hud": {
-    "enabled": true,
     "position": "top",
     "margin_x": 12,
     "margin_y": 12,
@@ -189,7 +185,6 @@
     "tile_size": 1.0,
     "height_scale": 1.0,
     "render_mode": "optimized",
-    "show_debug_hud": true,
     "max_visible_primitives": 1400,
     "camera": {
       "height": 13.0,

@@ -608,3 +608,11 @@
 - Дальние тайлы больше не рисуют дополнительные outline/detail draw calls, а distance fade для тайлов использует уже посчитанную дистанцию snapshot-а.
 - Gameplay, AI, projectiles, damage, HUD-логика и 2D runtime не изменялись.
 
+
+## v0.0.82 -> v0.0.83
+
+- HUD закреплён как always-on верхняя игровая статусная панель: клавиша `H` больше не управляет HUD, а 2D и 3D используют общий `PlayerHud` с одинаковым layout/config.
+- Debug overlay переведён на единый right-side panel для 2D и 3D, выключен по умолчанию и переключается общей клавишей `F12`.
+- 3D renderer больше не рисует отдельный debug HUD текстом слева; вместо этого он использует общий `DebugOverlay` и добавляет только renderer-specific 3D sections.
+- Настройки HUD/debug overlay оставлены в общих config-блоках, а устаревшие `hud.enabled` и `render3d.show_debug_hud` удалены из runtime config.
+- Standalone FPS counter выключен по умолчанию, чтобы техническая информация жила в debug overlay, а не поверх игрового HUD.

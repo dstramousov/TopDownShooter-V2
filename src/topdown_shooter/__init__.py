@@ -1,3 +1,3 @@
 """TopDownShooter V.2 runtime package."""
 
-__version__ = "0.0.82"
+__version__ = "0.0.83"
