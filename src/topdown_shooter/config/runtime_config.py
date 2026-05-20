@@ -595,6 +595,8 @@ class ControlsConfig:
     Attributes:
         quit: Key name used to close the runtime window.
         debug_overlay: Key chord used to toggle debug overlay visibility.
+        help: Key name used to toggle the controls help overlay.
+        mouse_capture_toggle: Key name used to release or capture the mouse in 3D.
         camera_up: Key names used to pan the camera up.
         camera_down: Key names used to pan the camera down.
         camera_left: Key names used to pan the camera left.
@@ -617,6 +619,8 @@ class ControlsConfig:
 
     quit: str
     debug_overlay: KeyChordConfig
+    help: str
+    mouse_capture_toggle: str
     camera_up: tuple[str, ...]
     camera_down: tuple[str, ...]
     camera_left: tuple[str, ...]
@@ -1027,6 +1031,8 @@ class RuntimeConfigLoader:
             controls=ControlsConfig(
                 quit=self._require_str(controls, "quit"),
                 debug_overlay=self._require_key_chord(controls, "debug_overlay"),
+                help=self._require_str(controls, "help"),
+                mouse_capture_toggle=self._require_str(controls, "mouse_capture_toggle"),
                 camera_up=self._require_key_names(controls, "camera_up"),
                 camera_down=self._require_key_names(controls, "camera_down"),
                 camera_left=self._require_key_names(controls, "camera_left"),

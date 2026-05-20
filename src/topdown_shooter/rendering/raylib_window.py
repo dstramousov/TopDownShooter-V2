@@ -22,6 +22,7 @@ from topdown_shooter.rendering.window_layout import (
     apply_raylib_window_position,
     resolve_raylib_window_layout,
 )
+from topdown_shooter.ui.runtime_ui import ControlsHelpLine, RuntimeUi
 from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.coordinates import WorldCoord
 from topdown_shooter.world.pathfinding import GridPathfinder
@@ -84,8 +85,6 @@ class RaylibWindow:
         self._pending_window_position_frames = self._POSITION_RETRY_FRAMES
         self._config = replace(config, window=self._window_layout.window)
         config = self._config
-        self._quit_key = self._resolve_key(config.controls.quit)
-        self._debug_overlay_chord = self._resolve_key_chord(config.controls.debug_overlay)
         self._camera_up_keys = self._resolve_keys(config.controls.camera_up)
         self._camera_down_keys = self._resolve_keys(config.controls.camera_down)
         self._camera_left_keys = self._resolve_keys(config.controls.camera_left)
@@ -106,7 +105,12 @@ class RaylibWindow:
         self._weapon_slot_1_key = self._resolve_key(config.controls.weapon_slot_1)
         self._weapon_slot_2_key = self._resolve_key(config.controls.weapon_slot_2)
         self._weapon_slot_3_key = self._resolve_key(config.controls.weapon_slot_3)
-        self._debug_overlay_enabled = config.debug_overlay.enabled_by_default
+        self._ui = RuntimeUi(
+            raylib=self._raylib,
+            config=config,
+            renderer_name="2D",
+            help_lines=self._build_help_lines(config),
+        )
         self._renderer = MapRenderer(self._raylib)
         self._fps_counter = FpsCounter(
             raylib=self._raylib,
@@ -203,41 +207,43 @@ class RaylibWindow:
         raylib = self._raylib
         self._configure_raylib_logging()
         raylib.init_window(window.width, window.height, window.title)
+        raylib.set_exit_key(raylib.KEY_NULL)
         self._apply_initial_window_position()
         raylib.set_target_fps(window.target_fps)
 
         try:
             while not raylib.window_should_close():
                 self._apply_initial_window_position()
-                if raylib.is_key_pressed(self._quit_key):
+                ui_input = self._ui.handle_input()
+                if ui_input.should_exit:
                     break
-                if self._is_key_chord_pressed(self._debug_overlay_chord):
-                    self._debug_overlay_enabled = not self._debug_overlay_enabled
                 frame_time = raylib.get_frame_time()
-                self._update_player_controls(frame_time)
-                self._update_camera_controls(frame_time)
                 input_camera = self._camera_rig.build_raylib_camera(raylib)
-                self._update_player_aim(input_camera)
-                self._update_combat_controls(frame_time)
-                update_combat_runtime(
-                    player=self._player,
-                    enemy_system=self._enemy_system,
-                    projectile_system=self._projectile_system,
-                    weapon_controller=self._weapon_controller,
-                    collision_service=self._collision_service,
-                    pathfinder=self._enemy_pathfinder,
-                    runtime_map=self._runtime_map,
-                    config=self._config,
-                    frame_time=frame_time,
-                    weapon_fire_events=self._weapon_fire_events_last_update,
-                    player_speed_px_per_second=self._player_speed_px_per_second,
-                )
-                self._camera_rig.update_follow_target(
-                    player_position=self._player.world_position,
-                    frame_time=frame_time,
-                    aim_direction_x=self._player.aim.direction_x,
-                    aim_direction_y=self._player.aim.direction_y,
-                )
+                if not ui_input.blocks_gameplay:
+                    self._update_player_controls(frame_time)
+                    self._update_camera_controls(frame_time)
+                    input_camera = self._camera_rig.build_raylib_camera(raylib)
+                    self._update_player_aim(input_camera)
+                    self._update_combat_controls(frame_time)
+                    update_combat_runtime(
+                        player=self._player,
+                        enemy_system=self._enemy_system,
+                        projectile_system=self._projectile_system,
+                        weapon_controller=self._weapon_controller,
+                        collision_service=self._collision_service,
+                        pathfinder=self._enemy_pathfinder,
+                        runtime_map=self._runtime_map,
+                        config=self._config,
+                        frame_time=frame_time,
+                        weapon_fire_events=self._weapon_fire_events_last_update,
+                        player_speed_px_per_second=self._player_speed_px_per_second,
+                    )
+                    self._camera_rig.update_follow_target(
+                        player_position=self._player.world_position,
+                        frame_time=frame_time,
+                        aim_direction_x=self._player.aim.direction_x,
+                        aim_direction_y=self._player.aim.direction_y,
+                    )
                 camera = self._camera_rig.build_raylib_camera(raylib)
 
                 raylib.begin_drawing()
@@ -260,7 +266,7 @@ class RaylibWindow:
                 self._player_renderer.draw(self._player)
                 raylib.end_mode_2d()
                 self._player_hud.draw(self._player, self._weapon_controller.stats)
-                if self._debug_overlay_enabled:
+                if self._ui.debug_overlay_enabled:
                     self._debug_overlay.draw(
                         camera=self._camera_rig.state,
                         raylib_camera=camera,
@@ -272,11 +278,32 @@ class RaylibWindow:
                         renderer_name="2D",
                     )
                 self._fps_counter.draw()
+                self._ui.draw()
                 raylib.end_drawing()
         finally:
             self._player_hud.unload()
             self._debug_overlay.unload()
+            self._ui.unload()
             raylib.close_window()
+
+
+    @staticmethod
+    def _build_help_lines(config: RuntimeConfig) -> tuple[ControlsHelpLine, ...]:
+        """Build 2D controls help lines from runtime bindings."""
+        return (
+            ControlsHelpLine("W/A/S/D", "move player"),
+            ControlsHelpLine("Mouse", "aim"),
+            ControlsHelpLine(config.controls.fire_primary, "fire"),
+            ControlsHelpLine("1/2/3", "select weapon"),
+            ControlsHelpLine(config.controls.reload, "reload"),
+            ControlsHelpLine("Arrow keys", "pan camera"),
+            ControlsHelpLine("Q/E or wheel", "zoom camera"),
+            ControlsHelpLine(config.controls.camera_reset, "reset camera"),
+            ControlsHelpLine(config.controls.camera_toggle_follow, "toggle follow camera"),
+            ControlsHelpLine(config.controls.help, "pause / controls"),
+            ControlsHelpLine(config.controls.debug_overlay.key, "debug overlay"),
+            ControlsHelpLine(config.controls.quit, "exit confirmation"),
+        )
 
     def _apply_initial_window_position(self) -> None:
         """Re-apply startup window position for window managers that defer placement."""
@@ -383,7 +410,7 @@ class RaylibWindow:
             self._camera_rig.zoom_by(-self._config.camera.zoom_step)
         if self._camera_zoom_mouse_wheel_enabled:
             wheel_delta = self._raylib.get_mouse_wheel_move()
-            if wheel_delta != 0.0 and self._debug_overlay_enabled and self._debug_overlay.is_mouse_over_panel():
+            if wheel_delta != 0.0 and self._ui.debug_overlay_enabled and self._debug_overlay.is_mouse_over_panel():
                 self._debug_overlay.scroll_by_wheel_delta(wheel_delta)
             elif wheel_delta != 0.0:
                 self._camera_rig.zoom_by(wheel_delta * self._config.camera.zoom_step)

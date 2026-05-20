@@ -35,6 +35,7 @@ from topdown_shooter.rendering.window_layout import (
     apply_raylib_window_position,
     resolve_raylib_window_layout,
 )
+from topdown_shooter.ui.runtime_ui import ControlsHelpLine, RuntimeUi
 from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.coordinates import ScreenCoord, WorldCoord
 from topdown_shooter.world.pathfinding import GridPathfinder
@@ -121,8 +122,9 @@ class Render3DRenderer:
         self._key_enemy_vision = self._resolve_key(
             config.render3d.controls.enemy_vision_toggle,
         )
-        self._debug_overlay_chord = self._resolve_key_chord(config.controls.debug_overlay)
-        self._debug_overlay_enabled = config.debug_overlay.enabled_by_default
+        self._mouse_capture_toggle_key = self._resolve_key(config.controls.mouse_capture_toggle)
+        self._mouse_capture_desired = True
+        self._mouse_capture_active = False
         self._fire_primary_button = self._resolve_mouse_button(config.controls.fire_primary)
         self._reload_key = self._resolve_key(config.controls.reload)
         self._weapon_slot_1_key = self._resolve_key(config.controls.weapon_slot_1)
@@ -143,6 +145,12 @@ class Render3DRenderer:
             runtime_map=runtime_map,
             package=package,
             config=config,
+        )
+        self._ui = RuntimeUi(
+            raylib=self._raylib,
+            config=config,
+            renderer_name="3D",
+            help_lines=self._build_help_lines(config),
         )
 
     def run_follow_preview(
@@ -174,41 +182,46 @@ class Render3DRenderer:
         window = self._config.window
         self._configure_raylib_logging()
         raylib.init_window(window.width, window.height, f"{window.title} - 3D experiment")
+        raylib.set_exit_key(raylib.KEY_NULL)
         self._apply_initial_window_position()
         raylib.set_target_fps(window.target_fps)
-        self._disable_cursor()
+        self._set_mouse_capture(True)
         scene = scene_builder.build_snapshot(player.tile)
         try:
             while not raylib.window_should_close():
                 self._apply_initial_window_position()
-                if raylib.is_key_pressed(raylib.KEY_ESCAPE):
+                ui_input = self._ui.handle_input()
+                if ui_input.should_exit:
                     break
-                if self._is_key_chord_pressed(self._debug_overlay_chord):
-                    self._debug_overlay_enabled = not self._debug_overlay_enabled
+                if raylib.is_key_pressed(self._mouse_capture_toggle_key) and not ui_input.blocks_gameplay:
+                    self._mouse_capture_desired = not self._mouse_capture_desired
+                self._set_mouse_capture(self._mouse_capture_desired and not ui_input.blocks_gameplay)
                 frame_time = raylib.get_frame_time()
-                self._update_camera_mode(camera_controller)
-                self._update_facing_from_mouse()
-                input_state = self._read_input_state()
-                self._update_player(player, player_controller, input_state, frame_time)
-                self._update_combat_controls(
-                    player=player,
-                    weapon_controller=weapon_controller,
-                    frame_time=frame_time,
-                )
-                update_combat_runtime(
-                    player=player,
-                    enemy_system=enemy_system,
-                    projectile_system=projectile_system,
-                    weapon_controller=weapon_controller,
-                    collision_service=collision_service,
-                    pathfinder=enemy_pathfinder,
-                    runtime_map=self._runtime_map,
-                    config=self._config,
-                    frame_time=frame_time,
-                    weapon_fire_events=self._weapon_fire_events_last_update,
-                    player_speed_px_per_second=self._player_speed_px_per_second(),
-                )
-                scene = scene_builder.build_snapshot(player.tile)
+                if not ui_input.blocks_gameplay:
+                    self._update_camera_mode(camera_controller)
+                    if self._mouse_capture_active:
+                        self._update_facing_from_mouse()
+                    input_state = self._read_input_state()
+                    self._update_player(player, player_controller, input_state, frame_time)
+                    self._update_combat_controls(
+                        player=player,
+                        weapon_controller=weapon_controller,
+                        frame_time=frame_time,
+                    )
+                    update_combat_runtime(
+                        player=player,
+                        enemy_system=enemy_system,
+                        projectile_system=projectile_system,
+                        weapon_controller=weapon_controller,
+                        collision_service=collision_service,
+                        pathfinder=enemy_pathfinder,
+                        runtime_map=self._runtime_map,
+                        config=self._config,
+                        frame_time=frame_time,
+                        weapon_fire_events=self._weapon_fire_events_last_update,
+                        player_speed_px_per_second=self._player_speed_px_per_second(),
+                    )
+                    scene = scene_builder.build_snapshot(player.tile)
                 visible_enemies = self._visible_enemies(
                     enemies=enemy_system.enemies,
                     player_position=player.world_position,
@@ -277,7 +290,7 @@ class Render3DRenderer:
                 raylib.end_mode_3d()
                 self._player_hud.draw(player, weapon_controller.stats)
                 self._update_debug_overlay_scroll()
-                if self._debug_overlay_enabled:
+                if self._ui.debug_overlay_enabled:
                     self._debug_overlay.draw(
                         camera=self._debug_camera_state(player),
                         raylib_camera=None,
@@ -296,12 +309,35 @@ class Render3DRenderer:
                             visible_enemy_hit_markers=visible_enemy_hit_markers,
                         ),
                     )
+                self._ui.draw()
                 raylib.end_drawing()
         finally:
             self._player_hud.unload()
             self._debug_overlay.unload()
-            self._enable_cursor()
+            self._ui.unload()
+            self._set_mouse_capture(False)
             raylib.close_window()
+
+
+    @staticmethod
+    def _build_help_lines(config: RuntimeConfig) -> tuple[ControlsHelpLine, ...]:
+        """Build 3D controls help lines from runtime bindings."""
+        return (
+            ControlsHelpLine("Mouse X", "turn view / facing"),
+            ControlsHelpLine("W/S", "move forward / backpedal"),
+            ControlsHelpLine("A/D", "strafe left / right"),
+            ControlsHelpLine(config.controls.fire_primary, "fire"),
+            ControlsHelpLine("1/2/3", "select weapon"),
+            ControlsHelpLine(config.controls.reload, "reload"),
+            ControlsHelpLine(config.controls.mouse_capture_toggle, "capture / release mouse"),
+            ControlsHelpLine(config.render3d.controls.camera_reset, "reset camera"),
+            ControlsHelpLine(config.render3d.controls.view_mode_toggle, "view mode"),
+            ControlsHelpLine(config.render3d.controls.distance_fade_toggle, "fog / fade"),
+            ControlsHelpLine(config.render3d.controls.enemy_vision_toggle, "enemy vision cones"),
+            ControlsHelpLine(config.controls.help, "pause / controls"),
+            ControlsHelpLine(config.controls.debug_overlay.key, "debug overlay"),
+            ControlsHelpLine(config.controls.quit, "exit confirmation"),
+        )
 
     def _apply_initial_window_position(self) -> None:
         """Re-apply startup window position for window managers that defer placement."""
@@ -1410,7 +1446,7 @@ class Render3DRenderer:
 
     def _update_debug_overlay_scroll(self) -> None:
         """Scroll the shared debug overlay when it is visible."""
-        if not self._debug_overlay_enabled:
+        if not self._ui.debug_overlay_enabled:
             return
         wheel_delta = self._raylib.get_mouse_wheel_move()
         if wheel_delta != 0.0:
@@ -1543,17 +1579,20 @@ class Render3DRenderer:
             "G": raylib.GOLD,
         }.get(symbol, raylib.GREEN)
 
-    def _disable_cursor(self) -> None:
-        """Capture the mouse cursor for yaw aiming when available."""
-        disable_cursor = getattr(self._raylib, "disable_cursor", None)
-        if callable(disable_cursor):
-            disable_cursor()
-
-    def _enable_cursor(self) -> None:
-        """Restore the mouse cursor when leaving the experiment window."""
+    def _set_mouse_capture(self, enabled: bool) -> None:
+        """Capture or release the OS cursor for 3D mouse-look controls."""
+        if self._mouse_capture_active == enabled:
+            return
+        if enabled:
+            disable_cursor = getattr(self._raylib, "disable_cursor", None)
+            if callable(disable_cursor):
+                disable_cursor()
+                self._mouse_capture_active = True
+            return
         enable_cursor = getattr(self._raylib, "enable_cursor", None)
         if callable(enable_cursor):
             enable_cursor()
+        self._mouse_capture_active = False
 
     def _configure_raylib_logging(self) -> None:
         """Reduce raylib logging noise before opening the 3D experiment window."""

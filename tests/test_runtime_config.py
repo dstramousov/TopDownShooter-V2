@@ -14,6 +14,8 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.controls.quit == "KEY_ESCAPE"
     assert config.controls.debug_overlay.key == "KEY_F12"
     assert config.controls.debug_overlay.modifiers == ()
+    assert config.controls.help == "KEY_F1"
+    assert config.controls.mouse_capture_toggle == "KEY_F10"
     assert config.controls.camera_up == ("KEY_UP",)
     assert config.controls.camera_down == ("KEY_DOWN",)
     assert config.controls.camera_left == ("KEY_LEFT",)

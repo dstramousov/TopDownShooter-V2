@@ -616,3 +616,23 @@
 - 3D renderer больше не рисует отдельный debug HUD текстом слева; вместо этого он использует общий `DebugOverlay` и добавляет только renderer-specific 3D sections.
 - Настройки HUD/debug overlay оставлены в общих config-блоках, а устаревшие `hud.enabled` и `render3d.show_debug_hud` удалены из runtime config.
 - Standalone FPS counter выключен по умолчанию, чтобы техническая информация жила в debug overlay, а не поверх игрового HUD.
+
+
+## v0.0.83 -> v0.0.84
+
+- Добавлен общий modal UI layer для 2D и 3D: F1 открывает центрированный help overlay и ставит gameplay на паузу.
+- Esc больше не закрывает игру сразу: открывается общее окно подтверждения выхода, повторный Esc или No возвращают в игру, Yes/Enter закрывает приложение.
+- В 3D добавлен F10 для capture/release мыши; F1/Esc автоматически освобождают мышь на время модального overlay и возвращают capture после закрытия.
+- Общие UI-клавиши вынесены в runtime config: `controls.help` и `controls.mouse_capture_toggle`; gameplay, AI, projectiles и баланс не изменялись.
+
+## v0.0.84 -> v0.0.85
+
+- Добавлен отсутствующий общий пакет `src/topdown_shooter/ui`, из-за которого `v0.0.84` падал на импорте `topdown_shooter.ui.runtime_ui`.
+- Восстановлены shared modal UI-компоненты для F1 help overlay, Esc exit confirmation и F12 debug overlay toggle без изменения gameplay-логики.
+- Gameplay, AI, projectiles, HUD-layout и баланс не изменялись.
+
+## v0.0.85 -> v0.0.86
+
+- Отключено стандартное закрытие окна через `Esc` в raylib для 2D и 3D runtime.
+- `Esc` теперь проходит в общий `RuntimeUi` и открывает окно подтверждения выхода вместо мгновенного завершения приложения.
+- Gameplay, AI, projectiles, HUD-layout и баланс не изменялись.
