@@ -10,6 +10,7 @@ from pathlib import Path
 from random import Random
 from typing import Self
 
+from topdown_shooter.combat.muzzle import calculate_muzzle_origin
 from topdown_shooter.combat.projectiles import ProjectileOwner, ProjectileSystem
 from topdown_shooter.world.coordinates import WorldCoord
 
@@ -561,6 +562,7 @@ class WeaponController:
         origin: WorldCoord,
         direction_x: float,
         direction_y: float,
+        muzzle_offset_px: float = 0.0,
     ) -> int:
         """Update continuous fire state and spawn projectiles when ready.
 
@@ -570,6 +572,7 @@ class WeaponController:
             origin: Projectile spawn origin.
             direction_x: Normalized aim direction X component.
             direction_y: Normalized aim direction Y component.
+            muzzle_offset_px: Forward projectile spawn offset from the actor center.
 
         Returns:
             Number of weapon fire events spawned during this update.
@@ -597,10 +600,16 @@ class WeaponController:
             return 0
 
         fire_interval = self._state.current_weapon.fire_interval_seconds
+        muzzle_origin = calculate_muzzle_origin(
+            actor_position=origin,
+            direction_x=direction_x,
+            direction_y=direction_y,
+            muzzle_offset_px=muzzle_offset_px,
+        )
         shots_spawned = 0
         max_fire_events_per_frame = 16
         while self._state.cooldown_remaining_seconds <= 0.0:
-            if not self._fire_once(origin, direction_x, direction_y):
+            if not self._fire_once(muzzle_origin, direction_x, direction_y):
                 break
             self._state.cooldown_remaining_seconds += fire_interval
             shots_spawned += 1

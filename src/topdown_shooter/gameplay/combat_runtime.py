@@ -200,6 +200,8 @@ def _apply_enemy_projectile_hits(
                     position=player.world_position,
                     owner=ProjectileOwner.ENEMY,
                     damage=projectile.damage,
+                    direction_x=projectile.direction_x,
+                    direction_y=projectile.direction_y,
                 ),
             )
         if player.health <= 0:

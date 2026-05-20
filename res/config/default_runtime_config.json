@@ -27,7 +27,8 @@
     "marker_radius_px": 6,
     "movement_speed_px_per_second": 160.0,
     "collision_radius_px": 5,
-    "max_health": 100
+    "max_health": 100,
+    "fire_muzzle_offset_px": 10.0
   },
   "debug_overlay": {
     "enabled_by_default": false,

@@ -234,6 +234,9 @@ class RaylibWindow:
                         weapon_fire_events=self._weapon_fire_events_last_update,
                         player_speed_px_per_second=self._player_speed_px_per_second,
                     )
+                    self._projectile_renderer.add_events(
+                        self._projectile_system.consume_events(),
+                    )
                     self._camera_rig.update_follow_target(
                         player_position=self._player.world_position,
                         frame_time=frame_time,
@@ -253,6 +256,7 @@ class RaylibWindow:
                 self._projectile_renderer.draw(
                     projectiles=self._projectile_system.projectiles,
                     impacts=self._projectile_system.impacts,
+                    frame_time=frame_time,
                 )
                 self._enemy_renderer.draw(
                     enemies=self._enemy_system.enemies,
@@ -341,6 +345,7 @@ class RaylibWindow:
             origin=self._player.world_position,
             direction_x=self._player.aim.direction_x,
             direction_y=self._player.aim.direction_y,
+            muzzle_offset_px=self._config.player.fire_muzzle_offset_px,
         )
 
     def _update_player_controls(self, frame_time: float) -> None:

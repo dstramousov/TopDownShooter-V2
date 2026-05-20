@@ -75,12 +75,14 @@ class PlayerConfig:
         movement_speed_px_per_second: Player movement speed in world pixels per second.
         collision_radius_px: Player collision radius in world pixels.
         max_health: Initial and maximum player health points.
+        fire_muzzle_offset_px: Forward projectile spawn offset from player center.
     """
 
     marker_radius_px: int
     movement_speed_px_per_second: float
     collision_radius_px: int
     max_health: int
+    fire_muzzle_offset_px: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -736,6 +738,10 @@ class RuntimeConfigLoader:
                     "collision_radius_px",
                 ),
                 max_health=self._require_positive_int(player, "max_health"),
+                fire_muzzle_offset_px=self._require_non_negative_float(
+                    player,
+                    "fire_muzzle_offset_px",
+                ),
             ),
             aim_debug=AimDebugConfig(
                 enabled=self._require_bool(aim_debug, "enabled"),

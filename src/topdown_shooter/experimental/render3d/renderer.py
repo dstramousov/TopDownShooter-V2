@@ -8,6 +8,8 @@ import math
 from topdown_shooter.combat.enemies import EnemyHitMarkerState, EnemyState, EnemySystem
 from topdown_shooter.combat.projectiles import (
     ImpactMarkerState,
+    ProjectileEvent,
+    ProjectileEventType,
     ProjectileOwner,
     ProjectileState,
     ProjectileSystem,
@@ -62,6 +64,16 @@ class Render3DInputState:
 
     move_x: float
     move_y: float
+
+
+@dataclass(slots=True)
+class _Render3DMuzzleFlashState:
+    """Short-lived 3D muzzle flash state."""
+
+    position: WorldCoord
+    owner: ProjectileOwner
+    age_seconds: float = 0.0
+    lifetime_seconds: float = 0.09
 
 
 class Render3DRenderer:
@@ -136,6 +148,7 @@ class Render3DRenderer:
         self._weapon_slot_2_key = self._resolve_key(config.controls.weapon_slot_2)
         self._weapon_slot_3_key = self._resolve_key(config.controls.weapon_slot_3)
         self._weapon_fire_events_last_update = 0
+        self._muzzle_flashes: list[_Render3DMuzzleFlashState] = []
         self._distance_fade_enabled = config.render3d.distance_fade.enabled
         self._enemy_vision_enabled = config.render3d.enemy_vision.enabled
         self._player_hud = PlayerHud(
@@ -226,6 +239,7 @@ class Render3DRenderer:
                         weapon_fire_events=self._weapon_fire_events_last_update,
                         player_speed_px_per_second=self._player_speed_px_per_second(),
                     )
+                    self._add_projectile_events(projectile_system.consume_events())
                     scene = scene_builder.build_snapshot(player.tile)
                 visible_enemies = self._visible_enemies(
                     enemies=enemy_system.enemies,
@@ -256,6 +270,7 @@ class Render3DRenderer:
                     mode=self._camera_mode,
                 )
                 self._update_camera_relative_basis(camera_state)
+                self._update_muzzle_flashes(frame_time if not ui_input.blocks_gameplay else 0.0)
                 camera = raylib.Camera3D(
                     raylib.Vector3(
                         camera_state.position.x,
@@ -278,6 +293,7 @@ class Render3DRenderer:
                 if self._view_mode_draws_gameplay_markers():
                     self._draw_enemy_vision_cones(visible_enemies)
                     self._draw_enemy_markers(visible_enemies)
+                    self._draw_muzzle_flashes()
                     self._draw_projectile_markers(visible_projectiles)
                     self._draw_impact_markers(visible_impacts)
                     self._draw_aim_line(
@@ -458,6 +474,7 @@ class Render3DRenderer:
             origin=player.world_position,
             direction_x=player.aim.direction_x,
             direction_y=player.aim.direction_y,
+            muzzle_offset_px=self._config.player.fire_muzzle_offset_px,
         )
 
     def _update_facing_from_mouse(self) -> None:
@@ -1139,6 +1156,70 @@ class Render3DRenderer:
                 18,
                 raylib.GOLD,
             )
+
+    def _add_projectile_events(self, events: tuple[ProjectileEvent, ...]) -> None:
+        """Add projectile feedback events used by short-lived 3D visuals."""
+        for event in events:
+            if event.event_type != ProjectileEventType.SPAWNED:
+                continue
+            self._muzzle_flashes.append(
+                _Render3DMuzzleFlashState(
+                    position=event.position,
+                    owner=event.owner,
+                ),
+            )
+
+    def _update_muzzle_flashes(self, frame_time: float) -> None:
+        """Advance active 3D muzzle flashes."""
+        if frame_time <= 0.0:
+            return
+        for flash in self._muzzle_flashes:
+            flash.age_seconds += frame_time
+        self._muzzle_flashes = [
+            flash
+            for flash in self._muzzle_flashes
+            if flash.age_seconds < flash.lifetime_seconds
+        ]
+
+    def _draw_muzzle_flashes(self) -> None:
+        """Draw short-lived muzzle flashes in 3D space."""
+        if not self._muzzle_flashes:
+            return
+        raylib = self._raylib
+        render_config = self._config.render3d
+        tile_size = render_config.tile_size
+        height_scale = render_config.height_scale
+        tile_size_px = self._runtime_map.tile_size_px
+        y = render_config.projectiles.projectile_height_tiles * height_scale
+        for flash in self._muzzle_flashes:
+            progress = min(1.0, max(0.0, flash.age_seconds / flash.lifetime_seconds))
+            radius = max(0.04 * tile_size, 0.18 * tile_size * (1.0 - progress))
+            center = raylib.Vector3(
+                flash.position.x / tile_size_px * tile_size,
+                y,
+                flash.position.y / tile_size_px * tile_size,
+            )
+            raylib.draw_sphere(center, radius, self._muzzle_flash_core_color(flash.owner))
+            raylib.draw_cylinder_wires(
+                center,
+                radius * 1.8,
+                radius * 1.8,
+                0.03 * height_scale,
+                12,
+                self._muzzle_flash_ring_color(flash.owner),
+            )
+
+    def _muzzle_flash_core_color(self, owner: ProjectileOwner) -> object:
+        """Return 3D muzzle flash core color for a projectile owner."""
+        if owner == ProjectileOwner.ENEMY:
+            return self._raylib.ORANGE
+        return self._raylib.YELLOW
+
+    def _muzzle_flash_ring_color(self, owner: ProjectileOwner) -> object:
+        """Return 3D muzzle flash ring color for a projectile owner."""
+        if owner == ProjectileOwner.ENEMY:
+            return self._raylib.RED
+        return self._raylib.GOLD
 
     def _draw_projectile_markers(self, projectiles: tuple[ProjectileState, ...]) -> None:
         """Draw active projectiles as short 3D tracer markers.

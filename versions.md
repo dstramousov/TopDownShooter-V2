@@ -670,3 +670,11 @@
 - Попадания enemy projectile по игроку и player projectile по врагам теперь записываются как projectile feedback events без изменения урона, скорости, cooldown, spread или баланса.
 - 2D renderer теперь визуально различает projectiles игрока и врагов по owner; 3D renderer переведён на общий `ProjectileOwner`.
 - Баллистика, полёт пуль, AI, HUD-layout и gameplay-баланс не изменялись.
+
+## v0.0.90 -> v0.0.91
+
+- Добавлен общий helper расчёта muzzle origin для выстрелов игрока и врагов.
+- Выстрел игрока теперь создаёт projectile из точки перед персонажем через `player.fire_muzzle_offset_px`, а не из центра тела; enemy fire использует тот же helper с существующим `enemies.fire_muzzle_offset_px`.
+- Projectile feedback events дополнены направлением projectile для будущих эффектов выстрелов/попаданий.
+- 2D и 3D renderer теперь используют событие `SPAWNED` для коротких muzzle flash эффектов player/enemy projectiles.
+- Урон, скорость, дальность, spread, fire rate, cooldown, AI, баллистика и баланс не изменялись.

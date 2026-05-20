@@ -7,6 +7,7 @@ import random
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from topdown_shooter.combat.muzzle import calculate_muzzle_origin
 from topdown_shooter.combat.projectiles import (
     ProjectileEvent,
     ProjectileEventType,
@@ -2110,9 +2111,11 @@ class EnemySystem:
             ):
                 continue
 
-            origin = WorldCoord(
-                x=enemy.world_position.x + normalized_x * max(0.0, muzzle_offset_px),
-                y=enemy.world_position.y + normalized_y * max(0.0, muzzle_offset_px),
+            origin = calculate_muzzle_origin(
+                actor_position=enemy.world_position,
+                direction_x=normalized_x,
+                direction_y=normalized_y,
+                muzzle_offset_px=muzzle_offset_px,
             )
             if projectile_system.spawn(
                 origin=origin,
@@ -2169,6 +2172,8 @@ class EnemySystem:
                                 position=enemy.world_position,
                                 owner=ProjectileOwner.PLAYER,
                                 damage=projectile.damage,
+                                direction_x=projectile.direction_x,
+                                direction_y=projectile.direction_y,
                             ),
                         )
                     self._spawn_hit_marker(enemy.world_position)

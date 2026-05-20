@@ -35,6 +35,8 @@ class ProjectileEvent:
         position: Event position in world pixels.
         owner: Projectile owner that caused the event.
         damage: Damage associated with the event, if any.
+        direction_x: Projectile direction X component when available.
+        direction_y: Projectile direction Y component when available.
         reason: Optional short reason for non-hit events.
     """
 
@@ -42,6 +44,8 @@ class ProjectileEvent:
     position: WorldCoord
     owner: ProjectileOwner
     damage: float = 0.0
+    direction_x: float = 0.0
+    direction_y: float = 0.0
     reason: str = ""
 
 
@@ -243,6 +247,8 @@ class ProjectileSystem:
                 position=origin,
                 owner=owner_tag,
                 damage=damage,
+                direction_x=direction_x,
+                direction_y=direction_y,
             ),
         )
         return True
@@ -372,6 +378,8 @@ class ProjectileSystem:
                 position=position,
                 owner=owner,
                 damage=projectile.damage,
+                direction_x=projectile.direction_x,
+                direction_y=projectile.direction_y,
                 reason=reason,
             ),
         )
