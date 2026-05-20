@@ -668,22 +668,49 @@ class DebugOverlay:
             columns: Debug sections built for the current frame.
         """
         x = self._right_panel_x(config)
+        panel_height = self._config.window.height
         panel_color = self._raylib.Color(0, 0, 0, config.background_alpha)
         self._raylib.draw_rectangle(
             x,
             0,
             config.side_panel_width,
-            self._config.window.height,
+            panel_height,
             panel_color,
         )
         sections = self._flatten_columns(columns)
-        self._draw_side_panel_sections(config=config, sections=sections, x=x + config.padding)
+        content_top = self._side_panel_content_top(config)
+        visible_height = self._side_panel_visible_height(config, content_top)
+        content_height = self._calculate_side_panel_content_height(config, sections)
+        max_scroll = max(0, content_height - visible_height)
+        self._draw_side_panel_header(
+            config=config,
+            x=x,
+            content_top=content_top,
+            max_scroll=max_scroll,
+        )
+        self._draw_side_panel_sections(
+            config=config,
+            sections=sections,
+            x=x + config.padding,
+            content_top=content_top,
+            visible_height=visible_height,
+        )
+        self._draw_side_panel_scrollbar(
+            config=config,
+            panel_x=x,
+            content_top=content_top,
+            visible_height=visible_height,
+            content_height=content_height,
+            max_scroll=max_scroll,
+        )
 
     def _draw_side_panel_sections(
         self,
         config: DebugOverlayConfig,
         sections: tuple[DebugOverlaySection, ...],
         x: int,
+        content_top: int,
+        visible_height: int,
     ) -> None:
         """Draw vertically scrollable debug sections in the side panel.
 
@@ -691,20 +718,22 @@ class DebugOverlay:
             config: Debug overlay configuration.
             sections: Sections to draw.
             x: Text left edge in pixels.
+            content_top: First visible content pixel below the fixed header.
+            visible_height: Scrollable viewport height in pixels.
         """
-        y = config.padding - self._scroll_offset_px
+        y = content_top - self._scroll_offset_px
         line_height = config.font_size + config.line_spacing
         value_x = x + config.label_width
         label_color = self._raylib.RAYWHITE
         value_color = self._raylib.ORANGE
-        panel_height = self._config.window.height
+        content_bottom = content_top + visible_height
 
         for section in sections:
-            if self._is_line_visible(y, line_height, panel_height):
+            if self._is_line_visible(y, line_height, content_top, content_bottom):
                 self._draw_text(section.title, x, y, config.font_size, label_color)
             y += line_height
             for row in section.rows:
-                if self._is_line_visible(y, line_height, panel_height):
+                if self._is_line_visible(y, line_height, content_top, content_bottom):
                     self._draw_text(
                         f"{row.label}:",
                         x,
@@ -715,6 +744,76 @@ class DebugOverlay:
                     self._draw_text(row.value, value_x, y, config.font_size, value_color)
                 y += line_height
             y += config.section_spacing
+
+    def _draw_side_panel_header(
+        self,
+        config: DebugOverlayConfig,
+        x: int,
+        content_top: int,
+        max_scroll: int,
+    ) -> None:
+        """Draw the fixed right-panel header and separator.
+
+        Args:
+            config: Debug overlay configuration.
+            x: Panel left edge in screen pixels.
+            content_top: First scrollable content pixel.
+            max_scroll: Maximum scroll offset in pixels.
+        """
+        text_x = x + config.padding
+        line_height = config.font_size + config.line_spacing
+        scroll_text = f"scroll {self._scroll_offset_px}/{max_scroll}px" if max_scroll else "scroll n/a"
+        header_text = f"DEBUG {self._format_debug_binding()}  {scroll_text}"
+        self._draw_text(header_text, text_x, config.padding, config.font_size, self._raylib.RAYWHITE)
+        separator_y = max(config.padding + line_height, content_top - config.section_spacing // 2)
+        self._raylib.draw_rectangle(
+            x + config.padding,
+            separator_y,
+            max(1, config.side_panel_width - config.padding * 2),
+            1,
+            self._raylib.Color(255, 255, 255, min(120, config.background_alpha + 40)),
+        )
+
+    def _draw_side_panel_scrollbar(
+        self,
+        config: DebugOverlayConfig,
+        panel_x: int,
+        content_top: int,
+        visible_height: int,
+        content_height: int,
+        max_scroll: int,
+    ) -> None:
+        """Draw a compact scrollbar for the right-side debug panel.
+
+        Args:
+            config: Debug overlay configuration.
+            panel_x: Panel left edge in screen pixels.
+            content_top: First scrollable content pixel.
+            visible_height: Scrollable viewport height in pixels.
+            content_height: Total scrollable content height in pixels.
+            max_scroll: Maximum scroll offset in pixels.
+        """
+        if max_scroll <= 0 or visible_height <= 0 or content_height <= 0:
+            return
+        track_width = 4
+        track_x = panel_x + config.side_panel_width - config.padding // 2 - track_width
+        thumb_height = max(24, int(visible_height * visible_height / content_height))
+        thumb_travel = max(0, visible_height - thumb_height)
+        thumb_y = content_top + int(thumb_travel * (self._scroll_offset_px / max_scroll))
+        self._raylib.draw_rectangle(
+            track_x,
+            content_top,
+            track_width,
+            visible_height,
+            self._raylib.Color(255, 255, 255, 36),
+        )
+        self._raylib.draw_rectangle(
+            track_x,
+            thumb_y,
+            track_width,
+            thumb_height,
+            self._raylib.Color(255, 255, 255, 150),
+        )
 
     def _right_panel_x(self, config: DebugOverlayConfig) -> int:
         """Return the left edge of the right-side debug panel."""
@@ -735,18 +834,19 @@ class DebugOverlay:
         return columns[0] + columns[1]
 
     @staticmethod
-    def _is_line_visible(y: int, line_height: int, panel_height: int) -> bool:
-        """Return whether a text line intersects the visible panel area.
+    def _is_line_visible(y: int, line_height: int, top: int, bottom: int) -> bool:
+        """Return whether a text line intersects the visible content viewport.
 
         Args:
             y: Text top position in pixels.
             line_height: Text line height in pixels.
-            panel_height: Panel height in pixels.
+            top: Visible viewport top pixel.
+            bottom: Visible viewport bottom pixel.
 
         Returns:
             True when the line should be drawn.
         """
-        return y + line_height >= 0 and y <= panel_height
+        return y + line_height >= top and y <= bottom
 
     def _clamp_scroll_offset(
         self,
@@ -777,10 +877,44 @@ class DebugOverlay:
             Maximum scroll offset in pixels.
         """
         sections = self._flatten_columns(columns)
-        line_height = config.font_size + config.line_spacing
-        content_height = self._calculate_column_height(config, sections, line_height)
-        visible_height = max(0, self._config.window.height - config.padding * 2)
+        content_top = self._side_panel_content_top(config)
+        content_height = self._calculate_side_panel_content_height(config, sections)
+        visible_height = self._side_panel_visible_height(config, content_top)
         return max(0, content_height - visible_height)
+
+    def _side_panel_content_top(self, config: DebugOverlayConfig) -> int:
+        """Return the first scrollable content pixel below the fixed header."""
+        line_height = config.font_size + config.line_spacing
+        return config.padding + line_height + config.section_spacing
+
+    def _side_panel_visible_height(self, config: DebugOverlayConfig, content_top: int) -> int:
+        """Return the scrollable right-panel viewport height in pixels.
+
+        Args:
+            config: Debug overlay configuration.
+            content_top: First scrollable content pixel.
+
+        Returns:
+            Visible scrollable height in pixels.
+        """
+        return max(0, self._config.window.height - content_top - config.padding)
+
+    def _calculate_side_panel_content_height(
+        self,
+        config: DebugOverlayConfig,
+        sections: tuple[DebugOverlaySection, ...],
+    ) -> int:
+        """Calculate flattened right-panel content height.
+
+        Args:
+            config: Debug overlay configuration.
+            sections: Flattened debug sections.
+
+        Returns:
+            Total scrollable content height in pixels.
+        """
+        line_height = config.font_size + config.line_spacing
+        return self._calculate_column_height(config, sections, line_height)
 
     def _draw_panel(self, config: DebugOverlayConfig, panel_height: int) -> None:
         """Draw the translucent overlay panel.
@@ -920,7 +1054,11 @@ class DebugOverlay:
             Human-readable weapon slot binding text.
         """
         controls = self._config.controls
-        return f"1:{controls.weapon_slot_1} 2:{controls.weapon_slot_2}"
+        return (
+            f"1:{controls.weapon_slot_1} "
+            f"2:{controls.weapon_slot_2} "
+            f"3:{controls.weapon_slot_3}"
+        )
 
     def _format_zoom_bindings(self) -> str:
         """Format configured zoom bindings for the overlay.

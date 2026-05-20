@@ -652,3 +652,12 @@
 - `PlayerHud`, `DebugOverlay`, `RuntimeUi`, 2D runtime и 3D renderer больше не берут общий UI-шрифт из `debug_overlay`.
 - Из `debug_overlay` удалены поля `font_path` и `font_spacing`; блок теперь отвечает только за layout/debug-panel параметры.
 - Внешний вид HUD/debug/help/exit overlays и gameplay-логика не изменялись.
+
+
+## v0.0.88 -> v0.0.89
+
+- Правый debug overlay получил фиксированный header с текущей клавишей toggle и положением scroll offset.
+- Скроллируемая область debug overlay теперь начинается ниже header-а, имеет явную высоту viewport-а и не рисует строки поверх заголовка.
+- Добавлен компактный scrollbar для длинного debug overlay; поведение едино для 2D и 3D, настройки продолжают жить в общем `debug_overlay` config-блоке.
+- Убрана дублирующаяся строка `Camera/Target` в debug overlay и исправлено отображение всех трёх weapon slots.
+- Gameplay, AI, projectiles, HUD-layout, баллистика и баланс не изменялись.
