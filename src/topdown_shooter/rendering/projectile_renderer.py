@@ -20,6 +20,7 @@ class _MuzzleFlashState:
     position_x: float
     position_y: float
     owner: ProjectileOwner
+    visual_profile: str = "default"
     age_seconds: float = 0.0
     lifetime_seconds: float = 0.09
 
@@ -33,7 +34,8 @@ class _ProjectileTrailState:
     end_x: float
     end_y: float
     owner: ProjectileOwner
-    key: tuple[int, int, int, int, str]
+    visual_profile: str
+    key: tuple[int, int, int, int, str, str]
     age_seconds: float = 0.0
     lifetime_seconds: float = 0.075
 
@@ -44,6 +46,24 @@ class ProjectileRenderer:
     _TRAIL_MIN_LENGTH_PX = 2.0
     _PLAYER_TRAIL_THICKNESS = 2.0
     _ENEMY_TRAIL_THICKNESS = 2.5
+    _TRAIL_THICKNESS_BY_PROFILE = {
+        "pistol": 2.0,
+        "ak47": 2.35,
+        "minigun": 1.35,
+        "enemy": 2.7,
+    }
+    _TRAIL_ALPHA_BY_PROFILE = {
+        "pistol": 230,
+        "ak47": 215,
+        "minigun": 150,
+        "enemy": 235,
+    }
+    _FLASH_RADIUS_BY_PROFILE = {
+        "pistol": 10.0,
+        "ak47": 12.0,
+        "minigun": 7.0,
+        "enemy": 11.0,
+    }
 
     def __init__(self, raylib: object) -> None:
         """Initialize the renderer.
@@ -54,7 +74,7 @@ class ProjectileRenderer:
         self._raylib = raylib
         self._muzzle_flashes: list[_MuzzleFlashState] = []
         self._trails: list[_ProjectileTrailState] = []
-        self._trail_keys: set[tuple[int, int, int, int, str]] = set()
+        self._trail_keys: set[tuple[int, int, int, int, str, str]] = set()
 
     def add_events(self, events: tuple[ProjectileEvent, ...]) -> None:
         """Add projectile feedback events used by short-lived 2D visuals."""
@@ -66,6 +86,8 @@ class ProjectileRenderer:
                     position_x=event.position.x,
                     position_y=event.position.y,
                     owner=event.owner,
+                    visual_profile=event.visual_profile,
+                    lifetime_seconds=self._muzzle_flash_lifetime(event.visual_profile),
                 ),
             )
 
@@ -145,6 +167,7 @@ class ProjectileRenderer:
                 int(round(projectile.position.x)),
                 int(round(projectile.position.y)),
                 owner.value,
+                projectile.visual_profile,
             )
             if key in self._trail_keys:
                 continue
@@ -156,6 +179,7 @@ class ProjectileRenderer:
                     end_x=projectile.position.x,
                     end_y=projectile.position.y,
                     owner=owner,
+                    visual_profile=projectile.visual_profile,
                     key=key,
                 ),
             )
@@ -165,7 +189,12 @@ class ProjectileRenderer:
         raylib = self._raylib
         for trail in self._trails:
             progress = min(1.0, max(0.0, trail.age_seconds / trail.lifetime_seconds))
-            alpha = int(210 * (1.0 - progress))
+            alpha = int(
+                self._trail_alpha(
+                    trail.visual_profile,
+                    trail.owner,
+                ) * (1.0 - progress),
+            )
             if alpha <= 0:
                 continue
             start = raylib.Vector2(trail.start_x, trail.start_y)
@@ -173,8 +202,8 @@ class ProjectileRenderer:
             raylib.draw_line_ex(
                 start,
                 end,
-                self._trail_thickness(trail.owner),
-                self._trail_color(trail.owner, alpha),
+                self._trail_thickness(trail.owner, trail.visual_profile),
+                self._trail_color(trail.owner, alpha, trail.visual_profile),
             )
 
     def _draw_muzzle_flashes(self) -> None:
@@ -182,7 +211,7 @@ class ProjectileRenderer:
         raylib = self._raylib
         for flash in self._muzzle_flashes:
             progress = min(1.0, max(0.0, flash.age_seconds / flash.lifetime_seconds))
-            radius = 10.0 * (1.0 - progress) + 3.0
+            radius = self._muzzle_flash_radius(flash.visual_profile, flash.owner) * (1.0 - progress) + 3.0
             position = raylib.Vector2(flash.position_x, flash.position_y)
             raylib.draw_circle_v(position, radius, self._muzzle_flash_color(flash.owner))
             raylib.draw_circle_lines(
@@ -210,17 +239,57 @@ class ProjectileRenderer:
             return self._raylib.ORANGE
         return self._raylib.RAYWHITE
 
-    def _trail_color(self, owner: ProjectileOwner, alpha: int) -> object:
+    def _trail_color(
+        self,
+        owner: ProjectileOwner,
+        alpha: int,
+        visual_profile: str,
+    ) -> object:
         """Return fading 2D projectile trail color."""
+        profile = self._normalize_visual_profile(visual_profile, owner)
+        if profile == "minigun":
+            return self._raylib.Color(255, 245, 170, alpha)
+        if profile == "ak47":
+            return self._raylib.Color(255, 190, 72, alpha)
         if owner == ProjectileOwner.ENEMY:
             return self._raylib.Color(255, 76, 32, alpha)
         return self._raylib.Color(255, 230, 96, alpha)
 
-    def _trail_thickness(self, owner: ProjectileOwner) -> float:
-        """Return 2D projectile trail thickness for the owner."""
+    def _trail_thickness(self, owner: ProjectileOwner, visual_profile: str) -> float:
+        """Return 2D projectile trail thickness for the owner/profile."""
+        profile = self._normalize_visual_profile(visual_profile, owner)
+        if profile in self._TRAIL_THICKNESS_BY_PROFILE:
+            return self._TRAIL_THICKNESS_BY_PROFILE[profile]
         if owner == ProjectileOwner.ENEMY:
             return self._ENEMY_TRAIL_THICKNESS
         return self._PLAYER_TRAIL_THICKNESS
+
+    def _trail_alpha(self, visual_profile: str, owner: ProjectileOwner) -> int:
+        """Return base 2D projectile trail alpha for the owner/profile."""
+        profile = self._normalize_visual_profile(visual_profile, owner)
+        return self._TRAIL_ALPHA_BY_PROFILE.get(profile, 210)
+
+    def _muzzle_flash_radius(self, visual_profile: str, owner: ProjectileOwner) -> float:
+        """Return 2D muzzle flash radius for the owner/profile."""
+        profile = self._normalize_visual_profile(visual_profile, owner)
+        return self._FLASH_RADIUS_BY_PROFILE.get(profile, 10.0)
+
+    def _muzzle_flash_lifetime(self, visual_profile: str) -> float:
+        """Return 2D muzzle flash lifetime for the visual profile."""
+        profile = visual_profile.strip().lower()
+        if profile == "minigun":
+            return 0.045
+        if profile == "ak47":
+            return 0.07
+        return 0.09
+
+    @staticmethod
+    def _normalize_visual_profile(visual_profile: str, owner: ProjectileOwner) -> str:
+        """Return a stable visual profile fallback."""
+        profile = visual_profile.strip().lower()
+        if profile:
+            return profile
+        return owner.value
 
     @staticmethod
     def _normalize_owner(owner: ProjectileOwner | str) -> ProjectileOwner:

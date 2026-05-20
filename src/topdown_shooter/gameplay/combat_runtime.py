@@ -95,18 +95,14 @@ def update_combat_runtime(
             projectile_system=projectile_system,
             collision_service=collision_service,
             fire_rate_rpm=enemy_config.fire_rate_rpm,
-            projectile_speed_px_per_second=(
-                enemy_config.fire_projectile_speed_px_per_second
-            ),
-            projectile_range_px=enemy_config.fire_projectile_range_px,
-            projectile_lifetime_seconds=(
-                enemy_config.fire_projectile_lifetime_seconds
-            ),
-            projectile_radius_px=enemy_config.fire_projectile_radius_px,
+            shot_range_px=enemy_config.fire_range_px,
+            tracer_lifetime_seconds=enemy_config.fire_tracer_lifetime_seconds,
+            shot_radius_px=enemy_config.fire_shot_radius_px,
             damage=enemy_config.fire_damage,
             max_fire_distance_px=enemy_config.fire_max_distance_px,
             muzzle_offset_px=enemy_config.fire_muzzle_offset_px,
             line_of_sight_sample_step_px=enemy_config.line_of_sight_sample_step_px,
+            visual_profile="enemy",
         )
     _apply_enemy_projectile_hits(
         player=player,
@@ -157,6 +153,7 @@ def update_combat_runtime(
         lost_sight_timeout_seconds=enemy_config.lost_sight_timeout_seconds,
         return_home_reached_distance_px=enemy_config.return_home_reached_distance_px,
     )
+    projectile_system.finalize_hitscan_resolution()
     projectile_system.prune_dead()
 
 
@@ -167,11 +164,11 @@ def _apply_enemy_projectile_hits(
     player_collision_radius_px: float,
     projectile_system: ProjectileSystem | None = None,
 ) -> None:
-    """Apply hostile projectile damage to the player.
+    """Apply hostile hitscan shot damage to the player.
 
     Args:
         player: Mutable player state receiving damage.
-        projectiles: Active projectile states to test against the player.
+        projectiles: Active shot traces to test against the player.
         player_collision_radius_px: Player collision radius in world pixels.
         projectile_system: Optional projectile system receiving hit feedback events.
     """
@@ -179,7 +176,7 @@ def _apply_enemy_projectile_hits(
         return
     for projectile in projectiles:
         if (
-            not getattr(projectile, "alive", False)
+            not getattr(projectile, "damage_active", False)
             or getattr(projectile, "owner", ProjectileOwner.PLAYER) != ProjectileOwner.ENEMY
         ):
             continue
@@ -192,7 +189,7 @@ def _apply_enemy_projectile_hits(
         if distance_squared > collision_radius * collision_radius:
             continue
         player.health = max(0, int(round(player.health - projectile.damage)))
-        projectile.alive = False
+        projectile.damage_active = False
         if projectile_system is not None:
             projectile_system.record_event(
                 ProjectileEvent(
@@ -202,6 +199,7 @@ def _apply_enemy_projectile_hits(
                     damage=projectile.damage,
                     direction_x=projectile.direction_x,
                     direction_y=projectile.direction_y,
+                    visual_profile=projectile.visual_profile,
                 ),
             )
         if player.health <= 0:

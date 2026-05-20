@@ -51,21 +51,19 @@ def _spawn_default(
         origin=origin,
         direction_x=direction_x,
         direction_y=direction_y,
-        speed_px_per_second=16.0,
         max_distance_px=64.0,
-        lifetime_seconds=10.0,
+        trace_lifetime_seconds=0.1,
         radius_px=3.0,
         damage=25.0,
     )
 
 
-def test_projectile_system_spawns_and_moves_projectile() -> None:
-    """Projectile system should spawn and advance projectiles."""
+def test_projectile_system_spawns_hitscan_trace() -> None:
+    """Projectile system should spawn a full hitscan trace immediately."""
     runtime_map = _build_runtime_map()
     system = ProjectileSystem(TileCollisionService(runtime_map))
 
     spawned = _spawn_default(system, WorldCoord(8.0, 24.0), direction_x=1.0, direction_y=0.0)
-    system.update(frame_time=0.5)
 
     assert spawned is True
     assert system.stats.shots_fired == 1
@@ -73,8 +71,8 @@ def test_projectile_system_spawns_and_moves_projectile() -> None:
     assert system.stats.active_impacts == 0
     assert system.stats.total_impacts == 0
     projectile = system.projectiles[0]
-    assert projectile.position == WorldCoord(16.0, 24.0)
-    assert projectile.distance_traveled_px == 8.0
+    assert projectile.position == WorldCoord(72.0, 24.0)
+    assert projectile.damage_active is True
     assert projectile.radius_px == 3.0
     assert projectile.damage == 25.0
     assert projectile.previous_position == WorldCoord(8.0, 24.0)
@@ -93,16 +91,17 @@ def test_projectile_system_ignores_zero_direction() -> None:
     assert system.stats.active_impacts == 0
 
 
-def test_projectile_system_removes_projectile_on_blocked_tile() -> None:
-    """Projectile system should remove projectiles when they hit blocked tiles."""
+def test_projectile_system_stops_trace_on_blocked_tile() -> None:
+    """Projectile system should stop hitscan traces when they hit blocked tiles."""
     runtime_map = _build_runtime_map(blocked_x=1)
     system = ProjectileSystem(TileCollisionService(runtime_map))
 
     _spawn_default(system, WorldCoord(8.0, 24.0), direction_x=1.0, direction_y=0.0)
-    system.update(frame_time=0.5)
+    system.finalize_hitscan_resolution()
 
     assert system.stats.shots_fired == 1
-    assert system.stats.active_projectiles == 0
+    assert system.stats.active_projectiles == 1
+    assert system.projectiles[0].position == WorldCoord(16.0, 24.0)
     assert system.stats.active_impacts == 0
 
 
@@ -117,10 +116,10 @@ def test_projectile_system_spawns_impact_on_blocked_tile_when_enabled() -> None:
     )
 
     _spawn_default(system, WorldCoord(8.0, 24.0), direction_x=1.0, direction_y=0.0)
-    system.update(frame_time=0.5)
+    system.finalize_hitscan_resolution()
 
     assert system.stats.shots_fired == 1
-    assert system.stats.active_projectiles == 0
+    assert system.stats.active_projectiles == 1
     assert system.stats.active_impacts == 1
     assert system.stats.total_impacts == 1
     impact = system.impacts[0]
@@ -140,7 +139,7 @@ def test_projectile_system_removes_expired_impact() -> None:
     )
 
     _spawn_default(system, WorldCoord(8.0, 24.0), direction_x=1.0, direction_y=0.0)
-    system.update(frame_time=0.5)
+    system.finalize_hitscan_resolution()
     system.update(frame_time=0.25)
 
     assert system.stats.active_impacts == 0
@@ -156,7 +155,7 @@ def test_projectile_system_emits_spawn_and_wall_hit_events() -> None:
     )
 
     _spawn_default(system, WorldCoord(8.0, 24.0), direction_x=1.0, direction_y=0.0)
-    system.update(frame_time=0.5)
+    system.finalize_hitscan_resolution()
 
     events = system.consume_events()
     assert [event.event_type for event in events] == [
@@ -177,14 +176,13 @@ def test_projectile_system_emits_expired_event_for_range_limit() -> None:
         origin=WorldCoord(8.0, 24.0),
         direction_x=1.0,
         direction_y=0.0,
-        speed_px_per_second=16.0,
         max_distance_px=8.0,
-        lifetime_seconds=10.0,
+        trace_lifetime_seconds=0.1,
         radius_px=3.0,
         damage=25.0,
         owner=ProjectileOwner.ENEMY,
     )
-    system.update(frame_time=0.5)
+    system.finalize_hitscan_resolution()
 
     events = system.consume_events()
     assert [event.event_type for event in events] == [

@@ -534,10 +534,9 @@ class DebugOverlay:
                     "Impact radius",
                     f"{self._config.projectile_impacts.radius_px:.1f}px",
                 ),
-                DebugOverlayRow("Speed", f"{weapon_stats.projectile_speed_px_per_second:.1f}px/s"),
-                DebugOverlayRow("Range", f"{weapon_stats.projectile_range_px:.1f}px"),
-                DebugOverlayRow("Lifetime", f"{weapon_stats.projectile_lifetime_seconds:.2f}s"),
-                DebugOverlayRow("Radius", f"{weapon_stats.projectile_radius_px:.1f}px"),
+                DebugOverlayRow("Shot range", f"{weapon_stats.shot_range_px:.1f}px"),
+                DebugOverlayRow("Trace life", f"{weapon_stats.tracer_lifetime_seconds:.3f}s"),
+                DebugOverlayRow("Shot radius", f"{weapon_stats.shot_radius_px:.1f}px"),
             ),
         )
         left_column = (*left_column, weapon_section, enemy_section, projectile_section)

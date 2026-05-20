@@ -111,16 +111,15 @@ def test_enemy_system_applies_projectile_damage_and_hit_markers() -> None:
         previous_position=WorldCoord(x=24.0, y=24.0),
         direction_x=1.0,
         direction_y=0.0,
-        speed_px_per_second=16.0,
         max_distance_px=64.0,
-        lifetime_seconds=10.0,
+        lifetime_seconds=0.1,
         radius_px=3.0,
         damage=35.0,
     )
 
     system.apply_projectile_hits((projectile,), enemy_collision_radius_px=6.0)
 
-    assert projectile.alive is False
+    assert projectile.damage_active is False
     assert system.stats.active_enemies == 1
     assert system.stats.total_hits == 1
     assert system.stats.killed_enemies == 0
@@ -158,16 +157,15 @@ def test_enemy_system_removes_enemy_when_health_reaches_zero() -> None:
         previous_position=WorldCoord(x=24.0, y=24.0),
         direction_x=1.0,
         direction_y=0.0,
-        speed_px_per_second=16.0,
         max_distance_px=64.0,
-        lifetime_seconds=10.0,
+        lifetime_seconds=0.1,
         radius_px=3.0,
         damage=50.0,
     )
 
     system.apply_projectile_hits((projectile,), enemy_collision_radius_px=6.0)
 
-    assert projectile.alive is False
+    assert projectile.damage_active is False
     assert system.stats.active_enemies == 0
     assert system.stats.spawned_enemies == 1
     assert system.stats.killed_enemies == 1
@@ -356,9 +354,8 @@ def test_enemy_system_alerts_enemy_when_projectile_hits() -> None:
         previous_position=WorldCoord(x=24.0, y=24.0),
         direction_x=1.0,
         direction_y=0.0,
-        speed_px_per_second=16.0,
         max_distance_px=64.0,
-        lifetime_seconds=10.0,
+        lifetime_seconds=0.1,
         radius_px=3.0,
         damage=10.0,
     )
@@ -1137,9 +1134,8 @@ def test_enemy_squad_alert_propagates_after_configured_delay() -> None:
         previous_position=hit_enemy.world_position,
         direction_x=1.0,
         direction_y=0.0,
-        speed_px_per_second=16.0,
         max_distance_px=64.0,
-        lifetime_seconds=10.0,
+        lifetime_seconds=0.1,
         radius_px=3.0,
         damage=10.0,
     )
@@ -1196,9 +1192,8 @@ def test_enemy_squad_alert_uses_nearby_fallback_radius() -> None:
         previous_position=origin.world_position,
         direction_x=1.0,
         direction_y=0.0,
-        speed_px_per_second=16.0,
         max_distance_px=64.0,
-        lifetime_seconds=10.0,
+        lifetime_seconds=0.1,
         radius_px=3.0,
         damage=10.0,
     )
@@ -1500,9 +1495,8 @@ def test_enemy_system_ignores_enemy_owned_projectiles_for_enemy_damage() -> None
         previous_position=WorldCoord(x=24.0, y=24.0),
         direction_x=1.0,
         direction_y=0.0,
-        speed_px_per_second=16.0,
         max_distance_px=64.0,
-        lifetime_seconds=10.0,
+        lifetime_seconds=0.1,
         radius_px=3.0,
         damage=50.0,
         owner="enemy",
@@ -1517,7 +1511,7 @@ def test_enemy_system_ignores_enemy_owned_projectiles_for_enemy_damage() -> None
 
 
 def test_enemy_system_fires_projectile_from_engaged_enemy() -> None:
-    """Engaged enemies should spawn hostile projectiles when they see the player."""
+    """Engaged enemies should spawn hostile hitscan traces when they see the player."""
     from topdown_shooter.combat.projectiles import ProjectileSystem
     from topdown_shooter.world.collision import TileCollisionService
 
@@ -1545,10 +1539,9 @@ def test_enemy_system_fires_projectile_from_engaged_enemy() -> None:
         projectile_system=projectile_system,
         collision_service=collision_service,
         fire_rate_rpm=120.0,
-        projectile_speed_px_per_second=200.0,
-        projectile_range_px=160.0,
-        projectile_lifetime_seconds=1.0,
-        projectile_radius_px=2.0,
+        shot_range_px=160.0,
+        tracer_lifetime_seconds=0.1,
+        shot_radius_px=2.0,
         damage=7.0,
         max_fire_distance_px=128.0,
         muzzle_offset_px=4.0,

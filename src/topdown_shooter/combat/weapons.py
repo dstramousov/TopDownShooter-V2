@@ -28,28 +28,27 @@ class WeaponDefinition:
         display_name: Human-readable weapon name.
         slot: Numeric weapon slot used by runtime input.
         fire_rate_rpm: Fire rate in rounds per minute.
-        projectile_speed_px_per_second: Projectile speed in world pixels per second.
-        projectile_range_px: Maximum projectile travel distance in world pixels.
-        projectile_lifetime_seconds: Maximum projectile lifetime in seconds.
-        projectile_radius_px: Projectile visual/collision radius in world pixels.
+        shot_range_px: Maximum hitscan shot distance in world pixels.
+        tracer_lifetime_seconds: Visual tracer lifetime in seconds.
+        shot_radius_px: Hitscan collision/visual radius in world pixels.
         spread_degrees: Maximum angular spread cone in degrees.
         damage: Damage applied by each spawned projectile.
-        shots_per_fire: Number of projectiles spawned per fire event.
+        shots_per_fire: Number of hitscan traces created per fire event.
         magazine_size: Number of fire events available before reload.
         initial_reserve_ammo: Initial reserve ammo, or None for infinite reserve.
         reload_time_seconds: Time required to reload this weapon.
         active_movement_speed_multiplier: Player movement multiplier while this weapon is active.
         noise_radius_px: Enemy hearing radius produced by each fire event.
+        visual_profile: Renderer-facing weapon visual profile tag.
     """
 
     weapon_id: str
     display_name: str
     slot: int
     fire_rate_rpm: float
-    projectile_speed_px_per_second: float
-    projectile_range_px: float
-    projectile_lifetime_seconds: float
-    projectile_radius_px: float
+    shot_range_px: float
+    tracer_lifetime_seconds: float
+    shot_radius_px: float
     spread_degrees: float
     damage: float
     shots_per_fire: int
@@ -58,6 +57,7 @@ class WeaponDefinition:
     reload_time_seconds: float
     active_movement_speed_multiplier: float
     noise_radius_px: float
+    visual_profile: str
 
     @property
     def fire_interval_seconds(self) -> float:
@@ -147,11 +147,10 @@ class WeaponStats:
         fire_interval_seconds: Current delay between fire events.
         spread_degrees: Current weapon spread cone in degrees.
         damage: Damage applied by each spawned projectile.
-        shots_per_fire: Current projectile count per fire event.
-        projectile_speed_px_per_second: Current projectile speed.
-        projectile_range_px: Current projectile range.
-        projectile_lifetime_seconds: Current projectile lifetime.
-        projectile_radius_px: Current projectile radius.
+        shots_per_fire: Current shot count per fire event.
+        shot_range_px: Current hitscan shot range.
+        tracer_lifetime_seconds: Current visual tracer lifetime.
+        shot_radius_px: Current hitscan collision/visual radius.
         cooldown_remaining_seconds: Current time until the next fire event is allowed.
         ammo_in_magazine: Current ammo available in the magazine.
         magazine_size: Current weapon magazine size.
@@ -160,6 +159,7 @@ class WeaponStats:
         reload_remaining_seconds: Current reload countdown.
         active_movement_speed_multiplier: Player movement multiplier while this weapon is active.
         noise_radius_px: Enemy hearing radius produced by each fire event.
+        visual_profile: Renderer-facing weapon visual profile tag.
         fire_events_last_update: Weapon fire events spawned during the last update.
         available_slots: Available weapon slot numbers.
     """
@@ -172,10 +172,9 @@ class WeaponStats:
     spread_degrees: float
     damage: float
     shots_per_fire: int
-    projectile_speed_px_per_second: float
-    projectile_range_px: float
-    projectile_lifetime_seconds: float
-    projectile_radius_px: float
+    shot_range_px: float
+    tracer_lifetime_seconds: float
+    shot_radius_px: float
     cooldown_remaining_seconds: float
     ammo_in_magazine: int
     magazine_size: int
@@ -184,6 +183,7 @@ class WeaponStats:
     reload_remaining_seconds: float
     active_movement_speed_multiplier: float
     noise_radius_px: float
+    visual_profile: str
     fire_events_last_update: int
     available_slots: tuple[int, ...]
 
@@ -286,16 +286,12 @@ class WeaponConfigLoader:
             display_name=self._require_str(raw_weapon, "display_name"),
             slot=self._require_positive_int(raw_weapon, "slot"),
             fire_rate_rpm=self._require_positive_float(raw_weapon, "fire_rate_rpm"),
-            projectile_speed_px_per_second=self._require_positive_float(
+            shot_range_px=self._require_positive_float(raw_weapon, "shot_range_px"),
+            tracer_lifetime_seconds=self._require_positive_float(
                 raw_weapon,
-                "projectile_speed_px_per_second",
+                "tracer_lifetime_seconds",
             ),
-            projectile_range_px=self._require_positive_float(raw_weapon, "projectile_range_px"),
-            projectile_lifetime_seconds=self._require_positive_float(
-                raw_weapon,
-                "projectile_lifetime_seconds",
-            ),
-            projectile_radius_px=self._require_positive_float(raw_weapon, "projectile_radius_px"),
+            shot_radius_px=self._require_positive_float(raw_weapon, "shot_radius_px"),
             spread_degrees=self._require_non_negative_float(raw_weapon, "spread_degrees"),
             damage=self._require_positive_float(raw_weapon, "damage"),
             shots_per_fire=self._require_positive_int(raw_weapon, "shots_per_fire"),
@@ -307,7 +303,22 @@ class WeaponConfigLoader:
                 "active_movement_speed_multiplier",
             ),
             noise_radius_px=self._require_non_negative_float(raw_weapon, "noise_radius_px"),
+            visual_profile=self._optional_visual_profile(raw_weapon, "visual_profile"),
         )
+
+
+    def _optional_visual_profile(
+        self,
+        raw_weapon: dict[str, object],
+        key: str,
+    ) -> str:
+        """Return an optional normalized visual profile string."""
+        value = raw_weapon.get(key)
+        if value is None:
+            return self._require_str(raw_weapon, "id").strip().lower()
+        if not isinstance(value, str) or not value.strip():
+            raise WeaponConfigError(f"Weapon field '{key}' must be a non-empty string.")
+        return value.strip().lower()
 
     def _require_str(self, data: dict[str, object], key: str) -> str:
         """Return a required string field.
@@ -487,10 +498,9 @@ class WeaponController:
             spread_degrees=weapon.spread_degrees,
             damage=weapon.damage,
             shots_per_fire=weapon.shots_per_fire,
-            projectile_speed_px_per_second=weapon.projectile_speed_px_per_second,
-            projectile_range_px=weapon.projectile_range_px,
-            projectile_lifetime_seconds=weapon.projectile_lifetime_seconds,
-            projectile_radius_px=weapon.projectile_radius_px,
+            shot_range_px=weapon.shot_range_px,
+            tracer_lifetime_seconds=weapon.tracer_lifetime_seconds,
+            shot_radius_px=weapon.shot_radius_px,
             cooldown_remaining_seconds=self._state.cooldown_remaining_seconds,
             ammo_in_magazine=ammo.ammo_in_magazine,
             magazine_size=weapon.magazine_size,
@@ -499,6 +509,7 @@ class WeaponController:
             reload_remaining_seconds=self._state.reload_remaining_seconds,
             active_movement_speed_multiplier=weapon.active_movement_speed_multiplier,
             noise_radius_px=weapon.noise_radius_px,
+            visual_profile=weapon.visual_profile,
             fire_events_last_update=self._fire_events_last_update,
             available_slots=tuple(sorted(self._state.database.weapon_ids_by_slot)),
         )
@@ -564,12 +575,12 @@ class WeaponController:
         direction_y: float,
         muzzle_offset_px: float = 0.0,
     ) -> int:
-        """Update continuous fire state and spawn projectiles when ready.
+        """Update continuous fire state and spawn hitscan shots when ready.
 
         Args:
             fire_held: Whether the primary fire control is currently held.
             frame_time: Current frame duration in seconds.
-            origin: Projectile spawn origin.
+            origin: Shot trace origin.
             direction_x: Normalized aim direction X component.
             direction_y: Normalized aim direction Y component.
             muzzle_offset_px: Forward projectile spawn offset from the actor center.
@@ -619,15 +630,15 @@ class WeaponController:
         return self._fire_events_last_update
 
     def _fire_once(self, origin: WorldCoord, direction_x: float, direction_y: float) -> bool:
-        """Spawn one weapon fire event.
+        """Resolve one weapon fire event.
 
         Args:
-            origin: Projectile spawn origin.
+            origin: Shot trace origin.
             direction_x: Normalized aim direction X component.
             direction_y: Normalized aim direction Y component.
 
         Returns:
-            True if the weapon consumed ammo and spawned its projectiles.
+            True if the weapon consumed ammo and created its shot traces.
         """
         weapon = self._state.current_weapon
         ammo = self._state.current_ammo
@@ -644,12 +655,12 @@ class WeaponController:
                 origin=origin,
                 direction_x=shot_direction_x,
                 direction_y=shot_direction_y,
-                speed_px_per_second=weapon.projectile_speed_px_per_second,
-                max_distance_px=weapon.projectile_range_px,
-                lifetime_seconds=weapon.projectile_lifetime_seconds,
-                radius_px=weapon.projectile_radius_px,
+                max_distance_px=weapon.shot_range_px,
+                trace_lifetime_seconds=weapon.tracer_lifetime_seconds,
+                radius_px=weapon.shot_radius_px,
                 damage=weapon.damage,
                 owner=ProjectileOwner.PLAYER,
+                visual_profile=weapon.visual_profile,
             )
         return True
 

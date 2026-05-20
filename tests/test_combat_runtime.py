@@ -53,9 +53,8 @@ def test_apply_enemy_projectile_hits_damages_player_only_from_enemy_projectiles(
         previous_position=WorldCoord(10.0, 16.0),
         direction_x=1.0,
         direction_y=0.0,
-        speed_px_per_second=100.0,
         max_distance_px=100.0,
-        lifetime_seconds=1.0,
+        lifetime_seconds=0.1,
         radius_px=2.0,
         damage=40.0,
         owner="player",
@@ -65,9 +64,8 @@ def test_apply_enemy_projectile_hits_damages_player_only_from_enemy_projectiles(
         previous_position=WorldCoord(10.0, 16.0),
         direction_x=1.0,
         direction_y=0.0,
-        speed_px_per_second=100.0,
         max_distance_px=100.0,
-        lifetime_seconds=1.0,
+        lifetime_seconds=0.1,
         radius_px=2.0,
         damage=15.0,
         owner="enemy",
@@ -84,7 +82,7 @@ def test_apply_enemy_projectile_hits_damages_player_only_from_enemy_projectiles(
 
     assert player.health == 85
     assert friendly.alive is True
-    assert hostile.alive is False
+    assert hostile.damage_active is False
     assert [event.event_type for event in projectile_system.consume_events()] == [
         ProjectileEventType.HIT_PLAYER,
     ]

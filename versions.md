@@ -692,3 +692,17 @@
 - 3D projectiles now draw real previous-to-current tracer segments instead of fixed fake tails, plus short fading trail afterimages.
 - Player/enemy projectile colors stay visually distinct in both renderers.
 
+
+## v0.0.93 -> v0.0.94
+
+- Replaced moving bullet projectiles with immediate hitscan shot traces for player and enemy fire.
+- `ProjectileSystem` now resolves rays instantly, keeps short-lived visual traces, and finalizes deferred wall/range events after hit tests.
+- Removed old projectile speed/lifetime config fields from weapon and enemy fire configs; weapons now use `shot_range_px`, `tracer_lifetime_seconds`, and `shot_radius_px`.
+- Existing muzzle flash, hit feedback, impact markers, and 2D/3D tracer rendering now use hitscan traces without changing damage, fire rate, spread, reload, AI, or balance.
+
+
+## v0.0.94 -> v0.0.95
+
+- Added renderer-facing weapon visual profiles for hitscan shot traces.
+- Pistol, AK-47, minigun, and enemy fire now use distinct tracer, trail, and muzzle-flash profiles in 2D and 3D.
+- Added visual profile tags to shot events/traces without changing damage, fire rate, spread, reload, AI, pathfinding, or hit detection.

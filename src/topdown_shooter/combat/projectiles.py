@@ -1,7 +1,8 @@
-"""Projectile state, feedback events, and update system."""
+"""Hitscan shot trace state, feedback events, and visual trace system."""
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -10,14 +11,14 @@ from topdown_shooter.world.coordinates import WorldCoord
 
 
 class ProjectileOwner(StrEnum):
-    """Known projectile owner tags."""
+    """Known shot owner tags."""
 
     PLAYER = "player"
     ENEMY = "enemy"
 
 
 class ProjectileEventType(StrEnum):
-    """Projectile feedback event types emitted by combat systems."""
+    """Shot feedback event types emitted by combat systems."""
 
     SPAWNED = "spawned"
     HIT_WALL = "hit_wall"
@@ -28,15 +29,16 @@ class ProjectileEventType(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ProjectileEvent:
-    """Single projectile feedback event.
+    """Single shot feedback event.
 
     Attributes:
-        event_type: Projectile feedback event type.
+        event_type: Shot feedback event type.
         position: Event position in world pixels.
-        owner: Projectile owner that caused the event.
+        owner: Shot owner that caused the event.
         damage: Damage associated with the event, if any.
-        direction_x: Projectile direction X component when available.
-        direction_y: Projectile direction Y component when available.
+        direction_x: Shot direction X component when available.
+        direction_y: Shot direction Y component when available.
+        visual_profile: Visual profile tag used by renderers.
         reason: Optional short reason for non-hit events.
     """
 
@@ -46,47 +48,56 @@ class ProjectileEvent:
     damage: float = 0.0
     direction_x: float = 0.0
     direction_y: float = 0.0
+    visual_profile: str = "default"
     reason: str = ""
 
 
 @dataclass(slots=True)
 class ProjectileState:
-    """Runtime projectile state.
+    """Short-lived hitscan shot trace.
+
+    The name is kept for compatibility with existing renderers and diagnostics,
+    but this object no longer represents a moving physical bullet. It is a
+    one-frame damage ray plus a short-lived visual tracer.
 
     Attributes:
-        position: Current projectile world position.
-        previous_position: Previous projectile world position.
-        direction_x: Normalized horizontal movement direction.
-        direction_y: Normalized vertical movement direction.
-        speed_px_per_second: Projectile speed in world pixels per second.
-        max_distance_px: Maximum allowed travel distance in world pixels.
-        lifetime_seconds: Maximum allowed lifetime in seconds.
-        radius_px: Projectile marker radius in world pixels.
-        damage: Damage applied when this projectile hits a valid target.
+        position: Current trace end position in world pixels.
+        previous_position: Trace start position in world pixels.
+        direction_x: Normalized horizontal shot direction.
+        direction_y: Normalized vertical shot direction.
+        max_distance_px: Maximum allowed ray distance in world pixels.
+        radius_px: Shot collision/visual radius in world pixels.
+        damage: Damage applied when this shot hits a valid target.
         owner: Runtime owner tag used to route friendly and hostile hits.
-        distance_traveled_px: Current traveled distance in world pixels.
-        age_seconds: Current lifetime in seconds.
-        alive: Whether the projectile is still active.
+        lifetime_seconds: Visual trace lifetime in seconds.
+        age_seconds: Current visual trace age in seconds.
+        damage_active: Whether this trace can still apply hits this frame.
+        alive: Whether the visual trace is still active.
+        visual_profile: Visual profile tag used by renderers.
+        terminal_event_type: Deferred miss or wall event emitted after hit tests.
+        terminal_reason: Optional deferred terminal event reason.
     """
 
     position: WorldCoord
     previous_position: WorldCoord
     direction_x: float
     direction_y: float
-    speed_px_per_second: float
     max_distance_px: float
-    lifetime_seconds: float
     radius_px: float
     damage: float
     owner: ProjectileOwner | str = ProjectileOwner.PLAYER
-    distance_traveled_px: float = 0.0
+    lifetime_seconds: float = 0.075
     age_seconds: float = 0.0
+    damage_active: bool = True
     alive: bool = True
+    visual_profile: str = "default"
+    terminal_event_type: ProjectileEventType | None = None
+    terminal_reason: str = ""
 
 
 @dataclass(slots=True)
 class ImpactMarkerState:
-    """Short-lived projectile impact marker.
+    """Short-lived shot impact marker.
 
     Attributes:
         position: Impact world position.
@@ -105,11 +116,11 @@ class ImpactMarkerState:
 
 @dataclass(frozen=True, slots=True)
 class ProjectileStats:
-    """Projectile system statistics.
+    """Shot trace system statistics.
 
     Attributes:
-        active_projectiles: Number of currently active projectiles.
-        shots_fired: Total number of spawned projectiles.
+        active_projectiles: Number of currently active visual traces.
+        shots_fired: Total number of fired hitscan shots.
         active_impacts: Number of currently active impact markers.
         total_impacts: Total number of spawned impact markers.
     """
@@ -121,7 +132,9 @@ class ProjectileStats:
 
 
 class ProjectileSystem:
-    """Spawn and update simple map-colliding projectiles."""
+    """Resolve hitscan shots and keep short-lived visual traces."""
+
+    _RAYCAST_STEP_PX = 4.0
 
     def __init__(
         self,
@@ -130,10 +143,10 @@ class ProjectileSystem:
         impact_lifetime_seconds: float = 0.16,
         impact_radius_px: float = 5.0,
     ) -> None:
-        """Initialize the projectile system.
+        """Initialize the shot system.
 
         Args:
-            collision_service: Collision service used to kill blocked projectiles.
+            collision_service: Collision service used to stop blocked rays.
             impact_markers_enabled: Whether blocked-tile hits create impact markers.
             impact_lifetime_seconds: Impact marker lifetime in seconds.
             impact_radius_px: Impact marker radius in world pixels.
@@ -150,7 +163,7 @@ class ProjectileSystem:
 
     @property
     def projectiles(self) -> tuple[ProjectileState, ...]:
-        """Return active projectile states."""
+        """Return active visual shot traces."""
         return tuple(self._projectiles)
 
     @property
@@ -160,12 +173,12 @@ class ProjectileSystem:
 
     @property
     def events(self) -> tuple[ProjectileEvent, ...]:
-        """Return projectile feedback events emitted since the last consume call."""
+        """Return shot feedback events emitted since the last consume call."""
         return tuple(self._events)
 
     @property
     def stats(self) -> ProjectileStats:
-        """Return current projectile statistics."""
+        """Return current shot trace statistics."""
         return ProjectileStats(
             active_projectiles=len(self._projectiles),
             shots_fired=self._shots_fired,
@@ -174,16 +187,16 @@ class ProjectileSystem:
         )
 
     def consume_events(self) -> tuple[ProjectileEvent, ...]:
-        """Return and clear pending projectile feedback events."""
+        """Return and clear pending shot feedback events."""
         events = tuple(self._events)
         self._events.clear()
         return events
 
     def record_event(self, event: ProjectileEvent) -> None:
-        """Record an externally detected projectile event.
+        """Record an externally detected shot event.
 
         Args:
-            event: Projectile feedback event to append.
+            event: Shot feedback event to append.
         """
         self._events.append(event)
 
@@ -192,54 +205,64 @@ class ProjectileSystem:
         origin: WorldCoord,
         direction_x: float,
         direction_y: float,
-        speed_px_per_second: float,
         max_distance_px: float,
-        lifetime_seconds: float,
+        trace_lifetime_seconds: float,
         radius_px: float,
         damage: float,
         owner: ProjectileOwner | str = ProjectileOwner.PLAYER,
+        visual_profile: str = "default",
     ) -> bool:
-        """Spawn a projectile when the direction and parameters are valid.
+        """Resolve a hitscan shot and create a short-lived visual trace.
 
         Args:
-            origin: Projectile start position in world pixels.
-            direction_x: Normalized horizontal direction.
-            direction_y: Normalized vertical direction.
-            speed_px_per_second: Projectile speed in world pixels per second.
-            max_distance_px: Maximum projectile travel distance in world pixels.
-            lifetime_seconds: Maximum projectile lifetime in seconds.
-            radius_px: Projectile marker radius in world pixels.
-            damage: Damage applied when this projectile hits a valid target.
+            origin: Shot start position in world pixels.
+            direction_x: Horizontal shot direction.
+            direction_y: Vertical shot direction.
+            max_distance_px: Maximum ray distance in world pixels.
+            trace_lifetime_seconds: Visual tracer lifetime in seconds.
+            radius_px: Shot collision/visual radius in world pixels.
+            damage: Damage applied when this shot hits a valid target.
             owner: Runtime owner tag, usually ``player`` or ``enemy``.
+            visual_profile: Renderer-facing weapon profile tag.
 
         Returns:
-            True if a projectile was spawned.
+            True if a shot trace was created.
         """
         owner_tag = self._normalize_owner(owner)
-        if direction_x == 0.0 and direction_y == 0.0:
+        length = math.hypot(direction_x, direction_y)
+        if length <= 0.0001:
             return False
         if (
-            speed_px_per_second <= 0.0
-            or max_distance_px <= 0.0
-            or lifetime_seconds <= 0.0
+            max_distance_px <= 0.0
+            or trace_lifetime_seconds <= 0.0
             or radius_px <= 0.0
             or damage <= 0.0
             or owner_tag is None
         ):
             return False
-        projectile = ProjectileState(
-            position=origin,
-            previous_position=origin,
-            direction_x=direction_x,
-            direction_y=direction_y,
-            speed_px_per_second=speed_px_per_second,
+        normalized_x = direction_x / length
+        normalized_y = direction_y / length
+        trace_end, terminal_event_type, terminal_reason = self._resolve_hitscan_end(
+            origin=origin,
+            direction_x=normalized_x,
+            direction_y=normalized_y,
             max_distance_px=max_distance_px,
-            lifetime_seconds=lifetime_seconds,
+        )
+        shot = ProjectileState(
+            position=trace_end,
+            previous_position=origin,
+            direction_x=normalized_x,
+            direction_y=normalized_y,
+            max_distance_px=max_distance_px,
+            lifetime_seconds=trace_lifetime_seconds,
             radius_px=radius_px,
             damage=damage,
             owner=owner_tag,
+            visual_profile=self._normalize_visual_profile(visual_profile, owner_tag),
+            terminal_event_type=terminal_event_type,
+            terminal_reason=terminal_reason,
         )
-        self._projectiles.append(projectile)
+        self._projectiles.append(shot)
         self._shots_fired += 1
         self._events.append(
             ProjectileEvent(
@@ -247,14 +270,15 @@ class ProjectileSystem:
                 position=origin,
                 owner=owner_tag,
                 damage=damage,
-                direction_x=direction_x,
-                direction_y=direction_y,
+                direction_x=normalized_x,
+                direction_y=normalized_y,
+                visual_profile=self._normalize_visual_profile(visual_profile, owner_tag),
             ),
         )
         return True
 
     def update(self, frame_time: float) -> None:
-        """Advance active projectiles and impact markers.
+        """Advance visual traces and impact markers.
 
         Args:
             frame_time: Current frame duration in seconds.
@@ -270,63 +294,81 @@ class ProjectileSystem:
             self._update_projectile(projectile, frame_time)
         self.prune_dead()
 
+    def finalize_hitscan_resolution(self) -> None:
+        """Emit deferred miss/wall events after all immediate hit tests finished."""
+        for projectile in self._projectiles:
+            if not projectile.damage_active:
+                continue
+            projectile.damage_active = False
+            if projectile.terminal_event_type is None:
+                continue
+            if projectile.terminal_event_type == ProjectileEventType.HIT_WALL:
+                self._spawn_impact(projectile.position)
+            self.record_event(
+                ProjectileEvent(
+                    event_type=projectile.terminal_event_type,
+                    position=projectile.position,
+                    owner=self._normalize_owner(projectile.owner) or ProjectileOwner.PLAYER,
+                    damage=projectile.damage,
+                    direction_x=projectile.direction_x,
+                    direction_y=projectile.direction_y,
+                    visual_profile=projectile.visual_profile,
+                    reason=projectile.terminal_reason,
+                ),
+            )
+
     def prune_dead(self) -> None:
-        """Remove dead projectiles and expired impact markers from runtime lists."""
+        """Remove expired visual traces and impact markers from runtime lists."""
         self._projectiles = [projectile for projectile in self._projectiles if projectile.alive]
         self._impacts = [impact for impact in self._impacts if impact.alive]
 
-    def _update_projectile(self, projectile: ProjectileState, frame_time: float) -> None:
-        """Advance a single projectile.
 
-        Args:
-            projectile: Projectile to update.
-            frame_time: Current frame duration in seconds.
-        """
+    @staticmethod
+    def _normalize_visual_profile(
+        visual_profile: str,
+        owner: ProjectileOwner,
+    ) -> str:
+        """Return a stable renderer visual profile tag."""
+        profile = visual_profile.strip().lower()
+        if profile:
+            return profile
+        return owner.value
+
+    def _resolve_hitscan_end(
+        self,
+        *,
+        origin: WorldCoord,
+        direction_x: float,
+        direction_y: float,
+        max_distance_px: float,
+    ) -> tuple[WorldCoord, ProjectileEventType, str]:
+        """Return the ray end and deferred terminal event for a hitscan shot."""
+        last_point = origin
+        distance = self._RAYCAST_STEP_PX
+        while distance <= max_distance_px:
+            point = WorldCoord(
+                x=origin.x + direction_x * distance,
+                y=origin.y + direction_y * distance,
+            )
+            if not self._collision_service.is_point_inside_map(point):
+                return last_point, ProjectileEventType.EXPIRED, "out_of_map"
+            if not self._collision_service.is_point_walkable(point):
+                return point, ProjectileEventType.HIT_WALL, "wall"
+            last_point = point
+            distance += self._RAYCAST_STEP_PX
+        end = WorldCoord(
+            x=origin.x + direction_x * max_distance_px,
+            y=origin.y + direction_y * max_distance_px,
+        )
+        return end, ProjectileEventType.EXPIRED, "range"
+
+    def _update_projectile(self, projectile: ProjectileState, frame_time: float) -> None:
+        """Advance a short-lived visual shot trace."""
         if not projectile.alive:
             return
-
-        distance = projectile.speed_px_per_second * frame_time
-        previous_position = projectile.position
-        new_position = WorldCoord(
-            x=projectile.position.x + projectile.direction_x * distance,
-            y=projectile.position.y + projectile.direction_y * distance,
-        )
-        projectile.previous_position = previous_position
-        projectile.position = new_position
-        projectile.distance_traveled_px += distance
         projectile.age_seconds += frame_time
-
         if projectile.age_seconds >= projectile.lifetime_seconds:
-            self._kill_projectile(
-                projectile,
-                ProjectileEventType.EXPIRED,
-                projectile.position,
-                reason="lifetime",
-            )
-            return
-        if projectile.distance_traveled_px >= projectile.max_distance_px:
-            self._kill_projectile(
-                projectile,
-                ProjectileEventType.EXPIRED,
-                projectile.position,
-                reason="range",
-            )
-            return
-        if not self._collision_service.is_point_walkable(projectile.position):
-            if self._collision_service.is_point_inside_map(projectile.position):
-                self._spawn_impact(projectile.position)
-                self._kill_projectile(
-                    projectile,
-                    ProjectileEventType.HIT_WALL,
-                    projectile.position,
-                )
-            else:
-                self._kill_projectile(
-                    projectile,
-                    ProjectileEventType.EXPIRED,
-                    projectile.position,
-                    reason="out_of_map",
-                )
+            projectile.alive = False
 
     def _update_impact(self, impact: ImpactMarkerState, frame_time: float) -> None:
         """Advance a single impact marker.
@@ -362,31 +404,9 @@ class ProjectileSystem:
         )
         self._total_impacts += 1
 
-    def _kill_projectile(
-        self,
-        projectile: ProjectileState,
-        event_type: ProjectileEventType,
-        position: WorldCoord,
-        reason: str = "",
-    ) -> None:
-        """Mark a projectile dead and emit a feedback event."""
-        projectile.alive = False
-        owner = self._normalize_owner(projectile.owner) or ProjectileOwner.PLAYER
-        self._events.append(
-            ProjectileEvent(
-                event_type=event_type,
-                position=position,
-                owner=owner,
-                damage=projectile.damage,
-                direction_x=projectile.direction_x,
-                direction_y=projectile.direction_y,
-                reason=reason,
-            ),
-        )
-
     @staticmethod
     def _normalize_owner(owner: ProjectileOwner | str) -> ProjectileOwner | None:
-        """Return a known projectile owner enum member for a runtime owner tag."""
+        """Return a known shot owner enum member for a runtime owner tag."""
         try:
             return ProjectileOwner(owner)
         except ValueError:

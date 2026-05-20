@@ -193,10 +193,9 @@ class EnemyConfig:
         fire_enabled: Whether engaged enemies can shoot at the player.
         fire_damage: Damage dealt by one enemy projectile.
         fire_rate_rpm: Enemy fire rate in rounds per minute.
-        fire_projectile_speed_px_per_second: Enemy projectile speed in world pixels per second.
-        fire_projectile_range_px: Enemy projectile maximum travel distance.
-        fire_projectile_lifetime_seconds: Enemy projectile lifetime.
-        fire_projectile_radius_px: Enemy projectile collision radius.
+        fire_range_px: Enemy hitscan shot maximum distance.
+        fire_tracer_lifetime_seconds: Enemy visual tracer lifetime.
+        fire_shot_radius_px: Enemy hitscan collision/visual radius.
         fire_max_distance_px: Maximum distance where enemies are allowed to shoot.
         fire_muzzle_offset_px: Forward projectile spawn offset from enemy center.
     """
@@ -261,10 +260,9 @@ class EnemyConfig:
     fire_enabled: bool
     fire_damage: float
     fire_rate_rpm: float
-    fire_projectile_speed_px_per_second: float
-    fire_projectile_range_px: float
-    fire_projectile_lifetime_seconds: float
-    fire_projectile_radius_px: float
+    fire_range_px: float
+    fire_tracer_lifetime_seconds: float
+    fire_shot_radius_px: float
     fire_max_distance_px: float
     fire_muzzle_offset_px: float
 
@@ -955,21 +953,17 @@ class RuntimeConfigLoader:
                 fire_enabled=self._require_bool(enemies, "fire_enabled"),
                 fire_damage=self._require_positive_float(enemies, "fire_damage"),
                 fire_rate_rpm=self._require_positive_float(enemies, "fire_rate_rpm"),
-                fire_projectile_speed_px_per_second=self._require_positive_float(
+                fire_range_px=self._require_positive_float(
                     enemies,
-                    "fire_projectile_speed_px_per_second",
+                    "fire_range_px",
                 ),
-                fire_projectile_range_px=self._require_positive_float(
+                fire_tracer_lifetime_seconds=self._require_positive_float(
                     enemies,
-                    "fire_projectile_range_px",
+                    "fire_tracer_lifetime_seconds",
                 ),
-                fire_projectile_lifetime_seconds=self._require_positive_float(
+                fire_shot_radius_px=self._require_positive_float(
                     enemies,
-                    "fire_projectile_lifetime_seconds",
-                ),
-                fire_projectile_radius_px=self._require_positive_float(
-                    enemies,
-                    "fire_projectile_radius_px",
+                    "fire_shot_radius_px",
                 ),
                 fire_max_distance_px=self._require_positive_float(
                     enemies,

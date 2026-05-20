@@ -527,23 +527,20 @@ res/config/weapons.json
 ### fire_rate_rpm
 Темп стрельбы в выстрелах в минуту.
 
-### projectile_speed_px_per_second
-Скорость снаряда.
+### shot_range_px
+Максимальная дистанция hitscan-луча выстрела.
 
-### projectile_range_px
-Максимальная дистанция полёта снаряда.
+### tracer_lifetime_seconds
+Время жизни визуального трассера выстрела.
 
-### projectile_lifetime_seconds
-Максимальное время жизни снаряда.
-
-### projectile_radius_px
-Радиус снаряда для отрисовки и коллизий.
+### shot_radius_px
+Радиус hitscan-выстрела для проверки попадания и отрисовки.
 
 ### spread_degrees
 Разброс выстрела в градусах.
 
 ### shots_per_fire
-Количество снарядов за одно срабатывание огня.
+Количество hitscan-лучей за одно срабатывание огня.
 
 ### magazine_size
 Размер магазина.

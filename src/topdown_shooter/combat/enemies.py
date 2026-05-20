@@ -2046,40 +2046,39 @@ class EnemySystem:
         projectile_system: ProjectileSystem,
         collision_service: TileCollisionService,
         fire_rate_rpm: float,
-        projectile_speed_px_per_second: float,
-        projectile_range_px: float,
-        projectile_lifetime_seconds: float,
-        projectile_radius_px: float,
+        shot_range_px: float,
+        tracer_lifetime_seconds: float,
+        shot_radius_px: float,
         damage: float,
         max_fire_distance_px: float,
         muzzle_offset_px: float,
         line_of_sight_sample_step_px: float,
+        visual_profile: str = "enemy",
     ) -> int:
         """Spawn enemy projectiles from engaged enemies with line of sight.
 
         Args:
             player_position: Current player world position.
-            projectile_system: Projectile system receiving hostile projectiles.
+            projectile_system: Shot system receiving hostile shot traces.
             collision_service: Collision service used for line-of-sight checks.
             fire_rate_rpm: Enemy fire rate in rounds per minute.
-            projectile_speed_px_per_second: Enemy projectile speed.
-            projectile_range_px: Enemy projectile maximum travel distance.
-            projectile_lifetime_seconds: Enemy projectile lifetime.
-            projectile_radius_px: Enemy projectile collision radius.
+            shot_range_px: Enemy hitscan shot maximum distance.
+            tracer_lifetime_seconds: Enemy visual tracer lifetime.
+            shot_radius_px: Enemy hitscan collision/visual radius.
             damage: Damage dealt to the player per projectile hit.
             max_fire_distance_px: Maximum distance where enemies are allowed to fire.
             muzzle_offset_px: Forward spawn offset from the enemy center.
             line_of_sight_sample_step_px: Sampling step for blocked-tile checks.
+            visual_profile: Renderer-facing visual profile for enemy fire.
 
         Returns:
             Number of hostile projectiles spawned this update.
         """
         if (
             fire_rate_rpm <= 0.0
-            or projectile_speed_px_per_second <= 0.0
-            or projectile_range_px <= 0.0
-            or projectile_lifetime_seconds <= 0.0
-            or projectile_radius_px <= 0.0
+            or shot_range_px <= 0.0
+            or tracer_lifetime_seconds <= 0.0
+            or shot_radius_px <= 0.0
             or damage <= 0.0
             or max_fire_distance_px <= 0.0
         ):
@@ -2121,12 +2120,12 @@ class EnemySystem:
                 origin=origin,
                 direction_x=normalized_x,
                 direction_y=normalized_y,
-                speed_px_per_second=projectile_speed_px_per_second,
-                max_distance_px=projectile_range_px,
-                lifetime_seconds=projectile_lifetime_seconds,
-                radius_px=projectile_radius_px,
+                max_distance_px=shot_range_px,
+                trace_lifetime_seconds=tracer_lifetime_seconds,
+                radius_px=shot_radius_px,
                 damage=damage,
                 owner=ProjectileOwner.ENEMY,
+                visual_profile=visual_profile,
             ):
                 enemy.fire_cooldown_seconds = fire_interval_seconds
                 shots_fired += 1
@@ -2140,10 +2139,10 @@ class EnemySystem:
         squad_alert_broadcast_radius_px: float = 0.0,
         projectile_event_recorder: Callable[[ProjectileEvent], None] | None = None,
     ) -> None:
-        """Apply projectile damage to enemies and kill consumed projectiles.
+        """Apply hitscan shot damage to enemies and consume damaging traces.
 
         Args:
-            projectiles: Active projectile states to test against enemies.
+            projectiles: Active shot traces to test against enemies.
             enemy_collision_radius_px: Enemy collision radius in world pixels.
             squad_alert_broadcast_delay_seconds: Delay before squadmates are alerted.
             squad_alert_broadcast_radius_px: Radius for nearby squad alert fallback.
@@ -2152,7 +2151,7 @@ class EnemySystem:
         if enemy_collision_radius_px <= 0.0:
             return
         for projectile in projectiles:
-            if not projectile.alive or projectile.owner != ProjectileOwner.PLAYER:
+            if not projectile.damage_active or projectile.owner != ProjectileOwner.PLAYER:
                 continue
             for enemy in self._enemies:
                 if not enemy.alive:
@@ -2164,7 +2163,7 @@ class EnemySystem:
                         squad_alert_broadcast_delay_seconds=squad_alert_broadcast_delay_seconds,
                         squad_alert_broadcast_radius_px=squad_alert_broadcast_radius_px,
                     )
-                    projectile.alive = False
+                    projectile.damage_active = False
                     if projectile_event_recorder is not None:
                         projectile_event_recorder(
                             ProjectileEvent(
@@ -2174,6 +2173,7 @@ class EnemySystem:
                                 damage=projectile.damage,
                                 direction_x=projectile.direction_x,
                                 direction_y=projectile.direction_y,
+                                visual_profile=projectile.visual_profile,
                             ),
                         )
                     self._spawn_hit_marker(enemy.world_position)

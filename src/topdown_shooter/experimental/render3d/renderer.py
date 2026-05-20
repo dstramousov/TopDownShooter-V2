@@ -73,6 +73,7 @@ class _Render3DMuzzleFlashState:
 
     position: WorldCoord
     owner: ProjectileOwner
+    visual_profile: str = "default"
     age_seconds: float = 0.0
     lifetime_seconds: float = 0.09
 
@@ -84,7 +85,8 @@ class _Render3DProjectileTrailState:
     previous_position: WorldCoord
     position: WorldCoord
     owner: ProjectileOwner
-    key: tuple[int, int, int, int, str]
+    visual_profile: str
+    key: tuple[int, int, int, int, str, str]
     age_seconds: float = 0.0
     lifetime_seconds: float = 0.075
 
@@ -163,7 +165,7 @@ class Render3DRenderer:
         self._weapon_fire_events_last_update = 0
         self._muzzle_flashes: list[_Render3DMuzzleFlashState] = []
         self._projectile_trails: list[_Render3DProjectileTrailState] = []
-        self._projectile_trail_keys: set[tuple[int, int, int, int, str]] = set()
+        self._projectile_trail_keys: set[tuple[int, int, int, int, str, str]] = set()
         self._combat_feedback = CombatFeedbackOverlay(
             raylib=self._raylib,
             window=config.window,
@@ -1195,6 +1197,8 @@ class Render3DRenderer:
                 _Render3DMuzzleFlashState(
                     position=event.position,
                     owner=event.owner,
+                    visual_profile=event.visual_profile,
+                    lifetime_seconds=self._muzzle_flash_lifetime(event.visual_profile),
                 ),
             )
 
@@ -1222,7 +1226,13 @@ class Render3DRenderer:
         y = render_config.projectiles.projectile_height_tiles * height_scale
         for flash in self._muzzle_flashes:
             progress = min(1.0, max(0.0, flash.age_seconds / flash.lifetime_seconds))
-            radius = max(0.04 * tile_size, 0.18 * tile_size * (1.0 - progress))
+            radius = max(
+                0.035 * tile_size,
+                self._muzzle_flash_radius_tiles(
+                    flash.visual_profile,
+                    flash.owner,
+                ) * tile_size * (1.0 - progress),
+            )
             center = raylib.Vector3(
                 flash.position.x / tile_size_px * tile_size,
                 y,
@@ -1235,7 +1245,7 @@ class Render3DRenderer:
                 radius * 1.8,
                 0.03 * height_scale,
                 12,
-                self._muzzle_flash_ring_color(flash.owner),
+                self._muzzle_flash_ring_color(flash.owner, flash.visual_profile),
             )
 
     def _muzzle_flash_core_color(self, owner: ProjectileOwner) -> object:
@@ -1244,11 +1254,44 @@ class Render3DRenderer:
             return self._raylib.ORANGE
         return self._raylib.YELLOW
 
-    def _muzzle_flash_ring_color(self, owner: ProjectileOwner) -> object:
-        """Return 3D muzzle flash ring color for a projectile owner."""
+    def _muzzle_flash_ring_color(
+        self,
+        owner: ProjectileOwner,
+        visual_profile: str,
+    ) -> object:
+        """Return 3D muzzle flash ring color for an owner/profile."""
+        profile = self._normalize_visual_profile(visual_profile, owner)
+        if profile == "ak47":
+            return self._raylib.ORANGE
+        if profile == "minigun":
+            return self._raylib.YELLOW
         if owner == ProjectileOwner.ENEMY:
             return self._raylib.RED
         return self._raylib.GOLD
+
+    def _muzzle_flash_radius_tiles(
+        self,
+        visual_profile: str,
+        owner: ProjectileOwner,
+    ) -> float:
+        """Return 3D muzzle flash radius in tile units for an owner/profile."""
+        profile = self._normalize_visual_profile(visual_profile, owner)
+        if profile == "minigun":
+            return 0.12
+        if profile == "ak47":
+            return 0.22
+        if profile == "enemy":
+            return 0.20
+        return 0.18
+
+    def _muzzle_flash_lifetime(self, visual_profile: str) -> float:
+        """Return 3D muzzle flash lifetime for the visual profile."""
+        profile = visual_profile.strip().lower()
+        if profile == "minigun":
+            return 0.045
+        if profile == "ak47":
+            return 0.07
+        return 0.09
 
     def _draw_projectile_markers(self, projectiles: tuple[ProjectileState, ...]) -> None:
         """Draw active projectiles as real previous-to-current 3D tracer markers.
@@ -1282,7 +1325,10 @@ class Render3DRenderer:
                 raylib.draw_line_3d(
                     start,
                     tracer_end,
-                    self._projectile_tracer_color(projectile.owner),
+                    self._projectile_tracer_color(
+                        projectile.owner,
+                        projectile.visual_profile,
+                    ),
                 )
             raylib.draw_sphere(
                 end,
@@ -1306,6 +1352,7 @@ class Render3DRenderer:
                 int(round(projectile.position.x)),
                 int(round(projectile.position.y)),
                 owner.value,
+                projectile.visual_profile,
             )
             if key in self._projectile_trail_keys:
                 continue
@@ -1315,6 +1362,7 @@ class Render3DRenderer:
                     previous_position=projectile.previous_position,
                     position=projectile.position,
                     owner=owner,
+                    visual_profile=projectile.visual_profile,
                     key=key,
                 ),
             )
@@ -1338,7 +1386,12 @@ class Render3DRenderer:
         raylib = self._raylib
         for trail in self._projectile_trails:
             progress = min(1.0, max(0.0, trail.age_seconds / trail.lifetime_seconds))
-            alpha = int(180 * (1.0 - progress))
+            alpha = int(
+                self._projectile_trail_alpha(
+                    trail.visual_profile,
+                    trail.owner,
+                ) * (1.0 - progress),
+            )
             if alpha <= 0:
                 continue
             start = self._world_to_projectile_vector(trail.previous_position, projectile_y)
@@ -1346,7 +1399,7 @@ class Render3DRenderer:
             raylib.draw_line_3d(
                 start,
                 end,
-                self._projectile_trail_color(trail.owner, alpha),
+                self._projectile_trail_color(trail.owner, alpha, trail.visual_profile),
             )
 
     def _world_to_projectile_vector(self, position: WorldCoord, y: float) -> object:
@@ -1360,17 +1413,51 @@ class Render3DRenderer:
             position.y / tile_size_px * tile_size,
         )
 
-    def _projectile_tracer_color(self, owner: ProjectileOwner | str) -> object:
-        """Return tracer color based on projectile owner."""
-        if self._normalize_projectile_owner(owner) == ProjectileOwner.ENEMY:
+    def _projectile_tracer_color(
+        self,
+        owner: ProjectileOwner | str,
+        visual_profile: str,
+    ) -> object:
+        """Return tracer color based on projectile owner/profile."""
+        owner_tag = self._normalize_projectile_owner(owner)
+        profile = self._normalize_visual_profile(visual_profile, owner_tag)
+        if profile == "minigun":
+            return self._raylib.YELLOW
+        if profile == "ak47":
+            return self._raylib.GOLD
+        if owner_tag == ProjectileOwner.ENEMY:
             return self._raylib.ORANGE
         return self._raylib.SKYBLUE
 
-    def _projectile_trail_color(self, owner: ProjectileOwner | str, alpha: int) -> object:
-        """Return fading trail color based on projectile owner."""
-        if self._normalize_projectile_owner(owner) == ProjectileOwner.ENEMY:
+    def _projectile_trail_color(
+        self,
+        owner: ProjectileOwner | str,
+        alpha: int,
+        visual_profile: str,
+    ) -> object:
+        """Return fading trail color based on projectile owner/profile."""
+        owner_tag = self._normalize_projectile_owner(owner)
+        profile = self._normalize_visual_profile(visual_profile, owner_tag)
+        if profile == "minigun":
+            return self._raylib.Color(255, 245, 160, alpha)
+        if profile == "ak47":
+            return self._raylib.Color(255, 190, 72, alpha)
+        if owner_tag == ProjectileOwner.ENEMY:
             return self._raylib.Color(255, 96, 32, alpha)
         return self._raylib.Color(120, 216, 255, alpha)
+
+    def _projectile_trail_alpha(
+        self,
+        visual_profile: str,
+        owner: ProjectileOwner,
+    ) -> int:
+        """Return base 3D projectile trail alpha for an owner/profile."""
+        profile = self._normalize_visual_profile(visual_profile, owner)
+        if profile == "minigun":
+            return 130
+        if profile == "enemy":
+            return 210
+        return 180
 
     def _projectile_core_color(self, owner: ProjectileOwner | str) -> object:
         """Return projectile core color based on projectile owner."""
@@ -1379,12 +1466,21 @@ class Render3DRenderer:
         return self._raylib.RAYWHITE
 
     @staticmethod
+    def _normalize_visual_profile(visual_profile: str, owner: ProjectileOwner) -> str:
+        """Return a stable visual profile fallback."""
+        profile = visual_profile.strip().lower()
+        if profile:
+            return profile
+        return owner.value
+
+    @staticmethod
     def _normalize_projectile_owner(owner: ProjectileOwner | str) -> ProjectileOwner:
         """Return a known projectile owner for rendering fallback."""
         try:
             return ProjectileOwner(owner)
         except ValueError:
             return ProjectileOwner.PLAYER
+
     def _draw_impact_markers(self, impacts: tuple[ImpactMarkerState, ...]) -> None:
         """Draw projectile impact markers in the 3D experiment.
 

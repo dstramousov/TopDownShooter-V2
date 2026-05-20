@@ -73,10 +73,9 @@ def test_render3d_config_loads_from_default_config() -> None:
     assert config.enemies.fire_enabled is True
     assert config.enemies.fire_damage == 8.0
     assert config.enemies.fire_rate_rpm == 90.0
-    assert config.enemies.fire_projectile_speed_px_per_second == 260.0
-    assert config.enemies.fire_projectile_range_px == 340.0
-    assert config.enemies.fire_projectile_lifetime_seconds == 1.4
-    assert config.enemies.fire_projectile_radius_px == 3.0
+    assert config.enemies.fire_range_px == 340.0
+    assert config.enemies.fire_tracer_lifetime_seconds == 0.075
+    assert config.enemies.fire_shot_radius_px == 3.0
     assert config.enemies.fire_max_distance_px == 300.0
     assert config.enemies.fire_muzzle_offset_px == 10.0
     assert config.render3d.enemies.draw_enemy_markers is True
@@ -391,9 +390,8 @@ def test_render3d_visible_projectiles_are_radius_limited() -> None:
         previous_position=WorldCoord(0.0, 0.0),
         direction_x=1.0,
         direction_y=0.0,
-        speed_px_per_second=100.0,
         max_distance_px=200.0,
-        lifetime_seconds=1.0,
+        lifetime_seconds=0.1,
         radius_px=2.0,
         damage=5.0,
     )
@@ -402,9 +400,8 @@ def test_render3d_visible_projectiles_are_radius_limited() -> None:
         previous_position=WorldCoord(48.0, 64.0),
         direction_x=1.0,
         direction_y=0.0,
-        speed_px_per_second=100.0,
         max_distance_px=200.0,
-        lifetime_seconds=1.0,
+        lifetime_seconds=0.1,
         radius_px=2.0,
         damage=5.0,
     )
@@ -413,9 +410,8 @@ def test_render3d_visible_projectiles_are_radius_limited() -> None:
         previous_position=WorldCoord(0.0, 4.0),
         direction_x=1.0,
         direction_y=0.0,
-        speed_px_per_second=100.0,
         max_distance_px=200.0,
-        lifetime_seconds=1.0,
+        lifetime_seconds=0.1,
         radius_px=2.0,
         damage=5.0,
         alive=False,
@@ -444,17 +440,17 @@ def test_render3d_visible_impacts_are_radius_limited() -> None:
     near_impact = ImpactMarkerState(
         position=WorldCoord(8.0, 0.0),
         radius_px=3.0,
-        lifetime_seconds=0.2,
+        lifetime_seconds=0.1,
     )
     far_impact = ImpactMarkerState(
         position=WorldCoord(64.0, 64.0),
         radius_px=3.0,
-        lifetime_seconds=0.2,
+        lifetime_seconds=0.1,
     )
     dead_impact = ImpactMarkerState(
         position=WorldCoord(4.0, 4.0),
         radius_px=3.0,
-        lifetime_seconds=0.2,
+        lifetime_seconds=0.1,
         alive=False,
     )
 
@@ -481,17 +477,17 @@ def test_render3d_visible_enemy_hit_markers_are_radius_limited() -> None:
     near_marker = EnemyHitMarkerState(
         position=WorldCoord(8.0, 0.0),
         radius_px=3.0,
-        lifetime_seconds=0.2,
+        lifetime_seconds=0.1,
     )
     far_marker = EnemyHitMarkerState(
         position=WorldCoord(64.0, 64.0),
         radius_px=3.0,
-        lifetime_seconds=0.2,
+        lifetime_seconds=0.1,
     )
     dead_marker = EnemyHitMarkerState(
         position=WorldCoord(4.0, 4.0),
         radius_px=3.0,
-        lifetime_seconds=0.2,
+        lifetime_seconds=0.1,
         alive=False,
     )
 
