@@ -89,8 +89,8 @@ class DebugOverlay:
         self._config = config
         self._text = RaylibTextRenderer(
             raylib=raylib,
-            font_path=config.debug_overlay.font_path,
-            font_spacing=config.debug_overlay.font_spacing,
+            font_path=config.ui.font_path,
+            font_spacing=config.ui.font_spacing,
         )
         self._scroll_offset_px = 0
 
@@ -189,7 +189,7 @@ class DebugOverlay:
         Returns:
             Human-readable font diagnostics.
         """
-        font_name = Path(self._config.debug_overlay.font_path).name
+        font_name = Path(self._config.ui.font_path).name
         if self._text.resolve_font_path() is None:
             font_name = "raylib default"
         return f"{font_name} {self._config.debug_overlay.font_size}px"

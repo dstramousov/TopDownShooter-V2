@@ -645,3 +645,10 @@
 - Убран конфликт 3D hotkeys: клавиши `1/2/3` остаются только выбором оружия, старое переключение 3D camera modes через `1/2` удалено.
 - Удалены мёртвые методы и config-поля старой 3D movement-схемы, а также устаревший `run_static_preview()`.
 - Gameplay, AI, projectiles, HUD-layout, баллистика и баланс не изменялись.
+
+## v0.0.87 -> v0.0.88
+
+- Добавлен общий config-блок `ui` для shared UI-шрифта и glyph spacing.
+- `PlayerHud`, `DebugOverlay`, `RuntimeUi`, 2D runtime и 3D renderer больше не берут общий UI-шрифт из `debug_overlay`.
+- Из `debug_overlay` удалены поля `font_path` и `font_spacing`; блок теперь отвечает только за layout/debug-panel параметры.
+- Внешний вид HUD/debug/help/exit overlays и gameplay-логика не изменялись.

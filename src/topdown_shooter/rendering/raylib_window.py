@@ -182,8 +182,8 @@ class RaylibWindow:
             raylib=self._raylib,
             config=config.hud,
             window=config.window,
-            font_path=config.debug_overlay.font_path,
-            font_spacing=config.debug_overlay.font_spacing,
+            font_path=config.ui.font_path,
+            font_spacing=config.ui.font_spacing,
         )
         self._debug_overlay = DebugOverlay(
             raylib=self._raylib,

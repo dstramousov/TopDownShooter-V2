@@ -42,8 +42,8 @@ class PlayerHud:
             raylib: Imported pyray module.
             config: Player HUD display configuration.
             window: Runtime window configuration.
-            font_path: Shared HUD/debug overlay font path.
-            font_spacing: Shared HUD/debug overlay font glyph spacing.
+            font_path: Shared UI font path.
+            font_spacing: Shared UI font glyph spacing.
         """
         self._raylib = raylib
         self._config = config

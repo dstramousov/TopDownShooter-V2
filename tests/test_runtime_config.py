@@ -61,9 +61,9 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.debug_overlay.panel_width == 1200
     assert config.debug_overlay.side_panel_width == 420
     assert config.debug_overlay.scroll_step_px == 36
-    assert config.debug_overlay.font_path == "res/fonts/PressStart2P-Regular.ttf"
+    assert config.ui.font_path == "res/fonts/PressStart2P-Regular.ttf"
+    assert config.ui.font_spacing == 0.0
     assert config.debug_overlay.font_size == 8
-    assert config.debug_overlay.font_spacing == 0.0
     assert config.debug_overlay.line_spacing == 6
     assert config.debug_overlay.section_spacing == 12
     assert config.debug_overlay.column_gap == 32

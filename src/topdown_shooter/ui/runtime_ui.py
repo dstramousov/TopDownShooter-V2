@@ -86,8 +86,8 @@ class RuntimeUi:
         self._help_lines = help_lines
         self._text = RaylibTextRenderer(
             raylib=raylib,
-            font_path=config.debug_overlay.font_path,
-            font_spacing=config.debug_overlay.font_spacing,
+            font_path=config.ui.font_path,
+            font_spacing=config.ui.font_spacing,
         )
         self._debug_overlay_enabled = config.debug_overlay.enabled_by_default
         self._help_visible = False

@@ -268,6 +268,19 @@ class EnemyConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class UiConfig:
+    """Shared UI display settings.
+
+    Attributes:
+        font_path: Relative or absolute path to the shared UI TTF font.
+        font_spacing: Extra spacing between rendered font glyphs.
+    """
+
+    font_path: str
+    font_spacing: float
+
+
+@dataclass(frozen=True, slots=True)
 class DebugOverlayConfig:
     """Debug overlay display settings.
 
@@ -278,9 +291,7 @@ class DebugOverlayConfig:
         side_panel_width: Right-side debug panel width in pixels.
         scroll_step_px: Scroll distance applied per mouse wheel tick in the right panel.
         padding: Inner panel padding in pixels.
-        font_path: Relative or absolute path to the optional overlay TTF font.
         font_size: Text font size in pixels.
-        font_spacing: Extra spacing between rendered font glyphs.
         line_spacing: Extra spacing between text lines in pixels.
         section_spacing: Extra spacing between overlay sections in pixels.
         column_gap: Horizontal spacing between two overlay columns in pixels.
@@ -294,9 +305,7 @@ class DebugOverlayConfig:
     side_panel_width: int
     scroll_step_px: int
     padding: int
-    font_path: str
     font_size: int
-    font_spacing: float
     line_spacing: int
     section_spacing: int
     column_gap: int
@@ -625,6 +634,7 @@ class RuntimeConfig:
         weapons: Weapon database settings.
         projectile_impacts: Projectile impact marker settings.
         enemies: Enemy marker display settings.
+        ui: Shared UI display settings.
         debug_overlay: Debug overlay display settings.
         hud: Player HUD display settings.
         render3d: Experimental 3D renderer settings.
@@ -638,6 +648,7 @@ class RuntimeConfig:
     weapons: WeaponsConfig
     projectile_impacts: ProjectileImpactConfig
     enemies: EnemyConfig
+    ui: UiConfig
     debug_overlay: DebugOverlayConfig
     hud: HudConfig
     render3d: Render3DConfig
@@ -699,6 +710,7 @@ class RuntimeConfigLoader:
         weapons = self._require_dict(raw_config, "weapons")
         projectile_impacts = self._require_dict(raw_config, "projectile_impacts")
         enemies = self._require_dict(raw_config, "enemies")
+        ui = self._require_dict(raw_config, "ui")
         debug_overlay = self._require_dict(raw_config, "debug_overlay")
         hud = self._require_dict(raw_config, "hud")
         render3d = self._require_dict(raw_config, "render3d")
@@ -962,6 +974,10 @@ class RuntimeConfigLoader:
                     "fire_muzzle_offset_px",
                 ),
             ),
+            ui=UiConfig(
+                font_path=self._require_str(ui, "font_path"),
+                font_spacing=self._require_non_negative_float(ui, "font_spacing"),
+            ),
             debug_overlay=DebugOverlayConfig(
                 enabled_by_default=self._require_bool(debug_overlay, "enabled_by_default"),
                 layout=self._require_debug_overlay_layout(debug_overlay, "layout"),
@@ -969,9 +985,7 @@ class RuntimeConfigLoader:
                 side_panel_width=self._require_positive_int(debug_overlay, "side_panel_width"),
                 scroll_step_px=self._require_positive_int(debug_overlay, "scroll_step_px"),
                 padding=self._require_non_negative_int(debug_overlay, "padding"),
-                font_path=self._require_str(debug_overlay, "font_path"),
                 font_size=self._require_positive_int(debug_overlay, "font_size"),
-                font_spacing=self._require_non_negative_float(debug_overlay, "font_spacing"),
                 line_spacing=self._require_non_negative_int(debug_overlay, "line_spacing"),
                 section_spacing=self._require_non_negative_int(
                     debug_overlay,
