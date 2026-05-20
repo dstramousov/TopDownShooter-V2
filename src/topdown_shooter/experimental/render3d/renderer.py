@@ -8,6 +8,7 @@ import math
 from topdown_shooter.combat.enemies import EnemyHitMarkerState, EnemyState, EnemySystem
 from topdown_shooter.combat.projectiles import (
     ImpactMarkerState,
+    ProjectileOwner,
     ProjectileState,
     ProjectileSystem,
 )
@@ -1197,13 +1198,13 @@ class Render3DRenderer:
 
     def _projectile_tracer_color(self, projectile: ProjectileState) -> object:
         """Return tracer color based on projectile owner."""
-        if projectile.owner == "enemy":
+        if projectile.owner == ProjectileOwner.ENEMY:
             return self._raylib.ORANGE
         return self._raylib.SKYBLUE
 
     def _projectile_core_color(self, projectile: ProjectileState) -> object:
         """Return projectile core color based on projectile owner."""
-        if projectile.owner == "enemy":
+        if projectile.owner == ProjectileOwner.ENEMY:
             return self._raylib.RED
         return self._raylib.RAYWHITE
     def _draw_impact_markers(self, impacts: tuple[ImpactMarkerState, ...]) -> None:

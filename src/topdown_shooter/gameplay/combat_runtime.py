@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from topdown_shooter.combat.enemies import EnemySystem
-from topdown_shooter.combat.projectiles import ProjectileSystem
+from topdown_shooter.combat.projectiles import (
+    ProjectileEvent,
+    ProjectileEventType,
+    ProjectileOwner,
+    ProjectileSystem,
+)
 from topdown_shooter.combat.weapons import WeaponController
 from topdown_shooter.config.runtime_config import RuntimeConfig
 from topdown_shooter.world.collision import TileCollisionService
@@ -71,6 +76,7 @@ def update_combat_runtime(
             enemy_config.squad_alert_broadcast_delay_seconds
         ),
         squad_alert_broadcast_radius_px=enemy_config.squad_alert_broadcast_radius_px,
+        projectile_event_recorder=projectile_system.record_event,
     )
     enemy_system.update_perception(
         player_position=player.world_position,
@@ -106,6 +112,7 @@ def update_combat_runtime(
         player=player,
         projectiles=projectile_system.projectiles,
         player_collision_radius_px=config.player.collision_radius_px,
+        projectile_system=projectile_system,
     )
 
     enemy_system.update_chase_movement(
@@ -158,6 +165,7 @@ def _apply_enemy_projectile_hits(
     player: PlayerState,
     projectiles: tuple[object, ...],
     player_collision_radius_px: float,
+    projectile_system: ProjectileSystem | None = None,
 ) -> None:
     """Apply hostile projectile damage to the player.
 
@@ -165,13 +173,14 @@ def _apply_enemy_projectile_hits(
         player: Mutable player state receiving damage.
         projectiles: Active projectile states to test against the player.
         player_collision_radius_px: Player collision radius in world pixels.
+        projectile_system: Optional projectile system receiving hit feedback events.
     """
     if player_collision_radius_px <= 0.0 or player.health <= 0:
         return
     for projectile in projectiles:
         if (
             not getattr(projectile, "alive", False)
-            or getattr(projectile, "owner", "player") != "enemy"
+            or getattr(projectile, "owner", ProjectileOwner.PLAYER) != ProjectileOwner.ENEMY
         ):
             continue
         collision_radius = player_collision_radius_px + projectile.radius_px
@@ -184,6 +193,15 @@ def _apply_enemy_projectile_hits(
             continue
         player.health = max(0, int(round(player.health - projectile.damage)))
         projectile.alive = False
+        if projectile_system is not None:
+            projectile_system.record_event(
+                ProjectileEvent(
+                    event_type=ProjectileEventType.HIT_PLAYER,
+                    position=player.world_position,
+                    owner=ProjectileOwner.ENEMY,
+                    damage=projectile.damage,
+                ),
+            )
         if player.health <= 0:
             break
 

@@ -1,6 +1,10 @@
 """Tests for projectile runtime system."""
 
-from topdown_shooter.combat.projectiles import ProjectileSystem
+from topdown_shooter.combat.projectiles import (
+    ProjectileEventType,
+    ProjectileOwner,
+    ProjectileSystem,
+)
 from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.coordinates import TileCoord, WorldCoord
 from topdown_shooter.world.runtime_map import RuntimeMap, TacticalRuntimeSummary
@@ -141,3 +145,51 @@ def test_projectile_system_removes_expired_impact() -> None:
 
     assert system.stats.active_impacts == 0
     assert system.stats.total_impacts == 1
+
+
+def test_projectile_system_emits_spawn_and_wall_hit_events() -> None:
+    """Projectile system should emit spawn and blocked-tile hit events."""
+    runtime_map = _build_runtime_map(blocked_x=1)
+    system = ProjectileSystem(
+        collision_service=TileCollisionService(runtime_map),
+        impact_markers_enabled=True,
+    )
+
+    _spawn_default(system, WorldCoord(8.0, 24.0), direction_x=1.0, direction_y=0.0)
+    system.update(frame_time=0.5)
+
+    events = system.consume_events()
+    assert [event.event_type for event in events] == [
+        ProjectileEventType.SPAWNED,
+        ProjectileEventType.HIT_WALL,
+    ]
+    assert events[0].owner == ProjectileOwner.PLAYER
+    assert events[1].position == WorldCoord(16.0, 24.0)
+    assert system.consume_events() == ()
+
+
+def test_projectile_system_emits_expired_event_for_range_limit() -> None:
+    """Projectile system should emit an expired event when range runs out."""
+    runtime_map = _build_runtime_map()
+    system = ProjectileSystem(TileCollisionService(runtime_map))
+
+    system.spawn(
+        origin=WorldCoord(8.0, 24.0),
+        direction_x=1.0,
+        direction_y=0.0,
+        speed_px_per_second=16.0,
+        max_distance_px=8.0,
+        lifetime_seconds=10.0,
+        radius_px=3.0,
+        damage=25.0,
+        owner=ProjectileOwner.ENEMY,
+    )
+    system.update(frame_time=0.5)
+
+    events = system.consume_events()
+    assert [event.event_type for event in events] == [
+        ProjectileEventType.SPAWNED,
+        ProjectileEventType.EXPIRED,
+    ]
+    assert events[1].owner == ProjectileOwner.ENEMY
+    assert events[1].reason == "range"

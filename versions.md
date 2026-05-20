@@ -661,3 +661,12 @@
 - Добавлен компактный scrollbar для длинного debug overlay; поведение едино для 2D и 3D, настройки продолжают жить в общем `debug_overlay` config-блоке.
 - Убрана дублирующаяся строка `Camera/Target` в debug overlay и исправлено отображение всех трёх weapon slots.
 - Gameplay, AI, projectiles, HUD-layout, баллистика и баланс не изменялись.
+
+
+## v0.0.89 -> v0.0.90
+
+- Добавлены `ProjectileOwner`, `ProjectileEventType` и `ProjectileEvent` как общий фундамент для feedback-событий выстрелов.
+- `ProjectileSystem` теперь накапливает события `SPAWNED`, `HIT_WALL`, `HIT_PLAYER`, `HIT_ENEMY` и `EXPIRED`; события можно забирать через `consume_events()`.
+- Попадания enemy projectile по игроку и player projectile по врагам теперь записываются как projectile feedback events без изменения урона, скорости, cooldown, spread или баланса.
+- 2D renderer теперь визуально различает projectiles игрока и врагов по owner; 3D renderer переведён на общий `ProjectileOwner`.
+- Баллистика, полёт пуль, AI, HUD-layout и gameplay-баланс не изменялись.

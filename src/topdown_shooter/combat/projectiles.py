@@ -1,11 +1,48 @@
-"""Projectile state and update system."""
+"""Projectile state, feedback events, and update system."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 
 from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.coordinates import WorldCoord
+
+
+class ProjectileOwner(StrEnum):
+    """Known projectile owner tags."""
+
+    PLAYER = "player"
+    ENEMY = "enemy"
+
+
+class ProjectileEventType(StrEnum):
+    """Projectile feedback event types emitted by combat systems."""
+
+    SPAWNED = "spawned"
+    HIT_WALL = "hit_wall"
+    HIT_ENEMY = "hit_enemy"
+    HIT_PLAYER = "hit_player"
+    EXPIRED = "expired"
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectileEvent:
+    """Single projectile feedback event.
+
+    Attributes:
+        event_type: Projectile feedback event type.
+        position: Event position in world pixels.
+        owner: Projectile owner that caused the event.
+        damage: Damage associated with the event, if any.
+        reason: Optional short reason for non-hit events.
+    """
+
+    event_type: ProjectileEventType
+    position: WorldCoord
+    owner: ProjectileOwner
+    damage: float = 0.0
+    reason: str = ""
 
 
 @dataclass(slots=True)
@@ -37,7 +74,7 @@ class ProjectileState:
     lifetime_seconds: float
     radius_px: float
     damage: float
-    owner: str = "player"
+    owner: ProjectileOwner | str = ProjectileOwner.PLAYER
     distance_traveled_px: float = 0.0
     age_seconds: float = 0.0
     alive: bool = True
@@ -103,6 +140,7 @@ class ProjectileSystem:
         self._impact_radius_px = impact_radius_px
         self._projectiles: list[ProjectileState] = []
         self._impacts: list[ImpactMarkerState] = []
+        self._events: list[ProjectileEvent] = []
         self._shots_fired = 0
         self._total_impacts = 0
 
@@ -117,6 +155,11 @@ class ProjectileSystem:
         return tuple(self._impacts)
 
     @property
+    def events(self) -> tuple[ProjectileEvent, ...]:
+        """Return projectile feedback events emitted since the last consume call."""
+        return tuple(self._events)
+
+    @property
     def stats(self) -> ProjectileStats:
         """Return current projectile statistics."""
         return ProjectileStats(
@@ -125,6 +168,20 @@ class ProjectileSystem:
             active_impacts=len(self._impacts),
             total_impacts=self._total_impacts,
         )
+
+    def consume_events(self) -> tuple[ProjectileEvent, ...]:
+        """Return and clear pending projectile feedback events."""
+        events = tuple(self._events)
+        self._events.clear()
+        return events
+
+    def record_event(self, event: ProjectileEvent) -> None:
+        """Record an externally detected projectile event.
+
+        Args:
+            event: Projectile feedback event to append.
+        """
+        self._events.append(event)
 
     def spawn(
         self,
@@ -136,7 +193,7 @@ class ProjectileSystem:
         lifetime_seconds: float,
         radius_px: float,
         damage: float,
-        owner: str = "player",
+        owner: ProjectileOwner | str = ProjectileOwner.PLAYER,
     ) -> bool:
         """Spawn a projectile when the direction and parameters are valid.
 
@@ -154,6 +211,7 @@ class ProjectileSystem:
         Returns:
             True if a projectile was spawned.
         """
+        owner_tag = self._normalize_owner(owner)
         if direction_x == 0.0 and direction_y == 0.0:
             return False
         if (
@@ -162,7 +220,7 @@ class ProjectileSystem:
             or lifetime_seconds <= 0.0
             or radius_px <= 0.0
             or damage <= 0.0
-            or not owner
+            or owner_tag is None
         ):
             return False
         projectile = ProjectileState(
@@ -175,10 +233,18 @@ class ProjectileSystem:
             lifetime_seconds=lifetime_seconds,
             radius_px=radius_px,
             damage=damage,
-            owner=owner,
+            owner=owner_tag,
         )
         self._projectiles.append(projectile)
         self._shots_fired += 1
+        self._events.append(
+            ProjectileEvent(
+                event_type=ProjectileEventType.SPAWNED,
+                position=origin,
+                owner=owner_tag,
+                damage=damage,
+            ),
+        )
         return True
 
     def update(self, frame_time: float) -> None:
@@ -225,15 +291,36 @@ class ProjectileSystem:
         projectile.age_seconds += frame_time
 
         if projectile.age_seconds >= projectile.lifetime_seconds:
-            projectile.alive = False
+            self._kill_projectile(
+                projectile,
+                ProjectileEventType.EXPIRED,
+                projectile.position,
+                reason="lifetime",
+            )
             return
         if projectile.distance_traveled_px >= projectile.max_distance_px:
-            projectile.alive = False
+            self._kill_projectile(
+                projectile,
+                ProjectileEventType.EXPIRED,
+                projectile.position,
+                reason="range",
+            )
             return
         if not self._collision_service.is_point_walkable(projectile.position):
             if self._collision_service.is_point_inside_map(projectile.position):
                 self._spawn_impact(projectile.position)
-            projectile.alive = False
+                self._kill_projectile(
+                    projectile,
+                    ProjectileEventType.HIT_WALL,
+                    projectile.position,
+                )
+            else:
+                self._kill_projectile(
+                    projectile,
+                    ProjectileEventType.EXPIRED,
+                    projectile.position,
+                    reason="out_of_map",
+                )
 
     def _update_impact(self, impact: ImpactMarkerState, frame_time: float) -> None:
         """Advance a single impact marker.
@@ -268,3 +355,31 @@ class ProjectileSystem:
             ),
         )
         self._total_impacts += 1
+
+    def _kill_projectile(
+        self,
+        projectile: ProjectileState,
+        event_type: ProjectileEventType,
+        position: WorldCoord,
+        reason: str = "",
+    ) -> None:
+        """Mark a projectile dead and emit a feedback event."""
+        projectile.alive = False
+        owner = self._normalize_owner(projectile.owner) or ProjectileOwner.PLAYER
+        self._events.append(
+            ProjectileEvent(
+                event_type=event_type,
+                position=position,
+                owner=owner,
+                damage=projectile.damage,
+                reason=reason,
+            ),
+        )
+
+    @staticmethod
+    def _normalize_owner(owner: ProjectileOwner | str) -> ProjectileOwner | None:
+        """Return a known projectile owner enum member for a runtime owner tag."""
+        try:
+            return ProjectileOwner(owner)
+        except ValueError:
+            return None

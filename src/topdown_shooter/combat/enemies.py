@@ -4,9 +4,16 @@ from __future__ import annotations
 
 import math
 import random
+from collections.abc import Callable
 from dataclasses import dataclass
 
-from topdown_shooter.combat.projectiles import ProjectileState, ProjectileSystem
+from topdown_shooter.combat.projectiles import (
+    ProjectileEvent,
+    ProjectileEventType,
+    ProjectileOwner,
+    ProjectileState,
+    ProjectileSystem,
+)
 from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.coordinates import (
     TileCoord,
@@ -2116,7 +2123,7 @@ class EnemySystem:
                 lifetime_seconds=projectile_lifetime_seconds,
                 radius_px=projectile_radius_px,
                 damage=damage,
-                owner="enemy",
+                owner=ProjectileOwner.ENEMY,
             ):
                 enemy.fire_cooldown_seconds = fire_interval_seconds
                 shots_fired += 1
@@ -2128,6 +2135,7 @@ class EnemySystem:
         enemy_collision_radius_px: float,
         squad_alert_broadcast_delay_seconds: float = 0.0,
         squad_alert_broadcast_radius_px: float = 0.0,
+        projectile_event_recorder: Callable[[ProjectileEvent], None] | None = None,
     ) -> None:
         """Apply projectile damage to enemies and kill consumed projectiles.
 
@@ -2136,11 +2144,12 @@ class EnemySystem:
             enemy_collision_radius_px: Enemy collision radius in world pixels.
             squad_alert_broadcast_delay_seconds: Delay before squadmates are alerted.
             squad_alert_broadcast_radius_px: Radius for nearby squad alert fallback.
+            projectile_event_recorder: Optional callback for projectile hit events.
         """
         if enemy_collision_radius_px <= 0.0:
             return
         for projectile in projectiles:
-            if not projectile.alive or projectile.owner != "player":
+            if not projectile.alive or projectile.owner != ProjectileOwner.PLAYER:
                 continue
             for enemy in self._enemies:
                 if not enemy.alive:
@@ -2153,6 +2162,15 @@ class EnemySystem:
                         squad_alert_broadcast_radius_px=squad_alert_broadcast_radius_px,
                     )
                     projectile.alive = False
+                    if projectile_event_recorder is not None:
+                        projectile_event_recorder(
+                            ProjectileEvent(
+                                event_type=ProjectileEventType.HIT_ENEMY,
+                                position=enemy.world_position,
+                                owner=ProjectileOwner.PLAYER,
+                                damage=projectile.damage,
+                            ),
+                        )
                     self._spawn_hit_marker(enemy.world_position)
                     break
         self._enemies = [enemy for enemy in self._enemies if enemy.alive]

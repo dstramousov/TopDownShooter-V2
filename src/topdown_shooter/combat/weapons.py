@@ -10,7 +10,7 @@ from pathlib import Path
 from random import Random
 from typing import Self
 
-from topdown_shooter.combat.projectiles import ProjectileSystem
+from topdown_shooter.combat.projectiles import ProjectileOwner, ProjectileSystem
 from topdown_shooter.world.coordinates import WorldCoord
 
 
@@ -640,6 +640,7 @@ class WeaponController:
                 lifetime_seconds=weapon.projectile_lifetime_seconds,
                 radius_px=weapon.projectile_radius_px,
                 damage=weapon.damage,
+                owner=ProjectileOwner.PLAYER,
             )
         return True
 

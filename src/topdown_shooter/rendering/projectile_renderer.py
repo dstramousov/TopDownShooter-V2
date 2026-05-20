@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from topdown_shooter.combat.projectiles import ImpactMarkerState, ProjectileState
+from topdown_shooter.combat.projectiles import (
+    ImpactMarkerState,
+    ProjectileOwner,
+    ProjectileState,
+)
 
 
 class ProjectileRenderer:
@@ -37,4 +41,14 @@ class ProjectileRenderer:
             )
         for projectile in projectiles:
             position = self._raylib.Vector2(projectile.position.x, projectile.position.y)
-            self._raylib.draw_circle_v(position, projectile.radius_px, self._raylib.YELLOW)
+            self._raylib.draw_circle_v(
+                position,
+                projectile.radius_px,
+                self._projectile_color(projectile),
+            )
+
+    def _projectile_color(self, projectile: ProjectileState) -> object:
+        """Return a 2D projectile color based on projectile owner."""
+        if projectile.owner == ProjectileOwner.ENEMY:
+            return self._raylib.RED
+        return self._raylib.YELLOW
