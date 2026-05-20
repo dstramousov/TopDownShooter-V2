@@ -32,6 +32,7 @@ from topdown_shooter.rendering.camera import (
     RuntimeCamera,
 )
 from topdown_shooter.rendering.map_renderer import RenderStats
+from topdown_shooter.rendering.combat_feedback import CombatFeedbackOverlay
 from topdown_shooter.rendering.player_hud import PlayerHud
 from topdown_shooter.rendering.raylib_input import (
     RaylibInputResolver,
@@ -149,6 +150,10 @@ class Render3DRenderer:
         self._weapon_slot_3_key = self._resolve_key(config.controls.weapon_slot_3)
         self._weapon_fire_events_last_update = 0
         self._muzzle_flashes: list[_Render3DMuzzleFlashState] = []
+        self._combat_feedback = CombatFeedbackOverlay(
+            raylib=self._raylib,
+            window=config.window,
+        )
         self._distance_fade_enabled = config.render3d.distance_fade.enabled
         self._enemy_vision_enabled = config.render3d.enemy_vision.enabled
         self._player_hud = PlayerHud(
@@ -239,7 +244,9 @@ class Render3DRenderer:
                         weapon_fire_events=self._weapon_fire_events_last_update,
                         player_speed_px_per_second=self._player_speed_px_per_second(),
                     )
-                    self._add_projectile_events(projectile_system.consume_events())
+                    projectile_events = projectile_system.consume_events()
+                    self._add_projectile_events(projectile_events)
+                    self._combat_feedback.add_events(projectile_events)
                     scene = scene_builder.build_snapshot(player.tile)
                 visible_enemies = self._visible_enemies(
                     enemies=enemy_system.enemies,
@@ -270,7 +277,9 @@ class Render3DRenderer:
                     mode=self._camera_mode,
                 )
                 self._update_camera_relative_basis(camera_state)
-                self._update_muzzle_flashes(frame_time if not ui_input.blocks_gameplay else 0.0)
+                active_frame_time = frame_time if not ui_input.blocks_gameplay else 0.0
+                self._update_muzzle_flashes(active_frame_time)
+                self._combat_feedback.update(active_frame_time)
                 camera = raylib.Camera3D(
                     raylib.Vector3(
                         camera_state.position.x,
@@ -309,7 +318,12 @@ class Render3DRenderer:
                     self._last_facing_y,
                 )
                 raylib.end_mode_3d()
-                self._player_hud.draw(player, weapon_controller.stats)
+                self._player_hud.draw(
+                    player,
+                    weapon_controller.stats,
+                    damage_pulse=self._combat_feedback.hud_damage_pulse,
+                )
+                self._combat_feedback.draw()
                 self._update_debug_overlay_scroll()
                 if self._ui.debug_overlay_enabled:
                     self._debug_overlay.draw(

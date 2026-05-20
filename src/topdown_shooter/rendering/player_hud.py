@@ -58,18 +58,25 @@ class PlayerHud:
         """Unload optional raylib resources owned by the HUD."""
         self._text.unload()
 
-    def draw(self, player: PlayerState, weapon: WeaponStats) -> None:
+    def draw(
+        self,
+        player: PlayerState,
+        weapon: WeaponStats,
+        damage_pulse: float = 0.0,
+    ) -> None:
         """Draw player status information.
 
         Args:
             player: Current player state.
             weapon: Current weapon runtime stats.
+            damage_pulse: Normalized damage pulse strength in the 0..1 range.
         """
+        damage_pulse = max(0.0, min(1.0, damage_pulse))
         lines = self._build_lines(player, weapon)
         layout = self._calculate_layout(lines, weapon)
         background = self._raylib.Color(0, 0, 0, self._config.background_alpha)
         self._raylib.draw_rectangle(layout.x, layout.y, layout.width, layout.height, background)
-        next_y = self._draw_lines(lines, layout)
+        next_y = self._draw_lines(lines, layout, damage_pulse)
         if weapon.is_reloading:
             bar_x = self._calculate_reload_bar_x(layout, player, weapon)
             self._draw_reload_bar(bar_x, next_y, weapon)
@@ -158,12 +165,18 @@ class PlayerHud:
         max_x = layout.x + layout.width - self._config.padding - _RELOAD_BAR_WIDTH
         return min(desired_x, max_x)
 
-    def _draw_lines(self, lines: tuple[str, ...], layout: HudLayout) -> int:
+    def _draw_lines(
+        self,
+        lines: tuple[str, ...],
+        layout: HudLayout,
+        damage_pulse: float,
+    ) -> int:
         """Draw HUD text lines and return the next free Y position.
 
         Args:
             lines: Text lines to draw.
             layout: Calculated panel layout.
+            damage_pulse: Normalized damage pulse strength in the 0..1 range.
 
         Returns:
             Screen Y position after the last text line.
@@ -171,9 +184,18 @@ class PlayerHud:
         x = layout.x + self._config.padding
         y = layout.y + self._config.padding
         for line in lines:
-            self._text.draw_text(line, x, y, self._config.font_size, self._raylib.RAYWHITE)
+            color = self._line_color(line, damage_pulse)
+            self._text.draw_text(line, x, y, self._config.font_size, color)
             y += self._line_height
         return y
+
+
+    def _line_color(self, line: str, damage_pulse: float) -> object:
+        """Return HUD line color with optional HP damage pulse."""
+        if damage_pulse <= 0.0 or not line.startswith("HP:"):
+            return self._raylib.RAYWHITE
+        alpha = int(160 + 95 * damage_pulse)
+        return self._raylib.Color(255, 48, 32, alpha)
 
     def _draw_reload_bar(self, x: int, y: int, weapon: WeaponStats) -> None:
         """Draw a compact reload progress bar.

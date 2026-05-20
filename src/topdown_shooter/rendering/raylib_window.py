@@ -12,6 +12,7 @@ from topdown_shooter.debug.overlay import DebugOverlay
 from topdown_shooter.gameplay.combat_runtime import update_combat_runtime
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.rendering.camera import CameraRig
+from topdown_shooter.rendering.combat_feedback import CombatFeedbackOverlay
 from topdown_shooter.rendering.enemy_renderer import EnemyRenderer
 from topdown_shooter.rendering.map_renderer import MapRenderer
 from topdown_shooter.rendering.raylib_input import (
@@ -178,6 +179,10 @@ class RaylibWindow:
             aim_debug=config.aim_debug,
         )
         self._projectile_renderer = ProjectileRenderer(raylib=self._raylib)
+        self._combat_feedback = CombatFeedbackOverlay(
+            raylib=self._raylib,
+            window=config.window,
+        )
         self._player_hud = PlayerHud(
             raylib=self._raylib,
             config=config.hud,
@@ -234,9 +239,9 @@ class RaylibWindow:
                         weapon_fire_events=self._weapon_fire_events_last_update,
                         player_speed_px_per_second=self._player_speed_px_per_second,
                     )
-                    self._projectile_renderer.add_events(
-                        self._projectile_system.consume_events(),
-                    )
+                    projectile_events = self._projectile_system.consume_events()
+                    self._projectile_renderer.add_events(projectile_events)
+                    self._combat_feedback.add_events(projectile_events)
                     self._camera_rig.update_follow_target(
                         player_position=self._player.world_position,
                         frame_time=frame_time,
@@ -265,7 +270,13 @@ class RaylibWindow:
                 )
                 self._player_renderer.draw(self._player)
                 raylib.end_mode_2d()
-                self._player_hud.draw(self._player, self._weapon_controller.stats)
+                self._combat_feedback.update(frame_time if not ui_input.blocks_gameplay else 0.0)
+                self._player_hud.draw(
+                    self._player,
+                    self._weapon_controller.stats,
+                    damage_pulse=self._combat_feedback.hud_damage_pulse,
+                )
+                self._combat_feedback.draw()
                 if self._ui.debug_overlay_enabled:
                     self._debug_overlay.draw(
                         camera=self._camera_rig.state,

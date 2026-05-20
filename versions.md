@@ -678,3 +678,9 @@
 - Projectile feedback events дополнены направлением projectile для будущих эффектов выстрелов/попаданий.
 - 2D и 3D renderer теперь используют событие `SPAWNED` для коротких muzzle flash эффектов player/enemy projectiles.
 - Урон, скорость, дальность, spread, fire rate, cooldown, AI, баллистика и баланс не изменялись.
+
+## v0.0.91 -> v0.0.92
+
+- Added shared incoming-hit combat feedback for 2D and 3D.
+- Added player damage screen flash and directional hit indicators from projectile HIT_PLAYER events.
+- Added HUD HP damage pulse without changing weapon or damage balance.
