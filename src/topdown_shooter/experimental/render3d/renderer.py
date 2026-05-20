@@ -15,7 +15,11 @@ from topdown_shooter.combat.weapons import WeaponController
 from topdown_shooter.config.runtime_config import RuntimeConfig
 from topdown_shooter.gameplay.combat_runtime import update_combat_runtime
 from topdown_shooter.experimental.render3d.camera import Render3DFollowCamera
-from topdown_shooter.experimental.render3d.scene import Render3DSceneBuilder, Render3DSceneSnapshot
+from topdown_shooter.experimental.render3d.scene import (
+    Render3DSceneBuilder,
+    Render3DSceneSnapshot,
+    Render3DTilePrimitive,
+)
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.rendering.player_hud import PlayerHud
 from topdown_shooter.rendering.raylib_window import import_raylib
@@ -54,6 +58,7 @@ class Render3DRenderer:
     DEBUG_VIEW_MODE = "debug"
     VIEW_MODE_ORDER = (CLEAN_VIEW_MODE, GAMEPLAY_VIEW_MODE, DEBUG_VIEW_MODE)
     _POSITION_RETRY_FRAMES = 12
+    _ENVIRONMENT_DETAIL_RADIUS_TILES = 18
 
     def __init__(
         self,
@@ -625,18 +630,34 @@ class Render3DRenderer:
             center_x = (primitive.x + 0.5) * tile_size
             center_z = (primitive.y + 0.5) * tile_size
             center = raylib.Vector3(center_x, 0.0, center_z)
-            color = self._scene_color(
+            color = self._scene_color_for_primitive(
                 self._tile_color(primitive.symbol),
-                center_x,
-                center_z,
-                scene,
+                primitive,
             )
+            draw_detail = self._should_draw_environment_detail(primitive)
             if primitive.walkable:
-                self._draw_walkable_tile(center, primitive.symbol, color)
+                self._draw_walkable_tile(
+                    center,
+                    primitive.symbol,
+                    color,
+                    draw_detail=draw_detail,
+                )
                 continue
-            self._draw_blocking_tile(center, primitive.symbol, color)
+            self._draw_blocking_tile(
+                center,
+                primitive.symbol,
+                color,
+                draw_detail=draw_detail,
+            )
 
-    def _draw_walkable_tile(self, center: object, symbol: str, color: object) -> None:
+    def _draw_walkable_tile(
+        self,
+        center: object,
+        symbol: str,
+        color: object,
+        *,
+        draw_detail: bool,
+    ) -> None:
         """Draw one walkable gameplay tile with symbol-specific readability."""
         raylib = self._raylib
         tile_size = self._config.render3d.tile_size
@@ -649,17 +670,26 @@ class Render3DRenderer:
             tile_height = 0.04 * height_scale
         tile_center = raylib.Vector3(center.x, tile_height * 0.5, center.z)
         raylib.draw_cube(tile_center, tile_size, tile_height, tile_size, color)
+        if not draw_detail:
+            return
         if symbol == "w":
             self._draw_tile_surface_outline(tile_center, tile_size, tile_height, raylib.BLUE)
         elif symbol in {"S", "G", "R"}:
             self._draw_tile_surface_outline(tile_center, tile_size, tile_height, raylib.RAYWHITE)
 
-    def _draw_blocking_tile(self, center: object, symbol: str, color: object) -> None:
+    def _draw_blocking_tile(
+        self,
+        center: object,
+        symbol: str,
+        color: object,
+        *,
+        draw_detail: bool,
+    ) -> None:
         """Draw one blocking map tile with stronger environment silhouettes."""
         raylib = self._raylib
         tile_size = self._config.render3d.tile_size
         height_scale = self._config.render3d.height_scale
-        if symbol == "T":
+        if symbol == "T" and draw_detail:
             trunk_height = 0.82 * height_scale
             canopy_height = 0.62 * height_scale
             trunk_center = raylib.Vector3(center.x, trunk_height * 0.5, center.z)
@@ -688,7 +718,13 @@ class Render3DRenderer:
         width = tile_size * self._blocking_tile_width_scale(symbol)
         block_center = raylib.Vector3(center.x, height * 0.5, center.z)
         raylib.draw_cube(block_center, width, height, width, color)
-        self._draw_tile_surface_outline(block_center, width, height, raylib.RAYWHITE)
+        if draw_detail:
+            self._draw_tile_surface_outline(block_center, width, height, raylib.RAYWHITE)
+
+    def _should_draw_environment_detail(self, primitive: Render3DTilePrimitive) -> bool:
+        """Return whether an environment primitive is close enough for extra draw calls."""
+        detail_radius = self._ENVIRONMENT_DETAIL_RADIUS_TILES
+        return primitive.distance_squared <= detail_radius * detail_radius
 
     def _blocking_tile_height(self, symbol: str) -> float:
         """Return 3D height in tiles for a blocking symbol."""
@@ -728,6 +764,40 @@ class Render3DRenderer:
             )
         except AttributeError:
             return color
+
+    def _scene_color_for_primitive(
+        self,
+        color: object,
+        primitive: Render3DTilePrimitive,
+    ) -> object:
+        """Return a distance-faded color for a pre-culled tile primitive."""
+        brightness = self._distance_brightness_for_tile_distance_squared(
+            primitive.distance_squared,
+        )
+        if brightness >= 0.999:
+            return color
+        return self._scale_color(color, brightness)
+
+    def _distance_brightness_for_tile_distance_squared(
+        self,
+        distance_squared: int,
+    ) -> float:
+        """Return distance fade brightness from squared tile distance."""
+        fade_config = self._config.render3d.distance_fade
+        if not self._distance_fade_enabled:
+            return 1.0
+        radius = self._config.render3d.view_radius_tiles
+        if radius <= 0:
+            return 1.0
+        start = radius * fade_config.fade_start_ratio
+        start_squared = start * start
+        if float(distance_squared) <= start_squared:
+            return 1.0
+        distance = math.sqrt(float(distance_squared))
+        fade_range = max(float(radius) - start, 0.0001)
+        progress = max(0.0, min(1.0, (distance - start) / fade_range))
+        fog_amount = progress ** fade_config.fog_density
+        return 1.0 - (1.0 - fade_config.min_brightness) * fog_amount
 
     def _scene_color(
         self,

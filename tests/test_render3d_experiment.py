@@ -48,10 +48,10 @@ def test_render3d_config_loads_from_default_config() -> None:
     config = RuntimeConfigLoader().load_default()
 
     assert config.render3d.enabled is False
-    assert config.render3d.view_radius_tiles == 60
+    assert config.render3d.view_radius_tiles == 35
     assert config.render3d.render_mode == "optimized"
     assert config.render3d.view_mode == "gameplay"
-    assert config.render3d.max_visible_primitives == 3000
+    assert config.render3d.max_visible_primitives == 1400
     assert config.render3d.camera.height == 13.0
     assert config.render3d.camera.distance == 12.0
     assert config.render3d.camera.movement_look_ahead_tiles == 3.5
@@ -88,9 +88,9 @@ def test_render3d_config_loads_from_default_config() -> None:
     assert config.render3d.enemies.marker_radius_tiles == 0.28
     assert config.render3d.enemies.marker_height_tiles == 1.15
     assert config.render3d.enemies.direction_line_length_tiles == 1.1
-    assert config.render3d.enemy_vision.enabled is True
-    assert config.render3d.enemy_vision.max_visible_cones == 64
-    assert config.render3d.enemy_vision.cone_segments == 14
+    assert config.render3d.enemy_vision.enabled is False
+    assert config.render3d.enemy_vision.max_visible_cones == 24
+    assert config.render3d.enemy_vision.cone_segments == 8
     assert config.render3d.enemy_vision.height_tiles == 0.08
     assert config.render3d.enemy_vision.range_scale == 1.0
     assert config.render3d.enemy_vision.idle_alpha == 70
@@ -189,6 +189,20 @@ def test_render3d_scene_builder_keeps_nearest_tiles_when_capped() -> None:
 
     assert len(snapshot.primitives) == 2
     assert {(primitive.x, primitive.y) for primitive in snapshot.primitives} == {(1, 0), (0, 0)}
+
+
+def test_render3d_scene_builder_reuses_snapshot_for_same_center_tile() -> None:
+    """Scene builder should avoid rebuilding snapshots while the culling center is stable."""
+    runtime_map = _build_runtime_map()
+    config = RuntimeConfigLoader().load_default().render3d
+    builder = Render3DSceneBuilder(runtime_map=runtime_map, config=config)
+
+    first_snapshot = builder.build_snapshot(TileCoord(1, 0))
+    second_snapshot = builder.build_snapshot(TileCoord(1, 0))
+    moved_snapshot = builder.build_snapshot(TileCoord(2, 0))
+
+    assert second_snapshot is first_snapshot
+    assert moved_snapshot is not first_snapshot
 
 
 def test_render3d_backpedal_input_keeps_visual_facing() -> None:

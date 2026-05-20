@@ -2,7 +2,7 @@
   "window": {
     "title": "TopDownShooter V.2",
     "target_fps": 60,
-    "screen_margin_px": 100
+    "screen_margin_px": 300
   },
   "camera": {
     "zoom": 1.0,
@@ -185,12 +185,12 @@
   },
   "render3d": {
     "enabled": false,
-    "view_radius_tiles": 60,
+    "view_radius_tiles": 35,
     "tile_size": 1.0,
     "height_scale": 1.0,
     "render_mode": "optimized",
     "show_debug_hud": true,
-    "max_visible_primitives": 3000,
+    "max_visible_primitives": 1400,
     "camera": {
       "height": 13.0,
       "distance": 12.0,
@@ -257,9 +257,9 @@
       "keep_markers_bright": true
     },
     "enemy_vision": {
-      "enabled": true,
-      "max_visible_cones": 64,
-      "cone_segments": 14,
+      "enabled": false,
+      "max_visible_cones": 24,
+      "cone_segments": 8,
       "height_tiles": 0.08,
       "range_scale": 1.0,
       "idle_alpha": 70,

@@ -136,13 +136,13 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.hud.font_size == 16
     assert config.hud.background_alpha == 150
     assert config.render3d.enabled is False
-    assert config.render3d.view_radius_tiles == 60
+    assert config.render3d.view_radius_tiles == 35
     assert config.render3d.tile_size == 1.0
     assert config.render3d.height_scale == 1.0
     assert config.render3d.render_mode == "optimized"
     assert config.render3d.view_mode == "gameplay"
     assert config.render3d.show_debug_hud is True
-    assert config.render3d.max_visible_primitives == 3000
+    assert config.render3d.max_visible_primitives == 1400
     assert config.render3d.camera.height == 13.0
     assert config.render3d.camera.distance == 12.0
     assert config.render3d.camera.top_down_height == 70.0
@@ -166,9 +166,9 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.render3d.combat_visuals.enemy_hit_flash_seconds == 0.12
     assert config.render3d.combat_visuals.draw_enemy_hit_markers is True
     assert config.render3d.controls.enemy_vision_toggle == "KEY_O"
-    assert config.render3d.enemy_vision.enabled is True
-    assert config.render3d.enemy_vision.max_visible_cones == 64
-    assert config.render3d.enemy_vision.cone_segments == 14
+    assert config.render3d.enemy_vision.enabled is False
+    assert config.render3d.enemy_vision.max_visible_cones == 24
+    assert config.render3d.enemy_vision.cone_segments == 8
     assert config.render3d.enemy_vision.height_tiles == 0.08
     assert config.render3d.enemy_vision.range_scale == 1.0
     assert config.render3d.enemy_vision.idle_alpha == 70

@@ -599,3 +599,12 @@
 - Расчёт геометрии экрана стал надёжнее: для X11 используется `xrandr --current` с учётом primary-монитора и его origin, затем fallback-и без возврата старых `window.width/window.height` в конфиг.
 - Добавлены тесты для `screen_margin_px`, multi-monitor origin, parsing `xrandr` и применения resolved window position.
 - Gameplay, AI, projectiles, HUD-логика и баланс не изменялись.
+
+## v0.0.81 -> v0.0.82
+
+- Оптимизирована подготовка 3D-сцены: `Render3DSceneBuilder` кэширует snapshot для текущего player tile и не пересобирает видимые тайлы каждый кадр, пока центр culling-а не изменился.
+- Ограничена стоимость 3D-сцены по умолчанию: `view_radius_tiles` снижен до 35, `max_visible_primitives` — до 1400.
+- Enemy vision cones оставлены доступными через `O`, но выключены по умолчанию; дефолтные лимиты снижены до 24 cones и 8 segments.
+- Дальние тайлы больше не рисуют дополнительные outline/detail draw calls, а distance fade для тайлов использует уже посчитанную дистанцию snapshot-а.
+- Gameplay, AI, projectiles, damage, HUD-логика и 2D runtime не изменялись.
+
