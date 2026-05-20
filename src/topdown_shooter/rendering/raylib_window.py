@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from topdown_shooter.combat.enemies import EnemySystem
 from topdown_shooter.combat.projectiles import ProjectileSystem
 from topdown_shooter.combat.weapons import WeaponConfigLoader, WeaponController, WeaponState
@@ -16,6 +18,10 @@ from topdown_shooter.rendering.map_renderer import MapRenderer
 from topdown_shooter.rendering.player_hud import PlayerHud
 from topdown_shooter.rendering.player_renderer import PlayerRenderer
 from topdown_shooter.rendering.projectile_renderer import ProjectileRenderer
+from topdown_shooter.rendering.window_layout import (
+    apply_raylib_window_position,
+    resolve_raylib_window_layout,
+)
 from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.coordinates import WorldCoord
 from topdown_shooter.world.pathfinding import GridPathfinder
@@ -56,6 +62,8 @@ def import_raylib() -> object:
 class RaylibWindow:
     """Run a minimal raylib map window."""
 
+    _POSITION_RETRY_FRAMES = 12
+
     def __init__(
         self,
         runtime_map: RuntimeMap,
@@ -71,8 +79,11 @@ class RaylibWindow:
         """
         self._runtime_map = runtime_map
         self._package = package
-        self._config = config
         self._raylib = import_raylib()
+        self._window_layout = resolve_raylib_window_layout(self._raylib, config.window)
+        self._pending_window_position_frames = self._POSITION_RETRY_FRAMES
+        self._config = replace(config, window=self._window_layout.window)
+        config = self._config
         self._quit_key = self._resolve_key(config.controls.quit)
         self._debug_overlay_chord = self._resolve_key_chord(config.controls.debug_overlay)
         self._camera_up_keys = self._resolve_keys(config.controls.camera_up)
@@ -192,10 +203,12 @@ class RaylibWindow:
         raylib = self._raylib
         self._configure_raylib_logging()
         raylib.init_window(window.width, window.height, window.title)
+        self._apply_initial_window_position()
         raylib.set_target_fps(window.target_fps)
 
         try:
             while not raylib.window_should_close():
+                self._apply_initial_window_position()
                 if raylib.is_key_pressed(self._quit_key):
                     break
                 if self._is_key_chord_pressed(self._debug_overlay_chord):
@@ -263,6 +276,13 @@ class RaylibWindow:
             self._player_hud.unload()
             self._debug_overlay.unload()
             raylib.close_window()
+
+    def _apply_initial_window_position(self) -> None:
+        """Re-apply startup window position for window managers that defer placement."""
+        if self._pending_window_position_frames <= 0:
+            return
+        apply_raylib_window_position(self._raylib, self._window_layout)
+        self._pending_window_position_frames -= 1
 
     def _update_player_aim(self, raylib_camera: object) -> None:
         """Update player aim from the current mouse world position.

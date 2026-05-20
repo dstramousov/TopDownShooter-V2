@@ -573,3 +573,29 @@
 - ProjectileState получил owner-tag, чтобы player/enemy projectiles корректно маршрутизировались и не наносили friendly fire по врагам.
 - Вражеские projectiles наносят урон игроку через общий runtime helper и визуально отличаются в 3D renderer-е красно-оранжевыми трассерами.
 - AI, pathfinding, tactical positioning, collision и генератор карты не изменялись.
+
+## v0.0.77 -> v0.0.78
+
+- Стартовый размер 2D и экспериментального 3D окна теперь вычисляется по текущему монитору: по 100 px свободного поля с каждой стороны.
+- Окно автоматически центрируется после создания, а runtime `WindowConfig` обновляется до фактического размера, чтобы HUD, FPS, камера и debug overlay считали координаты от нового окна.
+- Добавлен безопасный fallback на старый config-размер, если raylib не отдаёт корректные параметры монитора.
+
+## v0.0.78 -> v0.0.79
+
+- Исправлен сломанный импорт `topdown_shooter.rendering.window_layout` после изменения логики стартового окна.
+- Настройка рамки окна перенесена в `window.screen_margin_px`; старые config-поля `window.width` и `window.height` удалены из runtime config.
+- 2D runtime и экспериментальный 3D renderer используют общий расчёт окна от текущего монитора с одинаковым отступом со всех сторон и без fallback-а на старый config-размер.
+
+## v0.0.79 -> v0.0.80
+
+- Исправлена регрессия auto-sized window layout: 2D HUD, FPS, camera и debug overlay теперь создаются с resolved runtime `WindowConfig`, а не с пустым размером из config.
+- Расчёт размера экрана больше не вызывает `get_current_monitor()` до создания окна, чтобы избежать GLFW selected-monitor warnings и аварийного маленького fallback-окна.
+- Добавлен fallback через tkinter для окружений, где raylib не отдаёт размер монитора до `init_window`.
+- Gameplay, AI, projectiles, HUD-логика и баланс не изменялись.
+
+## v0.0.80 -> v0.0.81
+
+- Исправлено позиционирование auto-sized окна: стартовая позиция теперь повторно применяется в первые кадры после `init_window`, чтобы оконный менеджер Linux не оставлял окно в левом верхнем углу.
+- Расчёт геометрии экрана стал надёжнее: для X11 используется `xrandr --current` с учётом primary-монитора и его origin, затем fallback-и без возврата старых `window.width/window.height` в конфиг.
+- Добавлены тесты для `screen_margin_px`, multi-monitor origin, parsing `xrandr` и применения resolved window position.
+- Gameplay, AI, projectiles, HUD-логика и баланс не изменялись.

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import math
 
 from topdown_shooter.combat.enemies import EnemyHitMarkerState, EnemyState, EnemySystem
@@ -20,6 +20,10 @@ from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.rendering.player_hud import PlayerHud
 from topdown_shooter.rendering.raylib_window import import_raylib
 from topdown_shooter.rendering.text import RaylibTextRenderer
+from topdown_shooter.rendering.window_layout import (
+    apply_raylib_window_position,
+    resolve_raylib_window_layout,
+)
 from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.coordinates import WorldCoord
 from topdown_shooter.world.pathfinding import GridPathfinder
@@ -49,6 +53,7 @@ class Render3DRenderer:
     GAMEPLAY_VIEW_MODE = "gameplay"
     DEBUG_VIEW_MODE = "debug"
     VIEW_MODE_ORDER = (CLEAN_VIEW_MODE, GAMEPLAY_VIEW_MODE, DEBUG_VIEW_MODE)
+    _POSITION_RETRY_FRAMES = 12
 
     def __init__(
         self,
@@ -65,8 +70,11 @@ class Render3DRenderer:
         """
         self._runtime_map = runtime_map
         self._package = package
-        self._config = config
         self._raylib = import_raylib()
+        self._window_layout = resolve_raylib_window_layout(self._raylib, config.window)
+        self._pending_window_position_frames = self._POSITION_RETRY_FRAMES
+        self._config = replace(config, window=self._window_layout.window)
+        config = self._config
         self._camera_mode = Render3DFollowCamera.LOW_FOLLOW_MODE
         self._view_mode = config.render3d.view_mode
         self._last_facing_x = 0.0
@@ -153,11 +161,13 @@ class Render3DRenderer:
         window = self._config.window
         self._configure_raylib_logging()
         raylib.init_window(window.width, window.height, f"{window.title} - 3D experiment")
+        self._apply_initial_window_position()
         raylib.set_target_fps(window.target_fps)
         self._disable_cursor()
         scene = scene_builder.build_snapshot(player.tile)
         try:
             while not raylib.window_should_close():
+                self._apply_initial_window_position()
                 if raylib.is_key_pressed(raylib.KEY_ESCAPE):
                     break
                 frame_time = raylib.get_frame_time()
@@ -270,6 +280,13 @@ class Render3DRenderer:
             self._hud_text.unload()
             self._enable_cursor()
             raylib.close_window()
+
+    def _apply_initial_window_position(self) -> None:
+        """Re-apply startup window position for window managers that defer placement."""
+        if self._pending_window_position_frames <= 0:
+            return
+        apply_raylib_window_position(self._raylib, self._window_layout)
+        self._pending_window_position_frames -= 1
 
     def run_static_preview(
         self,

@@ -18,15 +18,17 @@ class WindowConfig:
 
     Attributes:
         title: Window title.
-        width: Window width in pixels.
-        height: Window height in pixels.
         target_fps: Target frames per second.
+        screen_margin_px: Desired free screen margin on every side.
+        width: Resolved runtime window width in pixels.
+        height: Resolved runtime window height in pixels.
     """
 
     title: str
-    width: int
-    height: int
     target_fps: int
+    screen_margin_px: int = 100
+    width: int = 0
+    height: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -735,9 +737,11 @@ class RuntimeConfigLoader:
         return RuntimeConfig(
             window=WindowConfig(
                 title=self._require_str(window, "title"),
-                width=self._require_positive_int(window, "width"),
-                height=self._require_positive_int(window, "height"),
                 target_fps=self._require_positive_int(window, "target_fps"),
+                screen_margin_px=self._require_non_negative_int(
+                    window,
+                    "screen_margin_px",
+                ),
             ),
             camera=self._build_camera_config(camera),
             player=PlayerConfig(
