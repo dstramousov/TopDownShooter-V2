@@ -684,3 +684,11 @@
 - Added shared incoming-hit combat feedback for 2D and 3D.
 - Added player damage screen flash and directional hit indicators from projectile HIT_PLAYER events.
 - Added HUD HP damage pulse without changing weapon or damage balance.
+
+## v0.0.92 -> v0.0.93
+
+- Improved projectile flight visuals without changing projectile mechanics or balance.
+- 2D projectiles now draw owner-colored previous-to-current tracers, fading trail afterimages, and core outlines.
+- 3D projectiles now draw real previous-to-current tracer segments instead of fixed fake tails, plus short fading trail afterimages.
+- Player/enemy projectile colors stay visually distinct in both renderers.
+

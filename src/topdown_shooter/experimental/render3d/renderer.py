@@ -77,6 +77,18 @@ class _Render3DMuzzleFlashState:
     lifetime_seconds: float = 0.09
 
 
+@dataclass(slots=True)
+class _Render3DProjectileTrailState:
+    """Short-lived 3D projectile trail segment."""
+
+    previous_position: WorldCoord
+    position: WorldCoord
+    owner: ProjectileOwner
+    key: tuple[int, int, int, int, str]
+    age_seconds: float = 0.0
+    lifetime_seconds: float = 0.075
+
+
 class Render3DRenderer:
     """Draw a minimal experimental 3D view of the current runtime map."""
 
@@ -150,6 +162,8 @@ class Render3DRenderer:
         self._weapon_slot_3_key = self._resolve_key(config.controls.weapon_slot_3)
         self._weapon_fire_events_last_update = 0
         self._muzzle_flashes: list[_Render3DMuzzleFlashState] = []
+        self._projectile_trails: list[_Render3DProjectileTrailState] = []
+        self._projectile_trail_keys: set[tuple[int, int, int, int, str]] = set()
         self._combat_feedback = CombatFeedbackOverlay(
             raylib=self._raylib,
             window=config.window,
@@ -279,6 +293,7 @@ class Render3DRenderer:
                 self._update_camera_relative_basis(camera_state)
                 active_frame_time = frame_time if not ui_input.blocks_gameplay else 0.0
                 self._update_muzzle_flashes(active_frame_time)
+                self._update_projectile_trails(active_frame_time)
                 self._combat_feedback.update(active_frame_time)
                 camera = raylib.Camera3D(
                     raylib.Vector3(
@@ -1236,72 +1251,140 @@ class Render3DRenderer:
         return self._raylib.GOLD
 
     def _draw_projectile_markers(self, projectiles: tuple[ProjectileState, ...]) -> None:
-        """Draw active projectiles as short 3D tracer markers.
+        """Draw active projectiles as real previous-to-current 3D tracer markers.
 
         Args:
             projectiles: Visible projectiles to draw.
         """
-        if not projectiles:
-            return
         raylib = self._raylib
         render_config = self._config.render3d
         projectile_config = render_config.projectiles
         tile_size = render_config.tile_size
         height_scale = render_config.height_scale
-        tile_size_px = self._runtime_map.tile_size_px
         projectile_y = projectile_config.projectile_height_tiles * height_scale
+        trail_y_offset = (
+            render_config.combat_visuals.projectile_tracer_height_offset_tiles * height_scale
+        )
         radius = projectile_config.projectile_radius_tiles * tile_size
+        self._add_projectile_trails(projectiles)
+        self._draw_projectile_trails(projectile_y + trail_y_offset)
         for projectile in projectiles:
-            combat_config = render_config.combat_visuals
-            end = raylib.Vector3(
-                projectile.position.x / tile_size_px * tile_size,
-                projectile_y,
-                projectile.position.y / tile_size_px * tile_size,
-            )
-            if combat_config.draw_projectile_tracers:
-                tracer_length = combat_config.projectile_tracer_length_tiles * tile_size
-                tracer_y = projectile_y + (
-                    combat_config.projectile_tracer_height_offset_tiles * height_scale
+            end = self._world_to_projectile_vector(projectile.position, projectile_y)
+            if render_config.combat_visuals.draw_projectile_tracers:
+                start = self._world_to_projectile_vector(
+                    projectile.previous_position,
+                    projectile_y + trail_y_offset,
                 )
-                start = raylib.Vector3(
-                    end.x - projectile.direction_x * tracer_length,
-                    tracer_y,
-                    end.z - projectile.direction_y * tracer_length,
+                tracer_end = self._world_to_projectile_vector(
+                    projectile.position,
+                    projectile_y + trail_y_offset,
                 )
-                tracer_end = raylib.Vector3(end.x, tracer_y, end.z)
-                tracer_color = self._projectile_tracer_color(projectile)
-                core_color = self._projectile_core_color(projectile)
-                raylib.draw_line_3d(start, tracer_end, tracer_color)
                 raylib.draw_line_3d(
-                    raylib.Vector3(start.x, projectile_y, start.z),
-                    end,
-                    core_color,
+                    start,
+                    tracer_end,
+                    self._projectile_tracer_color(projectile.owner),
                 )
-            else:
-                start = raylib.Vector3(
-                    projectile.previous_position.x / tile_size_px * tile_size,
-                    projectile_y,
-                    projectile.previous_position.y / tile_size_px * tile_size,
-                )
-                raylib.draw_line_3d(start, end, self._projectile_tracer_color(projectile))
             raylib.draw_sphere(
                 end,
                 max(radius, 0.03 * tile_size),
-                self._projectile_core_color(projectile),
+                self._projectile_core_color(projectile.owner),
             )
 
+    def _add_projectile_trails(self, projectiles: tuple[ProjectileState, ...]) -> None:
+        """Capture real previous-to-current projectile segments for short 3D trails."""
+        for projectile in projectiles:
+            if not projectile.alive:
+                continue
+            dx = projectile.position.x - projectile.previous_position.x
+            dy = projectile.position.y - projectile.previous_position.y
+            if dx * dx + dy * dy < 1.0:
+                continue
+            owner = self._normalize_projectile_owner(projectile.owner)
+            key = (
+                int(round(projectile.previous_position.x)),
+                int(round(projectile.previous_position.y)),
+                int(round(projectile.position.x)),
+                int(round(projectile.position.y)),
+                owner.value,
+            )
+            if key in self._projectile_trail_keys:
+                continue
+            self._projectile_trail_keys.add(key)
+            self._projectile_trails.append(
+                _Render3DProjectileTrailState(
+                    previous_position=projectile.previous_position,
+                    position=projectile.position,
+                    owner=owner,
+                    key=key,
+                ),
+            )
 
-    def _projectile_tracer_color(self, projectile: ProjectileState) -> object:
+    def _update_projectile_trails(self, frame_time: float) -> None:
+        """Advance active short-lived 3D projectile trails."""
+        if frame_time <= 0.0:
+            return
+        for trail in self._projectile_trails:
+            trail.age_seconds += frame_time
+        alive_trails = [
+            trail
+            for trail in self._projectile_trails
+            if trail.age_seconds < trail.lifetime_seconds
+        ]
+        self._projectile_trail_keys = {trail.key for trail in alive_trails}
+        self._projectile_trails = alive_trails
+
+    def _draw_projectile_trails(self, projectile_y: float) -> None:
+        """Draw fading 3D projectile afterimage segments."""
+        raylib = self._raylib
+        for trail in self._projectile_trails:
+            progress = min(1.0, max(0.0, trail.age_seconds / trail.lifetime_seconds))
+            alpha = int(180 * (1.0 - progress))
+            if alpha <= 0:
+                continue
+            start = self._world_to_projectile_vector(trail.previous_position, projectile_y)
+            end = self._world_to_projectile_vector(trail.position, projectile_y)
+            raylib.draw_line_3d(
+                start,
+                end,
+                self._projectile_trail_color(trail.owner, alpha),
+            )
+
+    def _world_to_projectile_vector(self, position: WorldCoord, y: float) -> object:
+        """Convert a world pixel position to a 3D projectile vector."""
+        render_config = self._config.render3d
+        tile_size = render_config.tile_size
+        tile_size_px = self._runtime_map.tile_size_px
+        return self._raylib.Vector3(
+            position.x / tile_size_px * tile_size,
+            y,
+            position.y / tile_size_px * tile_size,
+        )
+
+    def _projectile_tracer_color(self, owner: ProjectileOwner | str) -> object:
         """Return tracer color based on projectile owner."""
-        if projectile.owner == ProjectileOwner.ENEMY:
+        if self._normalize_projectile_owner(owner) == ProjectileOwner.ENEMY:
             return self._raylib.ORANGE
         return self._raylib.SKYBLUE
 
-    def _projectile_core_color(self, projectile: ProjectileState) -> object:
+    def _projectile_trail_color(self, owner: ProjectileOwner | str, alpha: int) -> object:
+        """Return fading trail color based on projectile owner."""
+        if self._normalize_projectile_owner(owner) == ProjectileOwner.ENEMY:
+            return self._raylib.Color(255, 96, 32, alpha)
+        return self._raylib.Color(120, 216, 255, alpha)
+
+    def _projectile_core_color(self, owner: ProjectileOwner | str) -> object:
         """Return projectile core color based on projectile owner."""
-        if projectile.owner == ProjectileOwner.ENEMY:
+        if self._normalize_projectile_owner(owner) == ProjectileOwner.ENEMY:
             return self._raylib.RED
         return self._raylib.RAYWHITE
+
+    @staticmethod
+    def _normalize_projectile_owner(owner: ProjectileOwner | str) -> ProjectileOwner:
+        """Return a known projectile owner for rendering fallback."""
+        try:
+            return ProjectileOwner(owner)
+        except ValueError:
+            return ProjectileOwner.PLAYER
     def _draw_impact_markers(self, impacts: tuple[ImpactMarkerState, ...]) -> None:
         """Draw projectile impact markers in the 3D experiment.
 
