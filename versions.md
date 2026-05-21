@@ -777,3 +777,9 @@
 - Added shared vegetation colormap loading for 3D GLB vegetation models with support for `res/colormap.png`, `res/models/colormap.png`, and the original `Textures/colormap.png` layout.
 - Bound the loaded colormap to vegetation model materials when raylib exposes material texture APIs, avoiding white fallback models when GLB external textures are not resolved automatically.
 - Extended F12 vegetation diagnostics with texture source, texture lookup failures, and textured/untextured draw counters without changing scatter, gameplay collision, AI, loot, explosions, or weapon balance.
+
+## v0.1.5 -> v0.1.6
+
+- Reworked 3D walkable vegetation rendering so model-drawn bushes, flowers and mushrooms skip the full square tile fill.
+- Added small deterministic organic ground patches under rendered vegetation models, including trees, to soften tile-shaped bases.
+- Preserved primitive fallback tiles when vegetation models are unavailable and kept gameplay, 2D rendering, scatter density, AI and weapon balance unchanged.

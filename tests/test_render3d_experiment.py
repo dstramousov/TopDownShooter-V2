@@ -634,3 +634,191 @@ def test_render3d_vegetation_selection_is_deterministic() -> None:
 
     assert first == second
     assert first in config.render3d.vegetation.tree_models
+
+
+class _FakeColor:
+    """Small color object matching the raylib color attributes used by tests."""
+
+    def __init__(self, r: int, g: int, b: int, a: int = 255) -> None:
+        self.r = r
+        self.g = g
+        self.b = b
+        self.a = a
+
+
+class _FakeVector3:
+    """Small vector object matching the raylib Vector3 attributes used by tests."""
+
+    def __init__(self, x: float, y: float, z: float) -> None:
+        self.x = x
+        self.y = y
+        self.z = z
+
+
+class _FakeRaylib3D:
+    """Minimal raylib surface recorder for 3D scene draw tests."""
+
+    Color = _FakeColor
+    Vector3 = _FakeVector3
+
+    def __init__(self) -> None:
+        self.cube_draws: list[tuple[object, float, float, float, object]] = []
+        self.cylinder_draws: list[tuple[object, float, float, float, int, object]] = []
+        self.model_draws: list[tuple[object, object, object, float, object, object]] = []
+        self.GRAY = self.Color(128, 128, 128)
+        self.DARKBROWN = self.Color(76, 63, 47)
+        self.LIME = self.Color(0, 158, 47)
+        self.BLUE = self.Color(0, 121, 241)
+        self.BEIGE = self.Color(211, 176, 131)
+        self.LIGHTGRAY = self.Color(200, 200, 200)
+        self.YELLOW = self.Color(253, 249, 0)
+        self.GOLD = self.Color(255, 203, 0)
+        self.GREEN = self.Color(0, 228, 48)
+        self.DARKGREEN = self.Color(0, 117, 44)
+        self.RAYWHITE = self.Color(245, 245, 245)
+
+    def draw_cube(
+        self,
+        center: object,
+        width: float,
+        height: float,
+        depth: float,
+        color: object,
+    ) -> None:
+        """Record a cube draw call."""
+        self.cube_draws.append((center, width, height, depth, color))
+
+    def draw_cylinder(
+        self,
+        center: object,
+        radius_top: float,
+        radius_bottom: float,
+        height: float,
+        slices: int,
+        color: object,
+    ) -> None:
+        """Record a cylinder draw call."""
+        self.cylinder_draws.append((center, radius_top, radius_bottom, height, slices, color))
+
+    def draw_model_ex(
+        self,
+        model: object,
+        position: object,
+        axis: object,
+        rotation_degrees: float,
+        scale: object,
+        tint: object,
+    ) -> None:
+        """Record a model draw call."""
+        self.model_draws.append((model, position, axis, rotation_degrees, scale, tint))
+
+
+def _build_single_tile_runtime_map(symbol: str, *, walkable: bool) -> RuntimeMap:
+    """Build a single-tile runtime map for focused 3D draw tests."""
+    movement_cost = 1 if walkable else None
+    return RuntimeMap(
+        width_tiles=1,
+        height_tiles=1,
+        tile_size_px=16,
+        tiles=((RuntimeTile(symbol=symbol, movement_cost=movement_cost, walkable=walkable),),),
+        start_tile=TileCoord(0, 0),
+        goal_tile=TileCoord(0, 0),
+        tactical_summary=TacticalRuntimeSummary(
+            combat_zones=0,
+            cover_points=0,
+            choke_points=0,
+            flank_routes=0,
+            enemy_spawn_zones=0,
+            fallback_positions=0,
+        ),
+    )
+
+
+def _build_vegetation_scene_renderer(
+    *,
+    symbol: str = "b",
+    walkable: bool = True,
+    load_model: bool = True,
+) -> tuple[Render3DRenderer, _FakeRaylib3D, object]:
+    """Build a renderer with fake raylib state for vegetation scene tests."""
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    runtime_map = _build_single_tile_runtime_map(symbol, walkable=walkable)
+    config = RuntimeConfigLoader().load_default()
+    bush_model = replace(
+        config.render3d.vegetation.bush_models[0],
+        path="res/models/test-bush.glb",
+        weight=1,
+        min_scale=1.0,
+        max_scale=1.0,
+    )
+    tree_model = replace(
+        config.render3d.vegetation.tree_models[0],
+        path="res/models/test-tree.glb",
+        weight=1,
+        min_scale=1.0,
+        max_scale=1.0,
+    )
+    vegetation = replace(
+        config.render3d.vegetation,
+        max_draws_per_frame=8,
+        max_distance_tiles=4,
+        bush_models=(bush_model,),
+        tree_models=(tree_model,),
+    )
+    render_config = replace(
+        config.render3d,
+        view_radius_tiles=2,
+        tile_size=1.0,
+        height_scale=1.0,
+        vegetation=vegetation,
+    )
+    runtime_config = replace(config, render3d=render_config)
+    raylib = _FakeRaylib3D()
+    renderer = object.__new__(Render3DRenderer)
+    renderer._raylib = raylib
+    renderer._config = runtime_config
+    renderer._runtime_map = runtime_map
+    renderer._distance_fade_enabled = False
+    renderer._vegetation_models = {}
+    if load_model:
+        entry = tree_model if symbol == "T" else bush_model
+        renderer._vegetation_models[entry.path] = SimpleNamespace(
+            model=object(),
+            texture_applied=True,
+        )
+    renderer._interaction_system = SimpleNamespace(consumed_object_ids=frozenset())
+    renderer._explosion_system = SimpleNamespace(destroyed_object_ids=frozenset())
+    scene = Render3DSceneBuilder(runtime_map, render_config).build_snapshot(TileCoord(0, 0))
+    return renderer, raylib, scene
+
+
+def test_render3d_walkable_vegetation_model_skips_full_square_tile() -> None:
+    """Model-drawn low vegetation should not keep a full green square under it."""
+    renderer, raylib, scene = _build_vegetation_scene_renderer(symbol="b", walkable=True)
+
+    renderer._draw_scene(scene)
+
+    assert len(raylib.model_draws) == 1
+    assert len(raylib.cylinder_draws) == 2
+    assert len(raylib.cube_draws) == 1
+    assert renderer._vegetation_stats.model_draws == 1
+    assert renderer._vegetation_stats.primitive_fallbacks == 0
+
+
+def test_render3d_walkable_vegetation_falls_back_to_tile_when_model_missing() -> None:
+    """Low vegetation should keep the old readable tile fallback without a model."""
+    renderer, raylib, scene = _build_vegetation_scene_renderer(
+        symbol="b",
+        walkable=True,
+        load_model=False,
+    )
+
+    renderer._draw_scene(scene)
+
+    assert len(raylib.model_draws) == 0
+    assert len(raylib.cylinder_draws) == 0
+    assert len(raylib.cube_draws) == 2
+    assert renderer._vegetation_stats.model_draws == 0
+    assert renderer._vegetation_stats.primitive_fallbacks == 1

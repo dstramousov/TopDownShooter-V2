@@ -739,13 +739,14 @@ class Render3DRenderer:
             )
             draw_detail = self._should_draw_environment_detail(primitive)
             if primitive.walkable:
+                if self._draw_vegetation_for_tile(primitive, center, scene):
+                    continue
                 self._draw_walkable_tile(
                     center,
                     primitive.symbol,
                     color,
                     draw_detail=draw_detail,
                 )
-                self._draw_vegetation_for_tile(primitive, center, scene)
                 continue
             if self._draw_vegetation_for_tile(primitive, center, scene):
                 continue
@@ -782,7 +783,8 @@ class Render3DRenderer:
             return False
         if vegetation.max_draws_per_frame <= 0:
             return False
-        if primitive.distance_squared > vegetation.max_distance_tiles * vegetation.max_distance_tiles:
+        max_distance_squared = vegetation.max_distance_tiles * vegetation.max_distance_tiles
+        if primitive.distance_squared > max_distance_squared:
             return False
 
         if primitive.symbol in vegetation.tree_symbols:
@@ -818,7 +820,8 @@ class Render3DRenderer:
         salt: str,
     ) -> bool:
         """Draw a deterministic weighted vegetation model for one tile."""
-        if self._vegetation_stats.model_draws >= self._config.render3d.vegetation.max_draws_per_frame:
+        max_draws = self._config.render3d.vegetation.max_draws_per_frame
+        if self._vegetation_stats.model_draws >= max_draws:
             self._vegetation_stats.primitive_fallbacks += 1
             return False
         entry = self._select_weighted_vegetation_entry(primitive.x, primitive.y, salt, entries)
@@ -854,6 +857,12 @@ class Render3DRenderer:
             0.0,
             center.z + offset_z * max_offset_tiles * tile_size,
         )
+        self._draw_vegetation_ground_patch(
+            primitive=primitive,
+            center=position,
+            scene=scene,
+            salt=salt,
+        )
         axis = self._raylib.Vector3(0.0, 1.0, 0.0)
         scale = self._raylib.Vector3(scale_value, scale_value, scale_value)
         draw_model_ex(loaded_model.model, position, axis, rotation_degrees, scale, tint)
@@ -884,6 +893,125 @@ class Render3DRenderer:
             if pick < cumulative:
                 return entry
         return entries[-1]
+
+    def _draw_vegetation_ground_patch(
+        self,
+        *,
+        primitive: Render3DTilePrimitive,
+        center: object,
+        scene: Render3DSceneSnapshot,
+        salt: str,
+    ) -> None:
+        """Draw a small organic ground patch under a rendered vegetation model."""
+        draw_cylinder = getattr(self._raylib, "draw_cylinder", None)
+        if not callable(draw_cylinder):
+            self._draw_vegetation_ground_patch_fallback(
+                primitive=primitive,
+                center=center,
+                scene=scene,
+            )
+            return
+
+        tile_size = self._config.render3d.tile_size
+        height_scale = self._config.render3d.height_scale
+        patch_height = 0.01 * height_scale
+        radius = self._vegetation_ground_patch_radius(primitive.symbol) * tile_size
+        count = self._vegetation_ground_patch_count(primitive.symbol)
+        for index in range(count):
+            offset_x = self._signed_vegetation_value(
+                primitive.x,
+                primitive.y,
+                f"{salt}:ground:{index}:x",
+            )
+            offset_z = self._signed_vegetation_value(
+                primitive.x,
+                primitive.y,
+                f"{salt}:ground:{index}:z",
+            )
+            radius_ratio = self._lerp(
+                0.46,
+                0.78,
+                self._vegetation_unit_value(
+                    primitive.x,
+                    primitive.y,
+                    f"{salt}:ground:{index}:r",
+                ),
+            )
+            patch_center = self._raylib.Vector3(
+                center.x + offset_x * radius * 0.42,
+                patch_height * 0.5,
+                center.z + offset_z * radius * 0.42,
+            )
+            color = self._scene_color(
+                self._vegetation_ground_patch_color(primitive.symbol, index),
+                patch_center.x,
+                patch_center.z,
+                scene,
+            )
+            draw_cylinder(
+                patch_center,
+                radius * radius_ratio,
+                radius * radius_ratio,
+                patch_height,
+                9,
+                color,
+            )
+
+    def _draw_vegetation_ground_patch_fallback(
+        self,
+        *,
+        primitive: Render3DTilePrimitive,
+        center: object,
+        scene: Render3DSceneSnapshot,
+    ) -> None:
+        """Draw a reduced square patch when cylinder primitives are unavailable."""
+        tile_size = self._config.render3d.tile_size
+        height_scale = self._config.render3d.height_scale
+        patch_height = 0.01 * height_scale
+        width = self._vegetation_ground_patch_radius(primitive.symbol) * tile_size * 1.35
+        patch_center = self._raylib.Vector3(center.x, patch_height * 0.5, center.z)
+        color = self._scene_color(
+            self._vegetation_ground_patch_color(primitive.symbol, 0),
+            patch_center.x,
+            patch_center.z,
+            scene,
+        )
+        self._raylib.draw_cube(patch_center, width, patch_height, width, color)
+
+    def _vegetation_ground_patch_radius(self, symbol: str) -> float:
+        """Return a radius in tile units for vegetation ground cleanup blobs."""
+        if symbol == "T":
+            return 0.36
+        if symbol == "b":
+            return 0.30
+        if symbol == "f":
+            return 0.24
+        if symbol == "m":
+            return 0.20
+        return 0.26
+
+    @staticmethod
+    def _vegetation_ground_patch_count(symbol: str) -> int:
+        """Return how many overlapping blobs to draw under one vegetation model."""
+        if symbol == "T":
+            return 3
+        return 2
+
+    def _vegetation_ground_patch_color(self, symbol: str, index: int) -> object:
+        """Return a muted terrain color for vegetation ground cleanup blobs."""
+        raylib = self._raylib
+        palettes = {
+            "T": ((34, 58, 30), (72, 55, 34), (28, 48, 26)),
+            "b": ((38, 83, 36), (52, 92, 39)),
+            "f": ((48, 94, 43), (77, 82, 44)),
+            "m": ((65, 59, 43), (48, 74, 40)),
+        }
+        palette = palettes.get(symbol, ((42, 78, 38),))
+        red, green, blue = palette[index % len(palette)]
+        color_factory = getattr(raylib, "Color", None)
+        if callable(color_factory):
+            return color_factory(red, green, blue, 255)
+        return getattr(raylib, "DARKGREEN", getattr(raylib, "GREEN", None))
 
     @classmethod
     def _vegetation_unit_value(cls, x: int, y: int, salt: str) -> float:
