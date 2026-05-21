@@ -115,13 +115,7 @@ class GridPathfinder:
         Returns:
             True when the tile is inside the map and walkable.
         """
-        if tile.x < 0 or tile.y < 0:
-            return False
-        if tile.x >= self._runtime_map.width_tiles:
-            return False
-        if tile.y >= self._runtime_map.height_tiles:
-            return False
-        return self._runtime_map.tiles[tile.y][tile.x].walkable
+        return self._runtime_map.is_tile_walkable(tile)
 
     def _neighbors(self, tile: TileCoord) -> tuple[tuple[TileCoord, int], ...]:
         """Return walkable neighboring tiles and movement costs.

@@ -51,7 +51,7 @@ from topdown_shooter.world.pathfinding import GridPathfinder
 from topdown_shooter.world.player import PlayerState
 from topdown_shooter.world.player_aim import PlayerAimState
 from topdown_shooter.world.player_controller import PlayerController, PlayerMoveIntent
-from topdown_shooter.world.runtime_map import RuntimeMap
+from topdown_shooter.world.runtime_map import RuntimeMap, RuntimeMapObject
 
 
 @dataclass(frozen=True, slots=True)
@@ -662,6 +662,89 @@ class Render3DRenderer:
                 color,
                 draw_detail=draw_detail,
             )
+        self._draw_runtime_objects(scene)
+
+    def _draw_runtime_objects(self, scene: Render3DSceneSnapshot) -> None:
+        """Draw simple runtime object placeholders in the 3D gameplay scene."""
+        raylib = self._raylib
+        tile_size = self._config.render3d.tile_size
+        height_scale = self._config.render3d.height_scale
+        for map_object in self._runtime_map.runtime_objects:
+            if not self._runtime_object_is_visible(map_object, scene):
+                continue
+            color = self._scene_color(
+                self._runtime_object_color(map_object),
+                (map_object.origin.x + 0.5) * tile_size,
+                (map_object.origin.y + 0.5) * tile_size,
+                scene,
+            )
+            width = tile_size * self._runtime_object_width_scale(map_object)
+            height = tile_size * self._runtime_object_height_scale(map_object) * height_scale
+            if map_object.object_type == "trench":
+                height = 0.025 * height_scale
+            for tile in map_object.footprint:
+                if tile.x < scene.min_x or tile.x > scene.max_x:
+                    continue
+                if tile.y < scene.min_y or tile.y > scene.max_y:
+                    continue
+                center = raylib.Vector3(
+                    (tile.x + 0.5) * tile_size,
+                    height * 0.5,
+                    (tile.y + 0.5) * tile_size,
+                )
+                raylib.draw_cube(center, width, max(0.01, height), width, color)
+
+    def _runtime_object_is_visible(
+        self,
+        map_object: RuntimeMapObject,
+        scene: Render3DSceneSnapshot,
+    ) -> bool:
+        """Return whether a runtime object intersects the visible 3D scene bounds."""
+        return any(
+            scene.min_x <= tile.x <= scene.max_x and scene.min_y <= tile.y <= scene.max_y
+            for tile in map_object.footprint
+        )
+
+    def _runtime_object_width_scale(self, map_object: RuntimeMapObject) -> float:
+        """Return placeholder width scale for a runtime object."""
+        if map_object.object_type == "trench":
+            return 0.94
+        if map_object.object_type in {"ammo_cache", "medkit_cache"}:
+            return 0.42
+        if map_object.role in {"landmark", "defensive_landmark"}:
+            return 0.78
+        if map_object.cover_type in {"soft", "partial"}:
+            return 0.68
+        return 0.72
+
+    def _runtime_object_height_scale(self, map_object: RuntimeMapObject) -> float:
+        """Return placeholder height scale for a runtime object."""
+        if map_object.object_type == "trench":
+            return 0.02
+        if map_object.object_type in {"ammo_cache", "medkit_cache"}:
+            return 0.2
+        if map_object.role in {"landmark", "defensive_landmark"}:
+            return max(0.8, float(map_object.height) * 0.35)
+        if map_object.cover_type == "soft":
+            return 0.35
+        if map_object.cover_type == "partial":
+            return 0.45
+        return max(0.25, min(0.9, float(map_object.height) * 0.25))
+
+    def _runtime_object_color(self, map_object: RuntimeMapObject) -> object:
+        """Return a stable 3D placeholder color for a runtime object."""
+        raylib = self._raylib
+        if map_object.object_type in {"ammo_cache", "medkit_cache"}:
+            return raylib.Color(238, 207, 92, 245)
+        if map_object.object_type == "trench":
+            return raylib.Color(64, 45, 32, 235)
+        if map_object.cover_type == "soft" or map_object.object_type == "bush_thicket":
+            return raylib.Color(43, 132, 61, 220)
+        if map_object.object_type == "rusted_barrel":
+            return raylib.Color(144, 84, 42, 235)
+        if map_object.role in {"landmark", "defensive_landmark"}:
+            return raylib.Color(126, 91, 60, 240)
+        return raylib.Color(118, 118, 118, 235)
 
     def _draw_walkable_tile(
         self,

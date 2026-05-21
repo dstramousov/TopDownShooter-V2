@@ -33,6 +33,8 @@ class TileCollisionService:
             return 0.0
         if tile.y >= self._runtime_map.height_tiles:
             return 0.0
+        if tile in self._runtime_map.movement_blocked_tiles:
+            return 0.0
         return self._runtime_map.tiles[tile.y][tile.x].movement_speed_multiplier
 
     def is_circle_walkable(self, center: WorldCoord, radius_px: float) -> bool:
@@ -90,10 +92,17 @@ class TileCollisionService:
             True if the point is inside the map and on a walkable tile.
         """
         tile = world_to_tile(point, self._runtime_map.tile_size_px)
-        if tile.x < 0 or tile.y < 0:
-            return False
-        if tile.x >= self._runtime_map.width_tiles:
-            return False
-        if tile.y >= self._runtime_map.height_tiles:
-            return False
-        return self._runtime_map.tiles[tile.y][tile.x].walkable
+        return self._runtime_map.is_tile_walkable(tile)
+
+    def is_point_projectile_blocked(self, point: WorldCoord) -> bool:
+        """Return whether a world point blocks a hitscan/projectile ray.
+
+        Args:
+            point: World-space point.
+
+        Returns:
+            True if the point is outside the map, on a blocked tile, or on a
+            projectile-blocking runtime object.
+        """
+        tile = world_to_tile(point, self._runtime_map.tile_size_px)
+        return self._runtime_map.is_tile_projectile_blocked(tile)

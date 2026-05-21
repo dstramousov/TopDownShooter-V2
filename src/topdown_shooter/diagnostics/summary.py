@@ -17,6 +17,7 @@ def build_inspection_summary(package: GeneratedMapPackage, runtime_map: RuntimeM
     manifest = package.manifest
     report = package.validation_report
     tactical = runtime_map.tactical_summary
+    objects = runtime_map.runtime_objects_summary
     warning_codes = ", ".join(issue.code for issue in report.warnings) or "none"
 
     return "\n".join(
@@ -45,6 +46,14 @@ def build_inspection_summary(package: GeneratedMapPackage, runtime_map: RuntimeM
             f"- flank routes: {tactical.flank_routes}",
             f"- enemy spawns: {tactical.enemy_spawn_zones}",
             f"- fallback positions: {tactical.fallback_positions}",
+            "",
+            "Runtime objects:",
+            f"- total: {objects.total_objects}",
+            f"- types: {dict(objects.counts_by_type)}",
+            f"- movement blockers: {objects.movement_blockers}",
+            f"- projectile blockers: {objects.projectile_blockers}",
+            f"- footprint objects: {objects.footprint_objects}",
+            f"- elevation cells: {len(runtime_map.elevation.cells)}",
             "",
             "Validation:",
             f"- status: {report.status}",

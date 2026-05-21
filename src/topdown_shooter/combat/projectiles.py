@@ -352,7 +352,7 @@ class ProjectileSystem:
             )
             if not self._collision_service.is_point_inside_map(point):
                 return last_point, ProjectileEventType.EXPIRED, "out_of_map"
-            if not self._collision_service.is_point_walkable(point):
+            if self._collision_service.is_point_projectile_blocked(point):
                 return point, ProjectileEventType.HIT_WALL, "wall"
             last_point = point
             distance += self._RAYCAST_STEP_PX

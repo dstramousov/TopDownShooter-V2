@@ -706,3 +706,11 @@
 - Added renderer-facing weapon visual profiles for hitscan shot traces.
 - Pistol, AK-47, minigun, and enemy fire now use distinct tracer, trail, and muzzle-flash profiles in 2D and 3D.
 - Added visual profile tags to shot events/traces without changing damage, fire rate, spread, reload, AI, pathfinding, or hit detection.
+
+
+## v0.0.95 -> v0.0.96
+
+- Added runtime map object models for generator-provided gameplay objects and sparse elevation data.
+- RuntimeMapBuilder now parses `runtime_objects`, `runtime_objects_summary`-style counters, and `elevation` from tactical maps without requiring debug PNG layers.
+- Movement collision, pathfinding, and hitscan wall resolution now respect runtime object movement/projectile blockers where the generator marks them as blocking.
+- Added simple 2D and 3D gameplay placeholders for runtime objects without adding AI cover logic, loot pickups, trench stance mechanics, explosions, or balance changes.

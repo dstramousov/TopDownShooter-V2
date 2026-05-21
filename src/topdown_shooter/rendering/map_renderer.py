@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from topdown_shooter.config.runtime_config import WindowConfig
 from topdown_shooter.rendering.camera import RuntimeCamera
 from topdown_shooter.rendering.colors import build_tile_palette
-from topdown_shooter.world.runtime_map import RuntimeMap
+from topdown_shooter.world.runtime_map import RuntimeMap, RuntimeMapObject
 
 _VISIBLE_TILE_MARGIN = 2
 
@@ -78,12 +78,62 @@ class MapRenderer:
                 )
                 drawn_tiles += 1
 
+        self._draw_runtime_objects(
+            runtime_map=runtime_map,
+            min_x=min_x,
+            max_x=max_x,
+            min_y=min_y,
+            max_y=max_y,
+        )
+
         total_tiles = runtime_map.width_tiles * runtime_map.height_tiles
         return RenderStats(
             visible_tiles=drawn_tiles,
             drawn_tiles=drawn_tiles,
             total_tiles=total_tiles,
         )
+
+    def _draw_runtime_objects(
+        self,
+        *,
+        runtime_map: RuntimeMap,
+        min_x: int,
+        max_x: int,
+        min_y: int,
+        max_y: int,
+    ) -> None:
+        """Draw simple gameplay placeholders for visible runtime objects."""
+        tile_size = runtime_map.tile_size_px
+        for map_object in runtime_map.runtime_objects:
+            color = self._runtime_object_color(map_object)
+            for tile in map_object.footprint:
+                if tile.x < min_x or tile.x >= max_x or tile.y < min_y or tile.y >= max_y:
+                    continue
+                inset = max(2, tile_size // 5)
+                if map_object.object_type == "trench":
+                    inset = max(1, tile_size // 8)
+                self._raylib.draw_rectangle(
+                    tile.x * tile_size + inset,
+                    tile.y * tile_size + inset,
+                    max(1, tile_size - inset * 2),
+                    max(1, tile_size - inset * 2),
+                    color,
+                )
+
+    def _runtime_object_color(self, map_object: RuntimeMapObject) -> object:
+        """Return a stable placeholder color for a runtime map object."""
+        raylib = self._raylib
+        if map_object.object_type in {"ammo_cache", "medkit_cache"}:
+            return raylib.Color(238, 207, 92, 230)
+        if map_object.object_type == "trench":
+            return raylib.Color(84, 62, 44, 210)
+        if map_object.cover_type == "soft" or map_object.object_type == "bush_thicket":
+            return raylib.Color(40, 128, 58, 180)
+        if map_object.blocks_projectiles or map_object.blocks_movement:
+            return raylib.Color(105, 105, 105, 235)
+        if map_object.role in {"landmark", "defensive_landmark"}:
+            return raylib.Color(125, 88, 58, 225)
+        return raylib.Color(170, 150, 110, 200)
 
     def _calculate_visible_tile_bounds(
         self,

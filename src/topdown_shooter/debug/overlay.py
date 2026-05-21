@@ -228,6 +228,7 @@ class DebugOverlay:
         report = self._package.validation_report
         window = self._config.window
         tactical = self._runtime_map.tactical_summary
+        objects = self._runtime_map.runtime_objects_summary
         warning_codes = ", ".join(issue.code for issue in report.warnings) or "none"
 
         left_column = (
@@ -576,6 +577,18 @@ class DebugOverlay:
                     ),
                     DebugOverlayRow("Walkable", str(self._runtime_map.walkable_tile_count)),
                     DebugOverlayRow("Blocked", str(self._runtime_map.blocked_tile_count)),
+                ),
+            ),
+            DebugOverlaySection(
+                title="Runtime objects",
+                rows=(
+                    DebugOverlayRow("Total", str(objects.total_objects)),
+                    DebugOverlayRow("Types", str(len(objects.counts_by_type))),
+                    DebugOverlayRow("Move blockers", str(objects.movement_blockers)),
+                    DebugOverlayRow("Shot blockers", str(objects.projectile_blockers)),
+                    DebugOverlayRow("Vision blockers", str(objects.vision_blockers)),
+                    DebugOverlayRow("Footprints", str(objects.footprint_objects)),
+                    DebugOverlayRow("Elevation", str(len(self._runtime_map.elevation.cells))),
                 ),
             ),
             DebugOverlaySection(

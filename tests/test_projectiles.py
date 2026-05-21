@@ -191,3 +191,49 @@ def test_projectile_system_emits_expired_event_for_range_limit() -> None:
     ]
     assert events[1].owner == ProjectileOwner.ENEMY
     assert events[1].reason == "range"
+
+
+def test_projectile_system_stops_trace_on_runtime_object_projectile_blocker() -> None:
+    """Projectile system should stop hitscan traces on runtime object blockers."""
+    from topdown_shooter.world.runtime_map import RuntimeMapObject, RuntimeObjectsSummary
+
+    tiles = tuple(
+        tuple(RuntimeTile(symbol="+", walkable=True, movement_cost=1) for _x in range(5))
+        for _y in range(3)
+    )
+    blocker_tile = TileCoord(1, 1)
+    runtime_map = RuntimeMap(
+        width_tiles=5,
+        height_tiles=3,
+        tile_size_px=16,
+        tiles=tiles,
+        start_tile=TileCoord(0, 1),
+        goal_tile=TileCoord(4, 1),
+        tactical_summary=TacticalRuntimeSummary(
+            combat_zones=0,
+            cover_points=0,
+            choke_points=0,
+            flank_routes=0,
+            enemy_spawn_zones=0,
+            fallback_positions=0,
+        ),
+        runtime_objects=(
+            RuntimeMapObject(
+                object_id="stone_000",
+                object_type="stone_chunk",
+                role="hard_cover",
+                origin=blocker_tile,
+                footprint=(blocker_tile,),
+                blocks_projectiles=True,
+            ),
+        ),
+        runtime_objects_summary=RuntimeObjectsSummary(total_objects=1, projectile_blockers=1),
+        projectile_blocked_tiles=frozenset({blocker_tile}),
+    )
+    system = ProjectileSystem(TileCollisionService(runtime_map))
+
+    _spawn_default(system, WorldCoord(8.0, 24.0), direction_x=1.0, direction_y=0.0)
+    system.finalize_hitscan_resolution()
+
+    assert system.projectiles[0].position == WorldCoord(16.0, 24.0)
+    assert system.events[-1].event_type == ProjectileEventType.HIT_WALL
