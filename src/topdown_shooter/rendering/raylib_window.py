@@ -9,6 +9,7 @@ from topdown_shooter.combat.projectiles import ProjectileSystem
 from topdown_shooter.combat.weapons import WeaponConfigLoader, WeaponController, WeaponState
 from topdown_shooter.config.runtime_config import RuntimeConfig
 from topdown_shooter.debug.overlay import DebugOverlay
+from topdown_shooter.gameplay.camera_feedback import CameraFeedbackSystem
 from topdown_shooter.gameplay.combat_runtime import update_combat_runtime
 from topdown_shooter.gameplay.explosions import RuntimeExplosionSystem
 from topdown_shooter.gameplay.interactions import RuntimeObjectInteractionSystem
@@ -188,6 +189,7 @@ class RaylibWindow:
             raylib=self._raylib,
             window=config.window,
         )
+        self._camera_feedback = CameraFeedbackSystem()
         self._player_hud = PlayerHud(
             raylib=self._raylib,
             config=config.hud,
@@ -245,7 +247,7 @@ class RaylibWindow:
                         weapon_fire_events=self._weapon_fire_events_last_update,
                         player_speed_px_per_second=self._player_speed_px_per_second,
                     )
-                    self._explosion_system.process_projectile_events(
+                    explosion_results = self._explosion_system.process_projectile_events(
                         events=self._projectile_system.events,
                         runtime_map=self._runtime_map,
                         player=self._player,
@@ -255,13 +257,30 @@ class RaylibWindow:
                     projectile_events = self._projectile_system.consume_events()
                     self._projectile_renderer.add_events(projectile_events)
                     self._combat_feedback.add_events(projectile_events)
+                    self._camera_feedback.add_projectile_events(
+                        projectile_events,
+                        player_position=self._player.world_position,
+                        tile_size_px=self._runtime_map.tile_size_px,
+                    )
+                    self._camera_feedback.add_explosions(
+                        explosion_results,
+                        player_position=self._player.world_position,
+                        tile_size_px=self._runtime_map.tile_size_px,
+                    )
                     self._camera_rig.update_follow_target(
                         player_position=self._player.world_position,
                         frame_time=frame_time,
                         aim_direction_x=self._player.aim.direction_x,
                         aim_direction_y=self._player.aim.direction_y,
                     )
-                camera = self._camera_rig.build_raylib_camera(raylib)
+                active_frame_time = frame_time if not ui_input.blocks_gameplay else 0.0
+                self._camera_feedback.update(active_frame_time)
+                camera_offset = self._camera_feedback.offset
+                camera = self._camera_rig.build_raylib_camera(
+                    raylib,
+                    shake_offset_x=camera_offset.x,
+                    shake_offset_y=camera_offset.y,
+                )
 
                 raylib.begin_drawing()
                 raylib.clear_background(raylib.BLACK)

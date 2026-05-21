@@ -596,3 +596,41 @@ def test_render3d_distance_brightness_can_be_disabled() -> None:
         z=0.5,
         scene=scene,
     ) == 1.0
+
+
+def test_render3d_vegetation_config_loads_from_default_config() -> None:
+    """Default config should define 3D vegetation scatter models."""
+    config = RuntimeConfigLoader().load_default()
+    vegetation = config.render3d.vegetation
+
+    assert vegetation.enabled is True
+    assert vegetation.max_draws_per_frame == 450
+    assert vegetation.max_distance_tiles == 28
+    assert vegetation.tree_symbols == ("T",)
+    assert vegetation.bush_symbols == ("b", "f", "m")
+    assert len(vegetation.tree_models) == 8
+    assert len(vegetation.bush_models) == 4
+    assert vegetation.tree_models[0].path == "res/models/tree-large.glb"
+    assert vegetation.bush_models[0].path == "res/models/grass.glb"
+
+
+def test_render3d_vegetation_selection_is_deterministic() -> None:
+    """Vegetation scatter choices should be stable for a tile coordinate."""
+    config = RuntimeConfigLoader().load_default()
+    renderer = object.__new__(Render3DRenderer)
+
+    first = renderer._select_weighted_vegetation_entry(
+        12,
+        34,
+        "tree",
+        config.render3d.vegetation.tree_models,
+    )
+    second = renderer._select_weighted_vegetation_entry(
+        12,
+        34,
+        "tree",
+        config.render3d.vegetation.tree_models,
+    )
+
+    assert first == second
+    assert first in config.render3d.vegetation.tree_models

@@ -756,3 +756,17 @@
 - Added MVP explosions for `rusted_barrel` runtime objects hit by hitscan shots.
 - Added radial explosion damage for player and enemies with one-shot destroyed barrel state.
 - Added material-aware explosion impact markers in 2D and 3D without chain reactions or object destruction propagation.
+
+## v0.1.2 -> v0.1.3
+
+- Added a shared camera feedback system for deterministic shot recoil, nearby impacts, player hits and barrel explosions.
+- Applied camera feedback to both 2D and 3D renderers through renderer-specific camera offsets without changing weapon balance or movement controls.
+- Explosion feedback now produces a stronger distance-based screen punch, while weapon profiles use small clamped recoil impulses for readability.
+- Kept the pass visual-only: no hit-stop, blood/gore, sound ducking, AI cover logic, damage changes or physics recoil.
+
+## v0.1.3 -> v0.1.4
+
+- Added real 3D vegetation model scatter config and renderer integration for tree and low-vegetation tiles.
+- Loaded GLB vegetation models from `res/models` with deterministic per-tile model, rotation, scale and offset selection.
+- Added primitive fallbacks and F12 diagnostics for loaded models, failed paths, visible vegetation tiles, model draws and fallback draws.
+- Kept 2D rendering, gameplay collision, AI, loot, explosions and weapon balance unchanged.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 import math
+from pathlib import Path
 
 from topdown_shooter.combat.enemies import EnemyHitMarkerState, EnemyState, EnemySystem
 from topdown_shooter.combat.projectiles import (
@@ -17,10 +18,15 @@ from topdown_shooter.combat.projectiles import (
 )
 from topdown_shooter.combat.weapons import WeaponController
 from topdown_shooter.config.runtime_config import RuntimeConfig
+from topdown_shooter.gameplay.camera_feedback import CameraFeedbackSystem
 from topdown_shooter.gameplay.combat_runtime import update_combat_runtime
 from topdown_shooter.gameplay.explosions import RuntimeExplosionSystem
 from topdown_shooter.gameplay.interactions import RuntimeObjectInteractionSystem
-from topdown_shooter.experimental.render3d.camera import Render3DFollowCamera
+from topdown_shooter.experimental.render3d.camera import (
+    Render3DCameraState,
+    Render3DFollowCamera,
+    Render3DVector,
+)
 from topdown_shooter.experimental.render3d.scene import (
     Render3DSceneBuilder,
     Render3DSceneSnapshot,
@@ -92,6 +98,25 @@ class _Render3DProjectileTrailState:
     key: tuple[int, int, int, int, str, str]
     age_seconds: float = 0.0
     lifetime_seconds: float = 0.075
+
+
+@dataclass(slots=True)
+class _Render3DVegetationFrameStats:
+    """Per-frame diagnostics for 3D vegetation model scatter."""
+
+    visible_tree_tiles: int = 0
+    visible_bush_tiles: int = 0
+    model_draws: int = 0
+    primitive_fallbacks: int = 0
+
+
+@dataclass(slots=True)
+class _Render3DLoadedModel:
+    """Loaded 3D model handle and its source path."""
+
+    path: str
+    resolved_path: Path
+    model: object
 
 
 class Render3DRenderer:
@@ -176,6 +201,7 @@ class Render3DRenderer:
             raylib=self._raylib,
             window=config.window,
         )
+        self._camera_feedback = CameraFeedbackSystem()
         self._distance_fade_enabled = config.render3d.distance_fade.enabled
         self._enemy_vision_enabled = config.render3d.enemy_vision.enabled
         self._player_hud = PlayerHud(
@@ -197,6 +223,9 @@ class Render3DRenderer:
             renderer_name="3D",
             help_lines=self._build_help_lines(config),
         )
+        self._vegetation_models: dict[str, _Render3DLoadedModel] = {}
+        self._vegetation_failed_paths: tuple[str, ...] = ()
+        self._vegetation_stats = _Render3DVegetationFrameStats()
 
     def run_follow_preview(
         self,
@@ -227,6 +256,7 @@ class Render3DRenderer:
         window = self._config.window
         self._configure_raylib_logging()
         raylib.init_window(window.width, window.height, f"{window.title} - 3D experiment")
+        self._load_vegetation_models()
         raylib.set_exit_key(raylib.KEY_NULL)
         self._apply_initial_window_position()
         raylib.set_target_fps(window.target_fps)
@@ -271,7 +301,7 @@ class Render3DRenderer:
                         weapon_fire_events=self._weapon_fire_events_last_update,
                         player_speed_px_per_second=self._player_speed_px_per_second(),
                     )
-                    self._explosion_system.process_projectile_events(
+                    explosion_results = self._explosion_system.process_projectile_events(
                         events=projectile_system.events,
                         runtime_map=self._runtime_map,
                         player=player,
@@ -281,6 +311,16 @@ class Render3DRenderer:
                     projectile_events = projectile_system.consume_events()
                     self._add_projectile_events(projectile_events)
                     self._combat_feedback.add_events(projectile_events)
+                    self._camera_feedback.add_projectile_events(
+                        projectile_events,
+                        player_position=player.world_position,
+                        tile_size_px=self._runtime_map.tile_size_px,
+                    )
+                    self._camera_feedback.add_explosions(
+                        explosion_results,
+                        player_position=player.world_position,
+                        tile_size_px=self._runtime_map.tile_size_px,
+                    )
                     scene = scene_builder.build_snapshot(player.tile)
                 visible_enemies = self._visible_enemies(
                     enemies=enemy_system.enemies,
@@ -315,6 +355,8 @@ class Render3DRenderer:
                 self._update_muzzle_flashes(active_frame_time)
                 self._update_projectile_trails(active_frame_time)
                 self._combat_feedback.update(active_frame_time)
+                self._camera_feedback.update(active_frame_time)
+                camera_state = self._apply_camera_feedback(camera_state)
                 camera = raylib.Camera3D(
                     raylib.Vector3(
                         camera_state.position.x,
@@ -383,6 +425,7 @@ class Render3DRenderer:
                 self._ui.draw()
                 raylib.end_drawing()
         finally:
+            self._unload_vegetation_models()
             self._player_hud.unload()
             self._debug_overlay.unload()
             self._ui.unload()
@@ -663,6 +706,7 @@ class Render3DRenderer:
             scene: Visible 3D scene snapshot.
         """
         raylib = self._raylib
+        self._reset_vegetation_frame_stats()
         tile_size = self._config.render3d.tile_size
         height_scale = self._config.render3d.height_scale
         ground_y = -0.03 * height_scale
@@ -693,6 +737,9 @@ class Render3DRenderer:
                     color,
                     draw_detail=draw_detail,
                 )
+                self._draw_vegetation_for_tile(primitive, center, scene)
+                continue
+            if self._draw_vegetation_for_tile(primitive, center, scene):
                 continue
             self._draw_blocking_tile(
                 center,
@@ -701,6 +748,223 @@ class Render3DRenderer:
                 draw_detail=draw_detail,
             )
         self._draw_runtime_objects(scene)
+
+    def _reset_vegetation_frame_stats(self) -> None:
+        """Reset per-frame vegetation scatter counters."""
+        self._vegetation_stats = _Render3DVegetationFrameStats()
+
+    def _draw_vegetation_for_tile(
+        self,
+        primitive: Render3DTilePrimitive,
+        center: object,
+        scene: Render3DSceneSnapshot,
+    ) -> bool:
+        """Draw a deterministic vegetation model for a map tile when configured.
+
+        Args:
+            primitive: Tile primitive being rendered.
+            center: World-space 3D tile center.
+            scene: Current scene snapshot.
+
+        Returns:
+            True when a model was drawn and primitive fallback should be skipped.
+        """
+        vegetation = self._config.render3d.vegetation
+        if not vegetation.enabled:
+            return False
+        if vegetation.max_draws_per_frame <= 0:
+            return False
+        if primitive.distance_squared > vegetation.max_distance_tiles * vegetation.max_distance_tiles:
+            return False
+
+        if primitive.symbol in vegetation.tree_symbols:
+            self._vegetation_stats.visible_tree_tiles += 1
+            return self._draw_selected_vegetation_model(
+                primitive=primitive,
+                center=center,
+                scene=scene,
+                entries=vegetation.tree_models,
+                max_offset_tiles=vegetation.max_tree_offset_tiles,
+                salt="tree",
+            )
+        if primitive.symbol in vegetation.bush_symbols:
+            self._vegetation_stats.visible_bush_tiles += 1
+            return self._draw_selected_vegetation_model(
+                primitive=primitive,
+                center=center,
+                scene=scene,
+                entries=vegetation.bush_models,
+                max_offset_tiles=vegetation.max_bush_offset_tiles,
+                salt="bush",
+            )
+        return False
+
+    def _draw_selected_vegetation_model(
+        self,
+        *,
+        primitive: Render3DTilePrimitive,
+        center: object,
+        scene: Render3DSceneSnapshot,
+        entries: tuple[object, ...],
+        max_offset_tiles: float,
+        salt: str,
+    ) -> bool:
+        """Draw a deterministic weighted vegetation model for one tile."""
+        if self._vegetation_stats.model_draws >= self._config.render3d.vegetation.max_draws_per_frame:
+            self._vegetation_stats.primitive_fallbacks += 1
+            return False
+        entry = self._select_weighted_vegetation_entry(primitive.x, primitive.y, salt, entries)
+        if entry is None:
+            self._vegetation_stats.primitive_fallbacks += 1
+            return False
+        loaded_model = self._vegetation_models.get(entry.path)
+        if loaded_model is None:
+            self._vegetation_stats.primitive_fallbacks += 1
+            return False
+        draw_model_ex = getattr(self._raylib, "draw_model_ex", None)
+        if not callable(draw_model_ex):
+            self._vegetation_stats.primitive_fallbacks += 1
+            return False
+
+        tile_size = self._config.render3d.tile_size
+        offset_x = self._signed_vegetation_value(primitive.x, primitive.y, f"{salt}:x")
+        offset_z = self._signed_vegetation_value(primitive.x, primitive.y, f"{salt}:z")
+        scale_value = self._lerp(
+            entry.min_scale,
+            entry.max_scale,
+            self._vegetation_unit_value(primitive.x, primitive.y, f"{salt}:scale"),
+        )
+        rotation_degrees = 360.0 * self._vegetation_unit_value(
+            primitive.x,
+            primitive.y,
+            f"{salt}:rot",
+        )
+        brightness = self._distance_brightness_for_scene_position(center.x, center.z, scene)
+        tint = self._vegetation_tint(brightness)
+        position = self._raylib.Vector3(
+            center.x + offset_x * max_offset_tiles * tile_size,
+            0.0,
+            center.z + offset_z * max_offset_tiles * tile_size,
+        )
+        axis = self._raylib.Vector3(0.0, 1.0, 0.0)
+        scale = self._raylib.Vector3(scale_value, scale_value, scale_value)
+        draw_model_ex(loaded_model.model, position, axis, rotation_degrees, scale, tint)
+        self._vegetation_stats.model_draws += 1
+        return True
+
+    def _select_weighted_vegetation_entry(
+        self,
+        x: int,
+        y: int,
+        salt: str,
+        entries: tuple[object, ...],
+    ) -> object | None:
+        """Select a vegetation model entry deterministically by tile coordinate."""
+        if not entries:
+            return None
+        total_weight = sum(entry.weight for entry in entries)
+        if total_weight <= 0:
+            return None
+        pick = int(self._vegetation_unit_value(x, y, f"{salt}:model") * total_weight)
+        cumulative = 0
+        for entry in entries:
+            cumulative += entry.weight
+            if pick < cumulative:
+                return entry
+        return entries[-1]
+
+    @classmethod
+    def _vegetation_unit_value(cls, x: int, y: int, salt: str) -> float:
+        """Return a deterministic value in the 0..1 range for a tile."""
+        value = cls._vegetation_hash(x, y, salt) & 0xFFFFFFFF
+        return value / 0xFFFFFFFF
+
+    @classmethod
+    def _signed_vegetation_value(cls, x: int, y: int, salt: str) -> float:
+        """Return a deterministic value in the -1..1 range for a tile."""
+        return cls._vegetation_unit_value(x, y, salt) * 2.0 - 1.0
+
+    @staticmethod
+    def _vegetation_hash(x: int, y: int, salt: str) -> int:
+        """Hash tile coordinates and a salt without using runtime randomness."""
+        value = 2166136261
+        for part in (x, y, salt):
+            for byte in str(part).encode("utf-8"):
+                value ^= byte
+                value = (value * 16777619) & 0xFFFFFFFF
+        return value
+
+    @staticmethod
+    def _lerp(start: float, end: float, ratio: float) -> float:
+        """Linearly interpolate between two floats."""
+        return start + (end - start) * max(0.0, min(1.0, ratio))
+
+    def _vegetation_tint(self, brightness: float) -> object:
+        """Return model tint adjusted by distance fade brightness."""
+        raylib = self._raylib
+        brightness = max(0.0, min(1.0, brightness))
+        channel = int(255 * brightness)
+        color_factory = getattr(raylib, "Color", None)
+        if callable(color_factory):
+            return color_factory(channel, channel, channel, 255)
+        return getattr(raylib, "WHITE", getattr(raylib, "RAYWHITE", None))
+
+    def _load_vegetation_models(self) -> None:
+        """Load configured vegetation models after the raylib window exists."""
+        vegetation = self._config.render3d.vegetation
+        if not vegetation.enabled:
+            return
+        load_model = getattr(self._raylib, "load_model", None)
+        if not callable(load_model):
+            self._vegetation_failed_paths = tuple(
+                sorted({entry.path for entry in (*vegetation.tree_models, *vegetation.bush_models)}),
+            )
+            return
+        failed_paths: list[str] = []
+        for entry in (*vegetation.tree_models, *vegetation.bush_models):
+            if entry.path in self._vegetation_models or entry.path in failed_paths:
+                continue
+            resolved_path = self._resolve_vegetation_model_path(entry.path)
+            if resolved_path is None:
+                failed_paths.append(entry.path)
+                continue
+            try:
+                model = load_model(str(resolved_path))
+            except Exception:
+                failed_paths.append(entry.path)
+                continue
+            self._vegetation_models[entry.path] = _Render3DLoadedModel(
+                path=entry.path,
+                resolved_path=resolved_path,
+                model=model,
+            )
+        self._vegetation_failed_paths = tuple(failed_paths)
+
+    def _resolve_vegetation_model_path(self, model_path: str) -> Path | None:
+        """Resolve a vegetation model path from common runtime roots."""
+        raw_path = Path(model_path).expanduser()
+        if raw_path.is_absolute():
+            return raw_path if raw_path.is_file() else None
+        candidates = (
+            Path.cwd() / raw_path,
+            self._package.package_dir.parent / raw_path,
+            Path(__file__).resolve().parents[4] / raw_path,
+        )
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate.resolve()
+        return None
+
+    def _unload_vegetation_models(self) -> None:
+        """Unload vegetation models loaded by raylib."""
+        unload_model = getattr(self._raylib, "unload_model", None)
+        if callable(unload_model):
+            for loaded_model in self._vegetation_models.values():
+                try:
+                    unload_model(loaded_model.model)
+                except Exception:
+                    continue
+        self._vegetation_models.clear()
 
     def _draw_runtime_objects(self, scene: Render3DSceneSnapshot) -> None:
         """Draw readable runtime object primitives in the 3D gameplay scene."""
@@ -1506,6 +1770,30 @@ class Render3DRenderer:
                 raylib.GOLD,
             )
 
+    def _apply_camera_feedback(
+        self,
+        camera_state: Render3DCameraState,
+    ) -> Render3DCameraState:
+        """Apply unsmoothed screen-punch camera feedback to a 3D camera state."""
+        offset = self._camera_feedback.offset
+        tile_size_px = self._runtime_map.tile_size_px
+        if tile_size_px <= 0 or (abs(offset.x) <= 0.001 and abs(offset.y) <= 0.001):
+            return camera_state
+        offset_x = offset.x / tile_size_px
+        offset_z = offset.y / tile_size_px
+        return Render3DCameraState(
+            position=Render3DVector(
+                x=camera_state.position.x + offset_x,
+                y=camera_state.position.y,
+                z=camera_state.position.z + offset_z,
+            ),
+            target=Render3DVector(
+                x=camera_state.target.x + offset_x,
+                y=camera_state.target.y,
+                z=camera_state.target.z + offset_z,
+            ),
+        )
+
     def _add_projectile_events(self, events: tuple[ProjectileEvent, ...]) -> None:
         """Add projectile feedback events used by short-lived 3D visuals."""
         for event in events:
@@ -2063,6 +2351,13 @@ class Render3DRenderer:
                     DebugOverlayRow("Visible projectiles", str(len(visible_projectiles))),
                     DebugOverlayRow("Visible impacts", str(len(visible_impacts))),
                     DebugOverlayRow("Visible enemy hits", str(len(visible_enemy_hit_markers))),
+                    DebugOverlayRow("Vegetation loaded", str(len(self._vegetation_models))),
+                    DebugOverlayRow("Vegetation failed", str(len(self._vegetation_failed_paths))),
+                    DebugOverlayRow("Vegetation trees", str(self._vegetation_stats.visible_tree_tiles)),
+                    DebugOverlayRow("Vegetation bushes", str(self._vegetation_stats.visible_bush_tiles)),
+                    DebugOverlayRow("Vegetation draws", str(self._vegetation_stats.model_draws)),
+                    DebugOverlayRow("Vegetation fallbacks", str(self._vegetation_stats.primitive_fallbacks)),
+                    DebugOverlayRow("Vegetation first fail", self._vegetation_failed_paths[0] if self._vegetation_failed_paths else "-"),
                 ),
             ),
             DebugOverlaySection(

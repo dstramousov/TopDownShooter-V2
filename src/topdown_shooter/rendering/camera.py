@@ -139,11 +139,19 @@ class CameraRig:
         """Return the current camera state."""
         return self._state
 
-    def build_raylib_camera(self, raylib: object) -> object:
+    def build_raylib_camera(
+        self,
+        raylib: object,
+        *,
+        shake_offset_x: float = 0.0,
+        shake_offset_y: float = 0.0,
+    ) -> object:
         """Build a raylib Camera2D from the current state.
 
         Args:
             raylib: Imported pyray module.
+            shake_offset_x: Horizontal camera feedback offset in world pixels.
+            shake_offset_y: Vertical camera feedback offset in world pixels.
 
         Returns:
             Raylib Camera2D instance.
@@ -153,7 +161,10 @@ class CameraRig:
                 self._window_config.width / 2,
                 self._window_config.height / 2,
             ),
-            raylib.Vector2(self._state.target.x, self._state.target.y),
+            raylib.Vector2(
+                self._state.target.x + shake_offset_x,
+                self._state.target.y + shake_offset_y,
+            ),
             0.0,
             self._state.zoom,
         )
