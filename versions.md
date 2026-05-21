@@ -770,3 +770,10 @@
 - Loaded GLB vegetation models from `res/models` with deterministic per-tile model, rotation, scale and offset selection.
 - Added primitive fallbacks and F12 diagnostics for loaded models, failed paths, visible vegetation tiles, model draws and fallback draws.
 - Kept 2D rendering, gameplay collision, AI, loot, explosions and weapon balance unchanged.
+
+
+## v0.1.4 -> v0.1.5
+
+- Added shared vegetation colormap loading for 3D GLB vegetation models with support for `res/colormap.png`, `res/models/colormap.png`, and the original `Textures/colormap.png` layout.
+- Bound the loaded colormap to vegetation model materials when raylib exposes material texture APIs, avoiding white fallback models when GLB external textures are not resolved automatically.
+- Extended F12 vegetation diagnostics with texture source, texture lookup failures, and textured/untextured draw counters without changing scatter, gameplay collision, AI, loot, explosions, or weapon balance.

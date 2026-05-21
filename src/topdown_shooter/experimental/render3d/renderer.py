@@ -107,6 +107,8 @@ class _Render3DVegetationFrameStats:
     visible_tree_tiles: int = 0
     visible_bush_tiles: int = 0
     model_draws: int = 0
+    textured_model_draws: int = 0
+    untextured_model_draws: int = 0
     primitive_fallbacks: int = 0
 
 
@@ -117,6 +119,7 @@ class _Render3DLoadedModel:
     path: str
     resolved_path: Path
     model: object
+    texture_applied: bool = False
 
 
 class Render3DRenderer:
@@ -225,6 +228,9 @@ class Render3DRenderer:
         )
         self._vegetation_models: dict[str, _Render3DLoadedModel] = {}
         self._vegetation_failed_paths: tuple[str, ...] = ()
+        self._vegetation_texture: object | None = None
+        self._vegetation_texture_path: Path | None = None
+        self._vegetation_texture_failed_paths: tuple[str, ...] = ()
         self._vegetation_stats = _Render3DVegetationFrameStats()
 
     def run_follow_preview(
@@ -256,6 +262,7 @@ class Render3DRenderer:
         window = self._config.window
         self._configure_raylib_logging()
         raylib.init_window(window.width, window.height, f"{window.title} - 3D experiment")
+        self._load_vegetation_texture()
         self._load_vegetation_models()
         raylib.set_exit_key(raylib.KEY_NULL)
         self._apply_initial_window_position()
@@ -426,6 +433,7 @@ class Render3DRenderer:
                 raylib.end_drawing()
         finally:
             self._unload_vegetation_models()
+            self._unload_vegetation_texture()
             self._player_hud.unload()
             self._debug_overlay.unload()
             self._ui.unload()
@@ -850,6 +858,10 @@ class Render3DRenderer:
         scale = self._raylib.Vector3(scale_value, scale_value, scale_value)
         draw_model_ex(loaded_model.model, position, axis, rotation_degrees, scale, tint)
         self._vegetation_stats.model_draws += 1
+        if loaded_model.texture_applied:
+            self._vegetation_stats.textured_model_draws += 1
+        else:
+            self._vegetation_stats.untextured_model_draws += 1
         return True
 
     def _select_weighted_vegetation_entry(
@@ -933,12 +945,91 @@ class Render3DRenderer:
             except Exception:
                 failed_paths.append(entry.path)
                 continue
+            texture_applied = self._apply_vegetation_texture_to_model(model)
             self._vegetation_models[entry.path] = _Render3DLoadedModel(
                 path=entry.path,
                 resolved_path=resolved_path,
                 model=model,
+                texture_applied=texture_applied,
             )
         self._vegetation_failed_paths = tuple(failed_paths)
+
+    def _load_vegetation_texture(self) -> None:
+        """Load the shared vegetation colormap texture when available."""
+        vegetation = self._config.render3d.vegetation
+        if not vegetation.enabled:
+            return
+        load_texture = getattr(self._raylib, "load_texture", None)
+        if not callable(load_texture):
+            self._vegetation_texture_failed_paths = tuple(
+                str(path) for path in self._vegetation_texture_candidates()
+            )
+            return
+        failed_paths: list[str] = []
+        for candidate in self._vegetation_texture_candidates():
+            if not candidate.is_file():
+                failed_paths.append(str(candidate))
+                continue
+            try:
+                self._vegetation_texture = load_texture(str(candidate))
+            except Exception:
+                failed_paths.append(str(candidate))
+                continue
+            self._vegetation_texture_path = candidate.resolve()
+            self._vegetation_texture_failed_paths = tuple(failed_paths)
+            return
+        self._vegetation_texture_failed_paths = tuple(failed_paths)
+
+    def _vegetation_texture_candidates(self) -> tuple[Path, ...]:
+        """Return supported shared vegetation colormap locations."""
+        project_root = Path(__file__).resolve().parents[4]
+        package_parent = self._package.package_dir.parent
+        return (
+            Path.cwd() / "res" / "models" / "Textures" / "colormap.png",
+            Path.cwd() / "res" / "Textures" / "colormap.png",
+            Path.cwd() / "res" / "models" / "colormap.png",
+            Path.cwd() / "res" / "colormap.png",
+            package_parent / "res" / "models" / "Textures" / "colormap.png",
+            package_parent / "res" / "Textures" / "colormap.png",
+            package_parent / "res" / "models" / "colormap.png",
+            package_parent / "res" / "colormap.png",
+            project_root / "res" / "models" / "Textures" / "colormap.png",
+            project_root / "res" / "Textures" / "colormap.png",
+            project_root / "res" / "models" / "colormap.png",
+            project_root / "res" / "colormap.png",
+        )
+
+    def _apply_vegetation_texture_to_model(self, model: object) -> bool:
+        """Bind the shared colormap to all model materials when possible."""
+        if self._vegetation_texture is None:
+            return False
+        set_material_texture = getattr(self._raylib, "set_material_texture", None)
+        if not callable(set_material_texture):
+            return False
+        material_map = self._vegetation_material_map_constant()
+        if material_map is None:
+            return False
+        materials = getattr(model, "materials", None)
+        material_count = int(getattr(model, "materialCount", 0) or getattr(model, "material_count", 0) or 0)
+        if materials is None or material_count <= 0:
+            return False
+        applied = False
+        for index in range(material_count):
+            try:
+                material = materials[index]
+                set_material_texture(material, material_map, self._vegetation_texture)
+            except Exception:
+                continue
+            applied = True
+        return applied
+
+    def _vegetation_material_map_constant(self) -> int | None:
+        """Return the raylib material map constant for albedo/diffuse textures."""
+        for name in ("MATERIAL_MAP_ALBEDO", "MATERIAL_MAP_DIFFUSE"):
+            value = getattr(self._raylib, name, None)
+            if value is not None:
+                return int(value)
+        return None
 
     def _resolve_vegetation_model_path(self, model_path: str) -> Path | None:
         """Resolve a vegetation model path from common runtime roots."""
@@ -965,6 +1056,19 @@ class Render3DRenderer:
                 except Exception:
                     continue
         self._vegetation_models.clear()
+
+    def _unload_vegetation_texture(self) -> None:
+        """Unload the shared vegetation colormap texture."""
+        if self._vegetation_texture is None:
+            return
+        unload_texture = getattr(self._raylib, "unload_texture", None)
+        if callable(unload_texture):
+            try:
+                unload_texture(self._vegetation_texture)
+            except Exception:
+                pass
+        self._vegetation_texture = None
+        self._vegetation_texture_path = None
 
     def _draw_runtime_objects(self, scene: Render3DSceneSnapshot) -> None:
         """Draw readable runtime object primitives in the 3D gameplay scene."""
@@ -2353,9 +2457,13 @@ class Render3DRenderer:
                     DebugOverlayRow("Visible enemy hits", str(len(visible_enemy_hit_markers))),
                     DebugOverlayRow("Vegetation loaded", str(len(self._vegetation_models))),
                     DebugOverlayRow("Vegetation failed", str(len(self._vegetation_failed_paths))),
+                    DebugOverlayRow("Vegetation texture", self._format_vegetation_texture_source()),
+                    DebugOverlayRow("Vegetation tex fail", self._format_vegetation_texture_failure()),
                     DebugOverlayRow("Vegetation trees", str(self._vegetation_stats.visible_tree_tiles)),
                     DebugOverlayRow("Vegetation bushes", str(self._vegetation_stats.visible_bush_tiles)),
                     DebugOverlayRow("Vegetation draws", str(self._vegetation_stats.model_draws)),
+                    DebugOverlayRow("Vegetation textured", str(self._vegetation_stats.textured_model_draws)),
+                    DebugOverlayRow("Vegetation untextured", str(self._vegetation_stats.untextured_model_draws)),
                     DebugOverlayRow("Vegetation fallbacks", str(self._vegetation_stats.primitive_fallbacks)),
                     DebugOverlayRow("Vegetation first fail", self._vegetation_failed_paths[0] if self._vegetation_failed_paths else "-"),
                 ),
@@ -2451,6 +2559,22 @@ class Render3DRenderer:
     def _configure_raylib_logging(self) -> None:
         """Reduce raylib logging noise before opening the 3D experiment window."""
         configure_raylib_logging(self._raylib)
+
+
+    def _format_vegetation_texture_source(self) -> str:
+        """Return a compact debug string for the loaded vegetation texture."""
+        if self._vegetation_texture_path is None:
+            return "-"
+        try:
+            return str(self._vegetation_texture_path.relative_to(Path.cwd()))
+        except ValueError:
+            return str(self._vegetation_texture_path)
+
+    def _format_vegetation_texture_failure(self) -> str:
+        """Return a compact debug string for the first texture lookup failure."""
+        if not self._vegetation_texture_failed_paths:
+            return "-"
+        return self._vegetation_texture_failed_paths[0]
 
     def _format_debug_binding(self) -> str:
         """Return the configured debug-overlay binding for diagnostics."""
