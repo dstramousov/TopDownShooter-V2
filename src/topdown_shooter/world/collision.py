@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from topdown_shooter.world.coordinates import WorldCoord, world_to_tile
-from topdown_shooter.world.runtime_map import RuntimeMap
+from topdown_shooter.world.runtime_map import RuntimeMap, RuntimeMapObject
 
 
 class TileCollisionService:
@@ -106,3 +106,32 @@ class TileCollisionService:
         """
         tile = world_to_tile(point, self._runtime_map.tile_size_px)
         return self._runtime_map.is_tile_projectile_blocked(tile)
+
+    def projectile_blocking_object_at(self, point: WorldCoord) -> RuntimeMapObject | None:
+        """Return the runtime object blocking projectiles at a world point.
+
+        Args:
+            point: World-space point.
+
+        Returns:
+            Runtime object that blocks the point, or ``None``.
+        """
+        tile = world_to_tile(point, self._runtime_map.tile_size_px)
+        if not self._runtime_map.is_inside_tile_bounds(tile):
+            return None
+        return self._runtime_map.projectile_blocker_at(tile)
+
+    def projectile_block_reason_at(self, point: WorldCoord) -> str:
+        """Return a stable reason tag for a projectile-blocking point.
+
+        Args:
+            point: World-space point.
+
+        Returns:
+            ``object:<type>:<id>`` for runtime object blockers, otherwise
+            ``wall`` for base map blockers.
+        """
+        map_object = self.projectile_blocking_object_at(point)
+        if map_object is None:
+            return "wall"
+        return f"object:{map_object.object_type}:{map_object.object_id}"

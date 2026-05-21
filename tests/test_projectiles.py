@@ -229,6 +229,14 @@ def test_projectile_system_stops_trace_on_runtime_object_projectile_blocker() ->
         ),
         runtime_objects_summary=RuntimeObjectsSummary(total_objects=1, projectile_blockers=1),
         projectile_blocked_tiles=frozenset({blocker_tile}),
+        runtime_objects_by_tile={blocker_tile: (RuntimeMapObject(
+            object_id="stone_000",
+            object_type="stone_chunk",
+            role="hard_cover",
+            origin=blocker_tile,
+            footprint=(blocker_tile,),
+            blocks_projectiles=True,
+        ),)},
     )
     system = ProjectileSystem(TileCollisionService(runtime_map))
 
@@ -237,3 +245,4 @@ def test_projectile_system_stops_trace_on_runtime_object_projectile_blocker() ->
 
     assert system.projectiles[0].position == WorldCoord(16.0, 24.0)
     assert system.events[-1].event_type == ProjectileEventType.HIT_WALL
+    assert system.events[-1].reason == "object:stone_chunk:stone_000"

@@ -353,7 +353,11 @@ class ProjectileSystem:
             if not self._collision_service.is_point_inside_map(point):
                 return last_point, ProjectileEventType.EXPIRED, "out_of_map"
             if self._collision_service.is_point_projectile_blocked(point):
-                return point, ProjectileEventType.HIT_WALL, "wall"
+                return (
+                    point,
+                    ProjectileEventType.HIT_WALL,
+                    self._collision_service.projectile_block_reason_at(point),
+                )
             last_point = point
             distance += self._RAYCAST_STEP_PX
         end = WorldCoord(

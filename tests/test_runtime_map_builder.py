@@ -202,6 +202,9 @@ def test_runtime_map_builder_loads_runtime_objects_and_elevation(tmp_path: Path)
     assert runtime_map.runtime_objects_summary.footprint_objects == 1
     assert TileCoord(2, 1) in runtime_map.movement_blocked_tiles
     assert TileCoord(2, 1) in runtime_map.projectile_blocked_tiles
+    assert runtime_map.movement_blocker_at(TileCoord(2, 1)) is runtime_map.runtime_objects[0]
+    assert runtime_map.projectile_blocker_at(TileCoord(2, 1)) is runtime_map.runtime_objects[0]
+    assert runtime_map.runtime_objects_at(TileCoord(1, 2)) == (runtime_map.runtime_objects[1],)
     assert runtime_map.elevation.level_at(TileCoord(1, 2)) == -1
     assert runtime_map.elevation.level_at(TileCoord(4, 3)) == 0
     assert runtime_map.runtime_objects[1].stance_hints["crouching"] == "protected_from_flat_fire"

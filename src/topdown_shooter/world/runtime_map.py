@@ -179,6 +179,7 @@ class RuntimeMap:
         elevation: Sparse map elevation layer.
         movement_blocked_tiles: Tiles blocked by runtime objects.
         projectile_blocked_tiles: Tiles blocking shots because of runtime objects.
+        runtime_objects_by_tile: Runtime objects indexed by occupied tile.
     """
 
     width_tiles: int
@@ -195,6 +196,9 @@ class RuntimeMap:
     elevation: RuntimeElevationMap = field(default_factory=RuntimeElevationMap)
     movement_blocked_tiles: frozenset[TileCoord] = frozenset()
     projectile_blocked_tiles: frozenset[TileCoord] = frozenset()
+    runtime_objects_by_tile: Mapping[TileCoord, tuple[RuntimeMapObject, ...]] = field(
+        default_factory=dict,
+    )
 
     @property
     def walkable_tile_count(self) -> int:
@@ -219,6 +223,46 @@ class RuntimeMap:
             and tile.x < self.width_tiles
             and tile.y < self.height_tiles
         )
+
+
+    def runtime_objects_at(self, tile: TileCoord) -> tuple[RuntimeMapObject, ...]:
+        """Return runtime objects occupying a tile.
+
+        Args:
+            tile: Tile coordinate to query.
+
+        Returns:
+            Runtime objects occupying the tile, or an empty tuple.
+        """
+        return self.runtime_objects_by_tile.get(tile, ())
+
+    def movement_blocker_at(self, tile: TileCoord) -> RuntimeMapObject | None:
+        """Return the first movement-blocking runtime object on a tile.
+
+        Args:
+            tile: Tile coordinate to query.
+
+        Returns:
+            Blocking runtime object, or ``None``.
+        """
+        for map_object in self.runtime_objects_at(tile):
+            if map_object.blocks_movement:
+                return map_object
+        return None
+
+    def projectile_blocker_at(self, tile: TileCoord) -> RuntimeMapObject | None:
+        """Return the first projectile-blocking runtime object on a tile.
+
+        Args:
+            tile: Tile coordinate to query.
+
+        Returns:
+            Blocking runtime object, or ``None``.
+        """
+        for map_object in self.runtime_objects_at(tile):
+            if map_object.blocks_projectiles:
+                return map_object
+        return None
 
     def is_tile_walkable(self, tile: TileCoord) -> bool:
         """Return whether a tile is walkable for runtime movement."""

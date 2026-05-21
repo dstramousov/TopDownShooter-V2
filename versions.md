@@ -714,3 +714,11 @@
 - RuntimeMapBuilder now parses `runtime_objects`, `runtime_objects_summary`-style counters, and `elevation` from tactical maps without requiring debug PNG layers.
 - Movement collision, pathfinding, and hitscan wall resolution now respect runtime object movement/projectile blockers where the generator marks them as blocking.
 - Added simple 2D and 3D gameplay placeholders for runtime objects without adding AI cover logic, loot pickups, trench stance mechanics, explosions, or balance changes.
+
+
+## v0.0.96 -> v0.0.97
+
+- Runtime object collision now treats generator `collision_profile` as the primary movement/projectile/vision rule source, with legacy boolean fields used as fallback.
+- Runtime maps now index objects by occupied tile and expose movement/projectile blocker queries for gameplay systems.
+- Hitscan wall events now distinguish runtime object blockers via stable `object:<type>:<id>` reasons while keeping the existing HIT_WALL event type.
+- 2D runtime object placeholders now draw more type-specific shapes/colors for caches, trenches, cover props, barrels, and landmarks without adding loot, explosions, crouching, or AI cover logic.

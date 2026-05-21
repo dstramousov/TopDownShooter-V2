@@ -95,6 +95,7 @@ class RuntimeMapBuilder:
             if map_object.blocks_projectiles
             for tile in map_object.footprint
         )
+        runtime_objects_by_tile = self._index_runtime_objects_by_tile(runtime_objects)
 
         return RuntimeMap(
             width_tiles=width,
@@ -109,6 +110,7 @@ class RuntimeMapBuilder:
             elevation=self._build_elevation(package.tactical_map, width=width, height=height),
             movement_blocked_tiles=movement_blocked_tiles,
             projectile_blocked_tiles=projectile_blocked_tiles,
+            runtime_objects_by_tile=runtime_objects_by_tile,
         )
 
     def _require_dict(self, data: dict[str, Any], key: str) -> dict[str, Any]:
@@ -262,6 +264,9 @@ class RuntimeMapBuilder:
         origin = self._parse_object_origin(raw_object, footprint)
         collision_profile = self._parse_collision_profile(raw_object.get("collision_profile"))
         combat_properties = self._parse_combat_properties(raw_object.get("combat_properties"))
+        blocks_movement = self._runtime_object_blocks_movement(raw_object, collision_profile)
+        blocks_projectiles = self._runtime_object_blocks_projectiles(raw_object, collision_profile)
+        blocks_vision = self._runtime_object_blocks_vision(raw_object, collision_profile)
         return RuntimeMapObject(
             object_id=object_id,
             object_type=object_type,
@@ -271,12 +276,9 @@ class RuntimeMapBuilder:
             elevation=self._optional_int(raw_object.get("elevation"), default=0),
             height=self._optional_float(raw_object.get("height"), default=0.0),
             cover_type=self._optional_string(raw_object.get("cover_type"), default="none"),
-            blocks_movement=self._optional_bool(raw_object.get("blocks_movement"), default=False),
-            blocks_projectiles=self._optional_bool(
-                raw_object.get("blocks_projectiles"),
-                default=False,
-            ),
-            blocks_vision=self._optional_bool(raw_object.get("blocks_vision"), default=False),
+            blocks_movement=blocks_movement,
+            blocks_projectiles=blocks_projectiles,
+            blocks_vision=blocks_vision,
             interactive=self._optional_bool(raw_object.get("interactive"), default=False),
             tags=self._parse_string_tuple(raw_object.get("tags")),
             collision_profile=collision_profile,
@@ -284,6 +286,66 @@ class RuntimeMapBuilder:
             shape=self._optional_string(raw_object.get("shape"), default=""),
             stance_hints=self._parse_string_mapping(raw_object.get("stance_hints")),
         )
+
+
+    def _index_runtime_objects_by_tile(
+        self,
+        runtime_objects: tuple[RuntimeMapObject, ...],
+    ) -> Mapping[TileCoord, tuple[RuntimeMapObject, ...]]:
+        """Index runtime objects by occupied tile.
+
+        Args:
+            runtime_objects: Parsed runtime objects.
+
+        Returns:
+            Immutable mapping from tile coordinates to occupying objects.
+        """
+        objects_by_tile: dict[TileCoord, list[RuntimeMapObject]] = {}
+        for map_object in runtime_objects:
+            for tile in map_object.footprint:
+                objects_by_tile.setdefault(tile, []).append(map_object)
+        return MappingProxyType(
+            {
+                tile: tuple(objects)
+                for tile, objects in objects_by_tile.items()
+            },
+        )
+
+    def _runtime_object_blocks_movement(
+        self,
+        raw_object: dict[str, Any],
+        collision_profile: RuntimeObjectCollisionProfile,
+    ) -> bool:
+        """Return movement blocking using collision profile as primary data."""
+        if collision_profile.movement == "blocked":
+            return True
+        if collision_profile.movement == "passable":
+            return False
+        return self._optional_bool(raw_object.get("blocks_movement"), default=False)
+
+    def _runtime_object_blocks_projectiles(
+        self,
+        raw_object: dict[str, Any],
+        collision_profile: RuntimeObjectCollisionProfile,
+    ) -> bool:
+        """Return projectile blocking using collision profile as primary data."""
+        if collision_profile.projectiles == "blocked":
+            return True
+        if collision_profile.projectiles == "passable":
+            return False
+        return self._optional_bool(raw_object.get("blocks_projectiles"), default=False)
+
+    def _runtime_object_blocks_vision(
+        self,
+        raw_object: dict[str, Any],
+        collision_profile: RuntimeObjectCollisionProfile,
+    ) -> bool:
+        """Return vision blocking using collision profile as primary data."""
+        if collision_profile.vision in {"blocked", "soft_blocked"}:
+            return True
+        if collision_profile.vision == "passable":
+            return False
+        return self._optional_bool(raw_object.get("blocks_vision"), default=False)
 
     def _parse_object_footprint(
         self,
@@ -409,11 +471,11 @@ class RuntimeMapBuilder:
     def _parse_collision_profile(self, value: Any) -> RuntimeObjectCollisionProfile:
         """Parse object collision profile metadata."""
         if not isinstance(value, dict):
-            return RuntimeObjectCollisionProfile()
+            return RuntimeObjectCollisionProfile(movement="", projectiles="", vision="")
         return RuntimeObjectCollisionProfile(
-            movement=self._optional_string(value.get("movement"), default="passable"),
-            projectiles=self._optional_string(value.get("projectiles"), default="passable"),
-            vision=self._optional_string(value.get("vision"), default="passable"),
+            movement=self._optional_string(value.get("movement"), default=""),
+            projectiles=self._optional_string(value.get("projectiles"), default=""),
+            vision=self._optional_string(value.get("vision"), default=""),
         )
 
     def _parse_combat_properties(self, value: Any) -> RuntimeObjectCombatProperties:

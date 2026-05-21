@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from topdown_shooter.config.runtime_config import WindowConfig
 from topdown_shooter.rendering.camera import RuntimeCamera
 from topdown_shooter.rendering.colors import build_tile_palette
+from topdown_shooter.world.coordinates import TileCoord
 from topdown_shooter.world.runtime_map import RuntimeMap, RuntimeMapObject
 
 _VISIBLE_TILE_MARGIN = 2
@@ -105,30 +106,80 @@ class MapRenderer:
         """Draw simple gameplay placeholders for visible runtime objects."""
         tile_size = runtime_map.tile_size_px
         for map_object in runtime_map.runtime_objects:
-            color = self._runtime_object_color(map_object)
             for tile in map_object.footprint:
                 if tile.x < min_x or tile.x >= max_x or tile.y < min_y or tile.y >= max_y:
                     continue
-                inset = max(2, tile_size // 5)
-                if map_object.object_type == "trench":
-                    inset = max(1, tile_size // 8)
-                self._raylib.draw_rectangle(
-                    tile.x * tile_size + inset,
-                    tile.y * tile_size + inset,
-                    max(1, tile_size - inset * 2),
-                    max(1, tile_size - inset * 2),
-                    color,
-                )
+                self._draw_runtime_object_tile(map_object, tile, tile_size)
+
+    def _draw_runtime_object_tile(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw one occupied tile for a gameplay runtime object."""
+        color = self._runtime_object_color(map_object)
+        inset = self._runtime_object_inset(map_object, tile_size)
+        x = tile.x * tile_size + inset
+        y = tile.y * tile_size + inset
+        size = max(1, tile_size - inset * 2)
+        self._raylib.draw_rectangle(x, y, size, size, color)
+        detail = self._runtime_object_detail_color(map_object)
+        if detail is None:
+            return
+        detail_inset = max(1, tile_size // 3)
+        self._raylib.draw_rectangle(
+            tile.x * tile_size + detail_inset,
+            tile.y * tile_size + detail_inset,
+            max(1, tile_size - detail_inset * 2),
+            max(1, tile_size - detail_inset * 2),
+            detail,
+        )
+
+    def _runtime_object_inset(self, map_object: RuntimeMapObject, tile_size: int) -> int:
+        """Return a tile inset for drawing a runtime object placeholder."""
+        if map_object.object_type == "trench":
+            return max(1, tile_size // 10)
+        if map_object.object_type in {"ammo_cache", "medkit_cache"}:
+            return max(3, tile_size // 3)
+        if map_object.object_type in {"fallen_log", "scrap_pile"}:
+            return max(2, tile_size // 4)
+        if map_object.object_type in {"big_dead_tree", "broken_radio_mast", "old_checkpoint"}:
+            return max(1, tile_size // 7)
+        return max(2, tile_size // 5)
+
+    def _runtime_object_detail_color(self, map_object: RuntimeMapObject) -> object | None:
+        """Return optional inner detail color for important runtime objects."""
+        raylib = self._raylib
+        if map_object.object_type == "ammo_cache":
+            return raylib.Color(255, 238, 125, 245)
+        if map_object.object_type == "medkit_cache":
+            return raylib.Color(230, 80, 80, 245)
+        if map_object.object_type == "rusted_barrel":
+            return raylib.Color(190, 96, 42, 240)
+        if map_object.object_type == "trench":
+            return raylib.Color(35, 24, 18, 235)
+        return None
 
     def _runtime_object_color(self, map_object: RuntimeMapObject) -> object:
         """Return a stable placeholder color for a runtime map object."""
         raylib = self._raylib
-        if map_object.object_type in {"ammo_cache", "medkit_cache"}:
-            return raylib.Color(238, 207, 92, 230)
+        if map_object.object_type == "ammo_cache":
+            return raylib.Color(216, 170, 40, 235)
+        if map_object.object_type == "medkit_cache":
+            return raylib.Color(178, 60, 60, 235)
         if map_object.object_type == "trench":
             return raylib.Color(84, 62, 44, 210)
         if map_object.cover_type == "soft" or map_object.object_type == "bush_thicket":
             return raylib.Color(40, 128, 58, 180)
+        if map_object.object_type == "fallen_log":
+            return raylib.Color(118, 73, 39, 235)
+        if map_object.object_type == "stone_chunk":
+            return raylib.Color(108, 108, 108, 240)
+        if map_object.object_type == "scrap_pile":
+            return raylib.Color(112, 115, 122, 235)
+        if map_object.object_type == "rusted_barrel":
+            return raylib.Color(130, 72, 36, 240)
         if map_object.blocks_projectiles or map_object.blocks_movement:
             return raylib.Color(105, 105, 105, 235)
         if map_object.role in {"landmark", "defensive_landmark"}:
