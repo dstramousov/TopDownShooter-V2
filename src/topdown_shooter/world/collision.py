@@ -5,6 +5,26 @@ from __future__ import annotations
 from topdown_shooter.world.coordinates import WorldCoord, world_to_tile
 from topdown_shooter.world.runtime_map import RuntimeMap, RuntimeMapObject
 
+_RUNTIME_OBJECT_SURFACE_MATERIALS = {
+    "stone_chunk": "stone",
+    "old_checkpoint": "stone",
+    "fallen_log": "wood",
+    "big_dead_tree": "wood",
+    "scrap_pile": "metal",
+    "broken_radio_mast": "metal",
+    "rusted_barrel": "explosive_metal",
+    "bush_thicket": "foliage",
+    "trench": "dirt",
+}
+
+_BASE_TILE_SURFACE_MATERIALS = {
+    "#": "stone",
+    "R": "stone",
+    "T": "wood",
+    "b": "foliage",
+    "c": "dirt",
+}
+
 
 class TileCollisionService:
     """Query walkability for world-space entity positions."""
@@ -135,3 +155,25 @@ class TileCollisionService:
         if map_object is None:
             return "wall"
         return f"object:{map_object.object_type}:{map_object.object_id}"
+
+    def projectile_surface_material_at(self, point: WorldCoord) -> str:
+        """Return a surface material tag for a projectile-blocking point.
+
+        Args:
+            point: World-space point.
+
+        Returns:
+            Stable surface material tag used by impact renderers.
+        """
+        map_object = self.projectile_blocking_object_at(point)
+        if map_object is not None:
+            return _RUNTIME_OBJECT_SURFACE_MATERIALS.get(
+                map_object.object_type,
+                "default",
+            )
+
+        tile = world_to_tile(point, self._runtime_map.tile_size_px)
+        if not self._runtime_map.is_inside_tile_bounds(tile):
+            return "default"
+        tile_symbol = self._runtime_map.tiles[tile.y][tile.x].symbol
+        return _BASE_TILE_SURFACE_MATERIALS.get(tile_symbol, "default")

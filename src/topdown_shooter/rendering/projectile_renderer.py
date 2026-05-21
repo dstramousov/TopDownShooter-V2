@@ -10,6 +10,7 @@ from topdown_shooter.combat.projectiles import (
     ProjectileEventType,
     ProjectileOwner,
     ProjectileState,
+    SurfaceMaterial,
 )
 
 
@@ -107,13 +108,7 @@ class ProjectileRenderer:
         self._update_transient_visuals(frame_time)
         self._add_projectile_trails(projectiles)
         for impact in impacts:
-            position = self._raylib.Vector2(impact.position.x, impact.position.y)
-            self._raylib.draw_circle_lines(
-                int(round(position.x)),
-                int(round(position.y)),
-                impact.radius_px,
-                self._raylib.ORANGE,
-            )
+            self._draw_impact_marker(impact)
         self._draw_projectile_trails()
         for projectile in projectiles:
             position = self._raylib.Vector2(projectile.position.x, projectile.position.y)
@@ -129,6 +124,110 @@ class ProjectileRenderer:
                 self._projectile_ring_color(projectile.owner),
             )
         self._draw_muzzle_flashes()
+
+
+    def _draw_impact_marker(self, impact: ImpactMarkerState) -> None:
+        """Draw one material-aware 2D impact marker."""
+        raylib = self._raylib
+        position = raylib.Vector2(impact.position.x, impact.position.y)
+        progress = min(1.0, max(0.0, impact.age_seconds / impact.lifetime_seconds))
+        alpha = int(230 * (1.0 - progress))
+        if alpha <= 0:
+            return
+        color = self._impact_color(impact.surface_material, alpha)
+        radius = impact.radius_px * (1.0 + progress * 0.35)
+        material = self._normalize_surface_material(impact.surface_material)
+        if material in {SurfaceMaterial.METAL, SurfaceMaterial.EXPLOSIVE_METAL}:
+            raylib.draw_line_ex(
+                raylib.Vector2(position.x - radius, position.y),
+                raylib.Vector2(position.x + radius, position.y),
+                2.0,
+                color,
+            )
+            raylib.draw_line_ex(
+                raylib.Vector2(position.x, position.y - radius),
+                raylib.Vector2(position.x, position.y + radius),
+                2.0,
+                color,
+            )
+            raylib.draw_circle_lines(
+                int(round(position.x)),
+                int(round(position.y)),
+                radius + 1.0,
+                color,
+            )
+            if material == SurfaceMaterial.EXPLOSIVE_METAL:
+                raylib.draw_circle_lines(
+                    int(round(position.x)),
+                    int(round(position.y)),
+                    radius + 4.0,
+                    raylib.Color(255, 80, 40, max(0, alpha - 45)),
+                )
+            return
+        if material == SurfaceMaterial.WOOD:
+            raylib.draw_line_ex(
+                raylib.Vector2(position.x - radius, position.y - radius * 0.35),
+                raylib.Vector2(position.x + radius, position.y + radius * 0.35),
+                2.0,
+                color,
+            )
+            raylib.draw_line_ex(
+                raylib.Vector2(position.x - radius * 0.4, position.y + radius),
+                raylib.Vector2(position.x + radius * 0.5, position.y - radius),
+                1.5,
+                color,
+            )
+            return
+        if material == SurfaceMaterial.FOLIAGE:
+            raylib.draw_circle_v(position, max(1.0, radius * 0.45), color)
+            raylib.draw_circle_lines(
+                int(round(position.x)),
+                int(round(position.y)),
+                radius,
+                color,
+            )
+            return
+        if material == SurfaceMaterial.DIRT:
+            raylib.draw_circle_v(position, max(1.0, radius * 0.5), color)
+            raylib.draw_circle_lines(
+                int(round(position.x)),
+                int(round(position.y)),
+                radius * 1.25,
+                color,
+            )
+            return
+        raylib.draw_circle_lines(
+            int(round(position.x)),
+            int(round(position.y)),
+            radius,
+            color,
+        )
+        raylib.draw_circle_v(position, max(1.0, radius * 0.25), color)
+
+    def _impact_color(self, material: SurfaceMaterial | str, alpha: int) -> object:
+        """Return a material-aware 2D impact color."""
+        normalized = self._normalize_surface_material(material)
+        if normalized == SurfaceMaterial.STONE:
+            return self._raylib.Color(185, 178, 160, alpha)
+        if normalized == SurfaceMaterial.WOOD:
+            return self._raylib.Color(155, 103, 58, alpha)
+        if normalized == SurfaceMaterial.METAL:
+            return self._raylib.Color(255, 216, 96, alpha)
+        if normalized == SurfaceMaterial.EXPLOSIVE_METAL:
+            return self._raylib.Color(255, 135, 52, alpha)
+        if normalized == SurfaceMaterial.FOLIAGE:
+            return self._raylib.Color(86, 185, 78, alpha)
+        if normalized == SurfaceMaterial.DIRT:
+            return self._raylib.Color(130, 92, 56, alpha)
+        return self._raylib.Color(255, 166, 58, alpha)
+
+    @staticmethod
+    def _normalize_surface_material(material: SurfaceMaterial | str) -> SurfaceMaterial:
+        """Return a known surface material for renderer fallback."""
+        try:
+            return SurfaceMaterial(material)
+        except ValueError:
+            return SurfaceMaterial.DEFAULT
 
     def _update_transient_visuals(self, frame_time: float) -> None:
         """Advance active 2D transient projectile visuals."""

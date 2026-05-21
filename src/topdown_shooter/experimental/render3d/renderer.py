@@ -13,6 +13,7 @@ from topdown_shooter.combat.projectiles import (
     ProjectileOwner,
     ProjectileState,
     ProjectileSystem,
+    SurfaceMaterial,
 )
 from topdown_shooter.combat.weapons import WeaponController
 from topdown_shooter.config.runtime_config import RuntimeConfig
@@ -1809,12 +1810,34 @@ class Render3DRenderer:
             )
             radius = max(impact.radius_px / tile_size_px * tile_size, 0.08 * tile_size)
             progress = self._age_progress(impact.age_seconds, impact.lifetime_seconds)
-            raylib.draw_sphere(center, radius * (1.0 + progress * 0.35), raylib.ORANGE)
+            impact_color = self._impact_color(impact.surface_material)
+            raylib.draw_sphere(
+                center,
+                radius * self._impact_radius_scale(impact.surface_material, progress),
+                impact_color,
+            )
+            material = self._normalize_surface_material(impact.surface_material)
+            if material in {SurfaceMaterial.METAL, SurfaceMaterial.EXPLOSIVE_METAL}:
+                spark_radius = radius * (1.25 + progress * 0.4)
+                raylib.draw_line_3d(
+                    raylib.Vector3(center.x - spark_radius, center.y, center.z),
+                    raylib.Vector3(center.x + spark_radius, center.y, center.z),
+                    impact_color,
+                )
+                raylib.draw_line_3d(
+                    raylib.Vector3(center.x, center.y, center.z - spark_radius),
+                    raylib.Vector3(center.x, center.y, center.z + spark_radius),
+                    impact_color,
+                )
             combat_config = render_config.combat_visuals
             if combat_config.draw_impact_rings:
                 ring_radius = (
                     combat_config.impact_ring_radius_tiles * tile_size * (1.0 + progress)
                 )
+                if material == SurfaceMaterial.FOLIAGE:
+                    ring_radius *= 0.75
+                elif material == SurfaceMaterial.EXPLOSIVE_METAL:
+                    ring_radius *= 1.25
                 ring_center = raylib.Vector3(
                     center.x,
                     combat_config.impact_ring_height_tiles * height_scale,
@@ -1826,8 +1849,60 @@ class Render3DRenderer:
                     ring_radius,
                     0.04 * height_scale,
                     20,
-                    raylib.GOLD,
+                    self._impact_ring_color(impact.surface_material),
                 )
+
+
+    def _impact_color(self, material: SurfaceMaterial | str) -> object:
+        """Return a material-aware 3D impact core color."""
+        normalized = self._normalize_surface_material(material)
+        if normalized == SurfaceMaterial.STONE:
+            return self._raylib.LIGHTGRAY
+        if normalized == SurfaceMaterial.WOOD:
+            return self._raylib.BROWN
+        if normalized == SurfaceMaterial.METAL:
+            return self._raylib.YELLOW
+        if normalized == SurfaceMaterial.EXPLOSIVE_METAL:
+            return self._raylib.ORANGE
+        if normalized == SurfaceMaterial.FOLIAGE:
+            return self._raylib.GREEN
+        if normalized == SurfaceMaterial.DIRT:
+            return self._raylib.BROWN
+        return self._raylib.ORANGE
+
+    def _impact_ring_color(self, material: SurfaceMaterial | str) -> object:
+        """Return a material-aware 3D impact ring color."""
+        normalized = self._normalize_surface_material(material)
+        if normalized == SurfaceMaterial.METAL:
+            return self._raylib.GOLD
+        if normalized == SurfaceMaterial.EXPLOSIVE_METAL:
+            return self._raylib.RED
+        if normalized == SurfaceMaterial.FOLIAGE:
+            return self._raylib.LIME
+        if normalized == SurfaceMaterial.STONE:
+            return self._raylib.GRAY
+        return self._impact_color(normalized)
+
+    @staticmethod
+    def _impact_radius_scale(material: SurfaceMaterial | str, progress: float) -> float:
+        """Return a material-aware impact radius scale."""
+        try:
+            normalized = SurfaceMaterial(material)
+        except ValueError:
+            normalized = SurfaceMaterial.DEFAULT
+        if normalized == SurfaceMaterial.FOLIAGE:
+            return 0.75 + progress * 0.2
+        if normalized == SurfaceMaterial.EXPLOSIVE_METAL:
+            return 1.15 + progress * 0.5
+        return 1.0 + progress * 0.35
+
+    @staticmethod
+    def _normalize_surface_material(material: SurfaceMaterial | str) -> SurfaceMaterial:
+        """Return a known surface material for renderer fallback."""
+        try:
+            return SurfaceMaterial(material)
+        except ValueError:
+            return SurfaceMaterial.DEFAULT
 
     def _draw_aim_line(
         self,

@@ -4,6 +4,7 @@ from topdown_shooter.combat.projectiles import (
     ProjectileEventType,
     ProjectileOwner,
     ProjectileSystem,
+    SurfaceMaterial,
 )
 from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.coordinates import TileCoord, WorldCoord
@@ -126,6 +127,8 @@ def test_projectile_system_spawns_impact_on_blocked_tile_when_enabled() -> None:
     assert impact.position == WorldCoord(16.0, 24.0)
     assert impact.radius_px == 6.0
     assert impact.lifetime_seconds == 0.25
+    assert impact.surface_material == SurfaceMaterial.STONE
+    assert impact.reason == "wall"
 
 
 def test_projectile_system_removes_expired_impact() -> None:
@@ -164,6 +167,7 @@ def test_projectile_system_emits_spawn_and_wall_hit_events() -> None:
     ]
     assert events[0].owner == ProjectileOwner.PLAYER
     assert events[1].position == WorldCoord(16.0, 24.0)
+    assert events[1].surface_material == SurfaceMaterial.STONE
     assert system.consume_events() == ()
 
 
@@ -202,6 +206,14 @@ def test_projectile_system_stops_trace_on_runtime_object_projectile_blocker() ->
         for _y in range(3)
     )
     blocker_tile = TileCoord(1, 1)
+    blocker = RuntimeMapObject(
+        object_id="stone_000",
+        object_type="stone_chunk",
+        role="hard_cover",
+        origin=blocker_tile,
+        footprint=(blocker_tile,),
+        blocks_projectiles=True,
+    )
     runtime_map = RuntimeMap(
         width_tiles=5,
         height_tiles=3,
@@ -217,28 +229,15 @@ def test_projectile_system_stops_trace_on_runtime_object_projectile_blocker() ->
             enemy_spawn_zones=0,
             fallback_positions=0,
         ),
-        runtime_objects=(
-            RuntimeMapObject(
-                object_id="stone_000",
-                object_type="stone_chunk",
-                role="hard_cover",
-                origin=blocker_tile,
-                footprint=(blocker_tile,),
-                blocks_projectiles=True,
-            ),
-        ),
+        runtime_objects=(blocker,),
         runtime_objects_summary=RuntimeObjectsSummary(total_objects=1, projectile_blockers=1),
         projectile_blocked_tiles=frozenset({blocker_tile}),
-        runtime_objects_by_tile={blocker_tile: (RuntimeMapObject(
-            object_id="stone_000",
-            object_type="stone_chunk",
-            role="hard_cover",
-            origin=blocker_tile,
-            footprint=(blocker_tile,),
-            blocks_projectiles=True,
-        ),)},
+        runtime_objects_by_tile={blocker_tile: (blocker,)},
     )
-    system = ProjectileSystem(TileCollisionService(runtime_map))
+    system = ProjectileSystem(
+        TileCollisionService(runtime_map),
+        impact_markers_enabled=True,
+    )
 
     _spawn_default(system, WorldCoord(8.0, 24.0), direction_x=1.0, direction_y=0.0)
     system.finalize_hitscan_resolution()
@@ -246,3 +245,56 @@ def test_projectile_system_stops_trace_on_runtime_object_projectile_blocker() ->
     assert system.projectiles[0].position == WorldCoord(16.0, 24.0)
     assert system.events[-1].event_type == ProjectileEventType.HIT_WALL
     assert system.events[-1].reason == "object:stone_chunk:stone_000"
+    assert system.events[-1].surface_material == SurfaceMaterial.STONE
+    assert system.impacts[0].surface_material == SurfaceMaterial.STONE
+    assert system.impacts[0].reason == "object:stone_chunk:stone_000"
+
+
+def test_projectile_system_infers_explosive_barrel_impact_material() -> None:
+    """Projectile system should tag risky barrel hits for feedback only."""
+    from topdown_shooter.world.runtime_map import RuntimeMapObject, RuntimeObjectsSummary
+
+    tiles = tuple(
+        tuple(RuntimeTile(symbol="+", walkable=True, movement_cost=1) for _x in range(5))
+        for _y in range(3)
+    )
+    blocker_tile = TileCoord(1, 1)
+    blocker = RuntimeMapObject(
+        object_id="barrel_000",
+        object_type="rusted_barrel",
+        role="risky_cover",
+        origin=blocker_tile,
+        footprint=(blocker_tile,),
+        blocks_projectiles=True,
+    )
+    runtime_map = RuntimeMap(
+        width_tiles=5,
+        height_tiles=3,
+        tile_size_px=16,
+        tiles=tiles,
+        start_tile=TileCoord(0, 1),
+        goal_tile=TileCoord(4, 1),
+        tactical_summary=TacticalRuntimeSummary(
+            combat_zones=0,
+            cover_points=0,
+            choke_points=0,
+            flank_routes=0,
+            enemy_spawn_zones=0,
+            fallback_positions=0,
+        ),
+        runtime_objects=(blocker,),
+        runtime_objects_summary=RuntimeObjectsSummary(total_objects=1, projectile_blockers=1),
+        projectile_blocked_tiles=frozenset({blocker_tile}),
+        runtime_objects_by_tile={blocker_tile: (blocker,)},
+    )
+    system = ProjectileSystem(
+        TileCollisionService(runtime_map),
+        impact_markers_enabled=True,
+    )
+
+    _spawn_default(system, WorldCoord(8.0, 24.0), direction_x=1.0, direction_y=0.0)
+    system.finalize_hitscan_resolution()
+
+    assert system.events[-1].reason == "object:rusted_barrel:barrel_000"
+    assert system.events[-1].surface_material == SurfaceMaterial.EXPLOSIVE_METAL
+    assert system.impacts[0].surface_material == SurfaceMaterial.EXPLOSIVE_METAL

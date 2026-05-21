@@ -743,3 +743,11 @@
 - Added a clearer runtime object icon style pass for 2D map rendering: medkit crosses, ammo ticks, barrel warning marks, hatched trenches, bush blobs, log rings and scrap fragments.
 - Improved 3D runtime object readability with semantic markers for medkit caches, ammo caches and risky barrels while keeping cover objects readable through primitive silhouettes.
 - Kept the pass visual-only: no loot value changes, barrel explosions, crouching, trench protection, AI cover logic or balance changes.
+
+## v0.1.0 -> v0.1.1
+
+- Added material-aware projectile impact metadata for hitscan blockers, including runtime object surface material inference.
+- 2D and 3D impact markers now use distinct feedback for stone, wood, metal, foliage, dirt and risky barrel hits.
+- Runtime object blocker hit events keep their stable reason tags while also exposing impact material for renderers and diagnostics.
+- Kept the pass feedback-only: no barrel explosions, damage changes, penetration changes, AI cover logic, crouching or loot value changes.
+

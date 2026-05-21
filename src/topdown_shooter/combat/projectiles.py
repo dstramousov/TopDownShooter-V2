@@ -27,6 +27,18 @@ class ProjectileEventType(StrEnum):
     EXPIRED = "expired"
 
 
+class SurfaceMaterial(StrEnum):
+    """Surface material tags used by impact feedback renderers."""
+
+    DEFAULT = "default"
+    STONE = "stone"
+    WOOD = "wood"
+    METAL = "metal"
+    FOLIAGE = "foliage"
+    DIRT = "dirt"
+    EXPLOSIVE_METAL = "explosive_metal"
+
+
 @dataclass(frozen=True, slots=True)
 class ProjectileEvent:
     """Single shot feedback event.
@@ -40,6 +52,7 @@ class ProjectileEvent:
         direction_y: Shot direction Y component when available.
         visual_profile: Visual profile tag used by renderers.
         reason: Optional short reason for non-hit events.
+        surface_material: Surface material tag used by impact feedback.
     """
 
     event_type: ProjectileEventType
@@ -50,6 +63,7 @@ class ProjectileEvent:
     direction_y: float = 0.0
     visual_profile: str = "default"
     reason: str = ""
+    surface_material: SurfaceMaterial = SurfaceMaterial.DEFAULT
 
 
 @dataclass(slots=True)
@@ -76,6 +90,7 @@ class ProjectileState:
         visual_profile: Visual profile tag used by renderers.
         terminal_event_type: Deferred miss or wall event emitted after hit tests.
         terminal_reason: Optional deferred terminal event reason.
+        terminal_surface_material: Deferred terminal impact material.
     """
 
     position: WorldCoord
@@ -93,6 +108,7 @@ class ProjectileState:
     visual_profile: str = "default"
     terminal_event_type: ProjectileEventType | None = None
     terminal_reason: str = ""
+    terminal_surface_material: SurfaceMaterial = SurfaceMaterial.DEFAULT
 
 
 @dataclass(slots=True)
@@ -105,6 +121,8 @@ class ImpactMarkerState:
         lifetime_seconds: Maximum marker lifetime in seconds.
         age_seconds: Current marker age in seconds.
         alive: Whether the marker is still active.
+        surface_material: Material tag used by renderers.
+        reason: Optional stable impact reason.
     """
 
     position: WorldCoord
@@ -112,6 +130,8 @@ class ImpactMarkerState:
     lifetime_seconds: float
     age_seconds: float = 0.0
     alive: bool = True
+    surface_material: SurfaceMaterial = SurfaceMaterial.DEFAULT
+    reason: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,7 +262,12 @@ class ProjectileSystem:
             return False
         normalized_x = direction_x / length
         normalized_y = direction_y / length
-        trace_end, terminal_event_type, terminal_reason = self._resolve_hitscan_end(
+        (
+            trace_end,
+            terminal_event_type,
+            terminal_reason,
+            terminal_surface_material,
+        ) = self._resolve_hitscan_end(
             origin=origin,
             direction_x=normalized_x,
             direction_y=normalized_y,
@@ -261,6 +286,7 @@ class ProjectileSystem:
             visual_profile=self._normalize_visual_profile(visual_profile, owner_tag),
             terminal_event_type=terminal_event_type,
             terminal_reason=terminal_reason,
+            terminal_surface_material=terminal_surface_material,
         )
         self._projectiles.append(shot)
         self._shots_fired += 1
@@ -303,7 +329,11 @@ class ProjectileSystem:
             if projectile.terminal_event_type is None:
                 continue
             if projectile.terminal_event_type == ProjectileEventType.HIT_WALL:
-                self._spawn_impact(projectile.position)
+                self._spawn_impact(
+                    projectile.position,
+                    surface_material=projectile.terminal_surface_material,
+                    reason=projectile.terminal_reason,
+                )
             self.record_event(
                 ProjectileEvent(
                     event_type=projectile.terminal_event_type,
@@ -314,6 +344,7 @@ class ProjectileSystem:
                     direction_y=projectile.direction_y,
                     visual_profile=projectile.visual_profile,
                     reason=projectile.terminal_reason,
+                    surface_material=projectile.terminal_surface_material,
                 ),
             )
 
@@ -341,8 +372,8 @@ class ProjectileSystem:
         direction_x: float,
         direction_y: float,
         max_distance_px: float,
-    ) -> tuple[WorldCoord, ProjectileEventType, str]:
-        """Return the ray end and deferred terminal event for a hitscan shot."""
+    ) -> tuple[WorldCoord, ProjectileEventType, str, SurfaceMaterial]:
+        """Return the ray end, event type, reason, and impact material."""
         last_point = origin
         distance = self._RAYCAST_STEP_PX
         while distance <= max_distance_px:
@@ -351,12 +382,20 @@ class ProjectileSystem:
                 y=origin.y + direction_y * distance,
             )
             if not self._collision_service.is_point_inside_map(point):
-                return last_point, ProjectileEventType.EXPIRED, "out_of_map"
+                return (
+                    last_point,
+                    ProjectileEventType.EXPIRED,
+                    "out_of_map",
+                    SurfaceMaterial.DEFAULT,
+                )
             if self._collision_service.is_point_projectile_blocked(point):
                 return (
                     point,
                     ProjectileEventType.HIT_WALL,
                     self._collision_service.projectile_block_reason_at(point),
+                    SurfaceMaterial(
+                        self._collision_service.projectile_surface_material_at(point),
+                    ),
                 )
             last_point = point
             distance += self._RAYCAST_STEP_PX
@@ -364,7 +403,7 @@ class ProjectileSystem:
             x=origin.x + direction_x * max_distance_px,
             y=origin.y + direction_y * max_distance_px,
         )
-        return end, ProjectileEventType.EXPIRED, "range"
+        return end, ProjectileEventType.EXPIRED, "range", SurfaceMaterial.DEFAULT
 
     def _update_projectile(self, projectile: ProjectileState, frame_time: float) -> None:
         """Advance a short-lived visual shot trace."""
@@ -387,11 +426,19 @@ class ProjectileSystem:
         if impact.age_seconds >= impact.lifetime_seconds:
             impact.alive = False
 
-    def _spawn_impact(self, position: WorldCoord) -> None:
+    def _spawn_impact(
+        self,
+        position: WorldCoord,
+        *,
+        surface_material: SurfaceMaterial = SurfaceMaterial.DEFAULT,
+        reason: str = "",
+    ) -> None:
         """Create an impact marker at a blocked-tile hit position.
 
         Args:
             position: Impact world position.
+            surface_material: Surface material tag used by renderers.
+            reason: Optional stable impact reason.
         """
         if (
             not self._impact_markers_enabled
@@ -404,6 +451,8 @@ class ProjectileSystem:
                 position=position,
                 radius_px=self._impact_radius_px,
                 lifetime_seconds=self._impact_lifetime_seconds,
+                surface_material=surface_material,
+                reason=reason,
             ),
         )
         self._total_impacts += 1
