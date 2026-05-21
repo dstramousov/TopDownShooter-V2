@@ -751,3 +751,8 @@
 - Runtime object blocker hit events keep their stable reason tags while also exposing impact material for renderers and diagnostics.
 - Kept the pass feedback-only: no barrel explosions, damage changes, penetration changes, AI cover logic, crouching or loot value changes.
 
+## v0.1.1 -> v0.1.2
+
+- Added MVP explosions for `rusted_barrel` runtime objects hit by hitscan shots.
+- Added radial explosion damage for player and enemies with one-shot destroyed barrel state.
+- Added material-aware explosion impact markers in 2D and 3D without chain reactions or object destruction propagation.

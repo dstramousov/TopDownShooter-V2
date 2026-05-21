@@ -137,6 +137,21 @@ class ProjectileRenderer:
         color = self._impact_color(impact.surface_material, alpha)
         radius = impact.radius_px * (1.0 + progress * 0.35)
         material = self._normalize_surface_material(impact.surface_material)
+        if material == SurfaceMaterial.EXPLOSION:
+            raylib.draw_circle_v(position, max(1.0, radius * 0.45), color)
+            raylib.draw_circle_lines(
+                int(round(position.x)),
+                int(round(position.y)),
+                radius,
+                color,
+            )
+            raylib.draw_circle_lines(
+                int(round(position.x)),
+                int(round(position.y)),
+                radius * 0.62,
+                raylib.Color(255, 225, 88, max(0, alpha - 35)),
+            )
+            return
         if material in {SurfaceMaterial.METAL, SurfaceMaterial.EXPLOSIVE_METAL}:
             raylib.draw_line_ex(
                 raylib.Vector2(position.x - radius, position.y),
@@ -215,6 +230,8 @@ class ProjectileRenderer:
             return self._raylib.Color(255, 216, 96, alpha)
         if normalized == SurfaceMaterial.EXPLOSIVE_METAL:
             return self._raylib.Color(255, 135, 52, alpha)
+        if normalized == SurfaceMaterial.EXPLOSION:
+            return self._raylib.Color(255, 92, 38, alpha)
         if normalized == SurfaceMaterial.FOLIAGE:
             return self._raylib.Color(86, 185, 78, alpha)
         if normalized == SurfaceMaterial.DIRT:

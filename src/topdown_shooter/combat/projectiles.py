@@ -37,6 +37,7 @@ class SurfaceMaterial(StrEnum):
     FOLIAGE = "foliage"
     DIRT = "dirt"
     EXPLOSIVE_METAL = "explosive_metal"
+    EXPLOSION = "explosion"
 
 
 @dataclass(frozen=True, slots=True)
@@ -353,6 +354,32 @@ class ProjectileSystem:
         self._projectiles = [projectile for projectile in self._projectiles if projectile.alive]
         self._impacts = [impact for impact in self._impacts if impact.alive]
 
+    def spawn_impact_marker(
+        self,
+        position: WorldCoord,
+        *,
+        radius_px: float | None = None,
+        lifetime_seconds: float | None = None,
+        surface_material: SurfaceMaterial = SurfaceMaterial.DEFAULT,
+        reason: str = "",
+    ) -> None:
+        """Create a public material-aware impact marker.
+
+        Args:
+            position: Impact world position.
+            radius_px: Optional marker radius override.
+            lifetime_seconds: Optional marker lifetime override.
+            surface_material: Material tag used by renderers.
+            reason: Optional stable impact reason.
+        """
+        self._spawn_impact(
+            position,
+            radius_px=radius_px,
+            lifetime_seconds=lifetime_seconds,
+            surface_material=surface_material,
+            reason=reason,
+        )
+
 
     @staticmethod
     def _normalize_visual_profile(
@@ -430,6 +457,8 @@ class ProjectileSystem:
         self,
         position: WorldCoord,
         *,
+        radius_px: float | None = None,
+        lifetime_seconds: float | None = None,
         surface_material: SurfaceMaterial = SurfaceMaterial.DEFAULT,
         reason: str = "",
     ) -> None:
@@ -440,17 +469,21 @@ class ProjectileSystem:
             surface_material: Surface material tag used by renderers.
             reason: Optional stable impact reason.
         """
+        marker_lifetime = (
+            self._impact_lifetime_seconds if lifetime_seconds is None else lifetime_seconds
+        )
+        marker_radius = self._impact_radius_px if radius_px is None else radius_px
         if (
             not self._impact_markers_enabled
-            or self._impact_lifetime_seconds <= 0.0
-            or self._impact_radius_px <= 0.0
+            or marker_lifetime <= 0.0
+            or marker_radius <= 0.0
         ):
             return
         self._impacts.append(
             ImpactMarkerState(
                 position=position,
-                radius_px=self._impact_radius_px,
-                lifetime_seconds=self._impact_lifetime_seconds,
+                radius_px=marker_radius,
+                lifetime_seconds=marker_lifetime,
                 surface_material=surface_material,
                 reason=reason,
             ),

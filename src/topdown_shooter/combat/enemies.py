@@ -2131,6 +2131,46 @@ class EnemySystem:
                 shots_fired += 1
         return shots_fired
 
+    def apply_radial_damage(
+        self,
+        *,
+        center: WorldCoord,
+        radius_px: float,
+        center_damage: float,
+        edge_damage: float,
+    ) -> int:
+        """Apply linear radial damage to active enemies.
+
+        Args:
+            center: Explosion center in world pixels.
+            radius_px: Maximum damage radius in world pixels.
+            center_damage: Damage at the exact explosion center.
+            edge_damage: Damage at the outer radius edge.
+
+        Returns:
+            Number of enemies damaged by the explosion.
+        """
+        if radius_px <= 0.0 or center_damage <= 0.0 or edge_damage < 0.0:
+            return 0
+        damaged = 0
+        damage_span = max(0.0, center_damage - edge_damage)
+        for enemy in self._enemies:
+            if not enemy.alive:
+                continue
+            distance = math.hypot(
+                enemy.world_position.x - center.x,
+                enemy.world_position.y - center.y,
+            )
+            if distance > radius_px:
+                continue
+            falloff = max(0.0, min(1.0, 1.0 - distance / radius_px))
+            damage = edge_damage + damage_span * falloff
+            self._damage_enemy(enemy, damage)
+            self._spawn_hit_marker(enemy.world_position)
+            damaged += 1
+        self._enemies = [enemy for enemy in self._enemies if enemy.alive]
+        return damaged
+
     def apply_projectile_hits(
         self,
         projectiles: tuple[ProjectileState, ...],

@@ -18,6 +18,7 @@ from topdown_shooter.combat.projectiles import (
 from topdown_shooter.combat.weapons import WeaponController
 from topdown_shooter.config.runtime_config import RuntimeConfig
 from topdown_shooter.gameplay.combat_runtime import update_combat_runtime
+from topdown_shooter.gameplay.explosions import RuntimeExplosionSystem
 from topdown_shooter.gameplay.interactions import RuntimeObjectInteractionSystem
 from topdown_shooter.experimental.render3d.camera import Render3DFollowCamera
 from topdown_shooter.experimental.render3d.scene import (
@@ -166,6 +167,7 @@ class Render3DRenderer:
         self._weapon_slot_3_key = self._resolve_key(config.controls.weapon_slot_3)
         self._interact_key = self._resolve_key(config.controls.interact)
         self._interaction_system = RuntimeObjectInteractionSystem()
+        self._explosion_system = RuntimeExplosionSystem()
         self._weapon_fire_events_last_update = 0
         self._muzzle_flashes: list[_Render3DMuzzleFlashState] = []
         self._projectile_trails: list[_Render3DProjectileTrailState] = []
@@ -268,6 +270,13 @@ class Render3DRenderer:
                         frame_time=frame_time,
                         weapon_fire_events=self._weapon_fire_events_last_update,
                         player_speed_px_per_second=self._player_speed_px_per_second(),
+                    )
+                    self._explosion_system.process_projectile_events(
+                        events=projectile_system.events,
+                        runtime_map=self._runtime_map,
+                        player=player,
+                        enemy_system=enemy_system,
+                        projectile_system=projectile_system,
                     )
                     projectile_events = projectile_system.consume_events()
                     self._add_projectile_events(projectile_events)
@@ -698,7 +707,10 @@ class Render3DRenderer:
         raylib = self._raylib
         tile_size = self._config.render3d.tile_size
         height_scale = self._config.render3d.height_scale
-        consumed_ids = self._interaction_system.consumed_object_ids
+        consumed_ids = (
+            self._interaction_system.consumed_object_ids
+            | self._explosion_system.destroyed_object_ids
+        )
         for map_object in self._runtime_map.runtime_objects:
             if not self._runtime_object_is_visible(map_object, scene):
                 continue
@@ -1817,7 +1829,7 @@ class Render3DRenderer:
                 impact_color,
             )
             material = self._normalize_surface_material(impact.surface_material)
-            if material in {SurfaceMaterial.METAL, SurfaceMaterial.EXPLOSIVE_METAL}:
+            if material in {SurfaceMaterial.METAL, SurfaceMaterial.EXPLOSIVE_METAL, SurfaceMaterial.EXPLOSION}:
                 spark_radius = radius * (1.25 + progress * 0.4)
                 raylib.draw_line_3d(
                     raylib.Vector3(center.x - spark_radius, center.y, center.z),
@@ -1838,6 +1850,8 @@ class Render3DRenderer:
                     ring_radius *= 0.75
                 elif material == SurfaceMaterial.EXPLOSIVE_METAL:
                     ring_radius *= 1.25
+                elif material == SurfaceMaterial.EXPLOSION:
+                    ring_radius *= 1.8
                 ring_center = raylib.Vector3(
                     center.x,
                     combat_config.impact_ring_height_tiles * height_scale,
@@ -1864,6 +1878,8 @@ class Render3DRenderer:
             return self._raylib.YELLOW
         if normalized == SurfaceMaterial.EXPLOSIVE_METAL:
             return self._raylib.ORANGE
+        if normalized == SurfaceMaterial.EXPLOSION:
+            return self._raylib.RED
         if normalized == SurfaceMaterial.FOLIAGE:
             return self._raylib.GREEN
         if normalized == SurfaceMaterial.DIRT:
@@ -1875,7 +1891,7 @@ class Render3DRenderer:
         normalized = self._normalize_surface_material(material)
         if normalized == SurfaceMaterial.METAL:
             return self._raylib.GOLD
-        if normalized == SurfaceMaterial.EXPLOSIVE_METAL:
+        if normalized in {SurfaceMaterial.EXPLOSIVE_METAL, SurfaceMaterial.EXPLOSION}:
             return self._raylib.RED
         if normalized == SurfaceMaterial.FOLIAGE:
             return self._raylib.LIME
@@ -1894,6 +1910,8 @@ class Render3DRenderer:
             return 0.75 + progress * 0.2
         if normalized == SurfaceMaterial.EXPLOSIVE_METAL:
             return 1.15 + progress * 0.5
+        if normalized == SurfaceMaterial.EXPLOSION:
+            return 0.85 + progress * 0.9
         return 1.0 + progress * 0.35
 
     @staticmethod

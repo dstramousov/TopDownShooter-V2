@@ -10,6 +10,7 @@ from topdown_shooter.combat.weapons import WeaponConfigLoader, WeaponController,
 from topdown_shooter.config.runtime_config import RuntimeConfig
 from topdown_shooter.debug.overlay import DebugOverlay
 from topdown_shooter.gameplay.combat_runtime import update_combat_runtime
+from topdown_shooter.gameplay.explosions import RuntimeExplosionSystem
 from topdown_shooter.gameplay.interactions import RuntimeObjectInteractionSystem
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.rendering.camera import CameraRig
@@ -110,6 +111,7 @@ class RaylibWindow:
         self._weapon_slot_3_key = self._resolve_key(config.controls.weapon_slot_3)
         self._interact_key = self._resolve_key(config.controls.interact)
         self._interaction_system = RuntimeObjectInteractionSystem()
+        self._explosion_system = RuntimeExplosionSystem()
         self._ui = RuntimeUi(
             raylib=self._raylib,
             config=config,
@@ -243,6 +245,13 @@ class RaylibWindow:
                         weapon_fire_events=self._weapon_fire_events_last_update,
                         player_speed_px_per_second=self._player_speed_px_per_second,
                     )
+                    self._explosion_system.process_projectile_events(
+                        events=self._projectile_system.events,
+                        runtime_map=self._runtime_map,
+                        player=self._player,
+                        enemy_system=self._enemy_system,
+                        projectile_system=self._projectile_system,
+                    )
                     projectile_events = self._projectile_system.consume_events()
                     self._projectile_renderer.add_events(projectile_events)
                     self._combat_feedback.add_events(projectile_events)
@@ -262,7 +271,8 @@ class RaylibWindow:
                     camera=self._camera_rig.state,
                     window_config=self._config.window,
                     consumed_runtime_object_ids=frozenset(
-                        self._interaction_system.consumed_object_ids,
+                        self._interaction_system.consumed_object_ids
+                        | self._explosion_system.destroyed_object_ids,
                     ),
                 )
                 self._projectile_renderer.draw(
