@@ -736,3 +736,10 @@
 - Added `KEY_SPACE` interaction binding in 2D and 3D plus HUD feedback messages and dimmed consumed cache placeholders.
 - Kept inventory, loot tables, barrel explosions, AI cover logic, crouching, trench protection, and balance changes out of this patch.
 
+
+
+## v0.0.99 -> v0.1.0
+
+- Added a clearer runtime object icon style pass for 2D map rendering: medkit crosses, ammo ticks, barrel warning marks, hatched trenches, bush blobs, log rings and scrap fragments.
+- Improved 3D runtime object readability with semantic markers for medkit caches, ammo caches and risky barrels while keeping cover objects readable through primitive silhouettes.
+- Kept the pass visual-only: no loot value changes, barrel explosions, crouching, trench protection, AI cover logic or balance changes.

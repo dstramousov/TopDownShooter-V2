@@ -693,18 +693,20 @@ class Render3DRenderer:
         self._draw_runtime_objects(scene)
 
     def _draw_runtime_objects(self, scene: Render3DSceneSnapshot) -> None:
-        """Draw simple runtime object placeholders in the 3D gameplay scene."""
+        """Draw readable runtime object primitives in the 3D gameplay scene."""
         raylib = self._raylib
         tile_size = self._config.render3d.tile_size
         height_scale = self._config.render3d.height_scale
+        consumed_ids = self._interaction_system.consumed_object_ids
         for map_object in self._runtime_map.runtime_objects:
             if not self._runtime_object_is_visible(map_object, scene):
                 continue
+            base_color = self._runtime_object_color(
+                map_object,
+                consumed=map_object.object_id in consumed_ids,
+            )
             color = self._scene_color(
-                self._runtime_object_color(
-                    map_object,
-                    consumed=map_object.object_id in self._interaction_system.consumed_object_ids,
-                ),
+                base_color,
                 (map_object.origin.x + 0.5) * tile_size,
                 (map_object.origin.y + 0.5) * tile_size,
                 scene,
@@ -732,6 +734,16 @@ class Render3DRenderer:
                     color=color,
                     map_object=map_object,
                 )
+                if tile == map_object.origin:
+                    self._draw_runtime_object_marker(
+                        center=center,
+                        width=width,
+                        height=max(0.01, height),
+                        depth=depth,
+                        map_object=map_object,
+                        consumed=map_object.object_id in consumed_ids,
+                        scene=scene,
+                    )
 
     def _draw_runtime_object_primitive(
         self,
@@ -751,6 +763,91 @@ class Render3DRenderer:
                 raylib.draw_cylinder(center, radius, radius, height, 10, color)
                 return
         raylib.draw_cube(center, width, height, depth, color)
+        if map_object.object_type == "scrap_pile":
+            detail_color = self._runtime_object_marker_color("scrap_pile", consumed=False)
+            detail_center = raylib.Vector3(center.x + width * 0.18, center.y + height * 0.55, center.z)
+            raylib.draw_cube(detail_center, width * 0.35, height * 0.45, depth * 0.35, detail_color)
+
+    def _draw_runtime_object_marker(
+        self,
+        *,
+        center: object,
+        width: float,
+        height: float,
+        depth: float,
+        map_object: RuntimeMapObject,
+        consumed: bool,
+        scene: Render3DSceneSnapshot,
+    ) -> None:
+        """Draw semantic 3D markers only for interaction-critical objects."""
+        object_type = map_object.object_type
+        if object_type not in {"ammo_cache", "medkit_cache", "rusted_barrel"}:
+            return
+        raylib = self._raylib
+        marker_color = self._scene_color(
+            self._runtime_object_marker_color(object_type, consumed=consumed),
+            center.x,
+            center.z,
+            scene,
+        )
+        marker_y = center.y + height * 0.65 + max(width, depth) * 0.12
+        if object_type == "medkit_cache":
+            self._draw_3d_cross_marker(center.x, marker_y, center.z, max(width, depth), marker_color)
+            return
+        if object_type == "ammo_cache":
+            self._draw_3d_ammo_marker(center.x, marker_y, center.z, max(width, depth), marker_color)
+            return
+        self._draw_3d_warning_marker(center.x, marker_y, center.z, max(width, depth), marker_color)
+
+    def _draw_3d_cross_marker(
+        self,
+        x: float,
+        y: float,
+        z: float,
+        size: float,
+        color: object,
+    ) -> None:
+        """Draw a small 3D medical cross marker."""
+        raylib = self._raylib
+        bar = max(0.04, size * 0.16)
+        length = max(bar, size * 0.48)
+        center = raylib.Vector3(x, y, z)
+        raylib.draw_cube(center, bar, bar, length, color)
+        raylib.draw_cube(center, length, bar, bar, color)
+
+    def _draw_3d_ammo_marker(
+        self,
+        x: float,
+        y: float,
+        z: float,
+        size: float,
+        color: object,
+    ) -> None:
+        """Draw three short ammo ticks above an ammo cache."""
+        raylib = self._raylib
+        tick_width = max(0.035, size * 0.08)
+        tick_height = max(0.07, size * 0.32)
+        gap = max(0.035, size * 0.12)
+        for index in (-1, 0, 1):
+            center = raylib.Vector3(x + index * gap, y + tick_height * 0.5, z)
+            raylib.draw_cube(center, tick_width, tick_height, tick_width, color)
+
+    def _draw_3d_warning_marker(
+        self,
+        x: float,
+        y: float,
+        z: float,
+        size: float,
+        color: object,
+    ) -> None:
+        """Draw a compact warning marker above a hazardous object."""
+        raylib = self._raylib
+        stem_width = max(0.035, size * 0.08)
+        stem_height = max(0.08, size * 0.34)
+        stem_center = raylib.Vector3(x, y + stem_height * 0.5, z)
+        dot_center = raylib.Vector3(x, y - stem_height * 0.18, z)
+        raylib.draw_cube(stem_center, stem_width, stem_height, stem_width, color)
+        raylib.draw_cube(dot_center, stem_width * 1.45, stem_width * 1.45, stem_width * 1.45, color)
 
     def _runtime_object_is_visible(
         self,
@@ -766,36 +863,35 @@ class Render3DRenderer:
     def _runtime_object_width_scale(self, map_object: RuntimeMapObject) -> float:
         """Return placeholder width scale for a runtime object."""
         if map_object.object_type == "fallen_log":
-            return 0.86 if self._runtime_object_footprint_is_horizontal(map_object) else 0.36
+            return 0.88 if self._runtime_object_footprint_is_horizontal(map_object) else 0.34
         if map_object.object_type == "trench":
-            return 0.94
+            return 0.96
         if map_object.object_type in {"ammo_cache", "medkit_cache"}:
-            return 0.42
+            return 0.46
         if map_object.object_type in {"big_dead_tree", "broken_radio_mast", "rusted_barrel"}:
-            return 0.38
-        if map_object.role in {"landmark", "defensive_landmark"}:
-            return 0.78
+            return 0.36
+        if map_object.object_type == "old_checkpoint":
+            return 0.86
+        if map_object.object_type == "scrap_pile":
+            return 0.72
         if map_object.cover_type in {"soft", "partial"}:
             return 0.68
         return 0.72
 
-
     def _runtime_object_depth_scale(self, map_object: RuntimeMapObject) -> float:
         """Return placeholder depth scale for a runtime object."""
         if map_object.object_type == "fallen_log":
-            return 0.36 if self._runtime_object_footprint_is_horizontal(map_object) else 0.86
-        if map_object.object_type == "fallen_log":
-            return 0.86 if self._runtime_object_footprint_is_horizontal(map_object) else 0.36
+            return 0.34 if self._runtime_object_footprint_is_horizontal(map_object) else 0.88
         if map_object.object_type == "trench":
-            return 0.94
+            return 0.96
         if map_object.object_type in {"ammo_cache", "medkit_cache"}:
-            return 0.42
+            return 0.46
         if map_object.object_type in {"big_dead_tree", "broken_radio_mast", "rusted_barrel"}:
-            return 0.38
-        if map_object.object_type in {"big_dead_tree", "broken_radio_mast", "rusted_barrel"}:
-            return 0.38
-        if map_object.role in {"landmark", "defensive_landmark"}:
-            return 0.78
+            return 0.36
+        if map_object.object_type == "old_checkpoint":
+            return 0.86
+        if map_object.object_type == "scrap_pile":
+            return 0.72
         if map_object.cover_type in {"soft", "partial"}:
             return 0.68
         return 0.72
@@ -811,17 +907,17 @@ class Render3DRenderer:
         if map_object.object_type == "trench":
             return 0.02
         if map_object.object_type in {"ammo_cache", "medkit_cache"}:
-            return 0.2
+            return 0.22
         if map_object.object_type == "fallen_log":
-            return 0.28
+            return 0.26
         if map_object.object_type == "rusted_barrel":
-            return 0.62
+            return 0.66
         if map_object.object_type == "broken_radio_mast":
-            return max(1.25, float(map_object.height) * 0.45)
+            return max(1.35, float(map_object.height) * 0.48)
         if map_object.object_type == "big_dead_tree":
-            return max(1.1, float(map_object.height) * 0.4)
-        if map_object.role in {"landmark", "defensive_landmark"}:
-            return max(0.8, float(map_object.height) * 0.35)
+            return max(1.2, float(map_object.height) * 0.42)
+        if map_object.object_type == "old_checkpoint":
+            return max(0.72, float(map_object.height) * 0.32)
         if map_object.cover_type == "soft":
             return 0.35
         if map_object.cover_type == "partial":
@@ -839,9 +935,9 @@ class Render3DRenderer:
         if consumed:
             return raylib.Color(58, 58, 58, 135)
         if map_object.object_type == "ammo_cache":
-            return raylib.Color(238, 207, 92, 245)
+            return raylib.Color(78, 88, 54, 245)
         if map_object.object_type == "medkit_cache":
-            return raylib.Color(220, 73, 73, 245)
+            return raylib.Color(230, 230, 218, 245)
         if map_object.object_type == "trench":
             return raylib.Color(64, 45, 32, 235)
         if map_object.cover_type == "soft" or map_object.object_type == "bush_thicket":
@@ -851,12 +947,26 @@ class Render3DRenderer:
         if map_object.object_type == "stone_chunk":
             return raylib.Color(130, 130, 130, 240)
         if map_object.object_type == "scrap_pile":
-            return raylib.Color(102, 110, 118, 240)
+            return raylib.Color(92, 98, 108, 240)
         if map_object.object_type == "rusted_barrel":
             return raylib.Color(144, 84, 42, 235)
+        if map_object.object_type == "old_checkpoint":
+            return raylib.Color(96, 96, 92, 245)
         if map_object.role in {"landmark", "defensive_landmark"}:
             return raylib.Color(126, 91, 60, 240)
         return raylib.Color(118, 118, 118, 235)
+
+    def _runtime_object_marker_color(self, object_type: str, *, consumed: bool) -> object:
+        """Return a marker color for 3D semantic icons."""
+        raylib = self._raylib
+        alpha = 120 if consumed else 245
+        if object_type == "medkit_cache":
+            return raylib.Color(225, 35, 45, alpha)
+        if object_type == "ammo_cache":
+            return raylib.Color(255, 224, 80, alpha)
+        if object_type == "rusted_barrel":
+            return raylib.Color(255, 196, 70, alpha)
+        return raylib.Color(165, 170, 178, alpha)
 
     def _draw_walkable_tile(
         self,
