@@ -722,3 +722,17 @@
 - Runtime maps now index objects by occupied tile and expose movement/projectile blocker queries for gameplay systems.
 - Hitscan wall events now distinguish runtime object blockers via stable `object:<type>:<id>` reasons while keeping the existing HIT_WALL event type.
 - 2D runtime object placeholders now draw more type-specific shapes/colors for caches, trenches, cover props, barrels, and landmarks without adding loot, explosions, crouching, or AI cover logic.
+
+## v0.0.97 -> v0.0.98
+
+- Improved runtime object presence in 2D and 3D with more distinct gameplay placeholders for caches, trenches, logs, barrels, landmarks, stone and scrap cover.
+- Added runtime object interaction baseline queries for nearby interactive objects without enabling loot pickup yet.
+- Extended runtime object diagnostics with interactive, loot and explosive object counters plus nearest interactive object debug info.
+- Kept AI cover logic, crouching, loot pickups, explosions and balance changes out of this patch.
+## v0.0.98 -> v0.0.99
+
+- Added runtime object pickup MVP for `ammo_cache` and `medkit_cache` using the existing interactive object lookup.
+- Added a shared interaction system that consumes used caches, heals the player, and adds reserve ammo to finite-reserve weapons.
+- Added `KEY_SPACE` interaction binding in 2D and 3D plus HUD feedback messages and dimmed consumed cache placeholders.
+- Kept inventory, loot tables, barrel explosions, AI cover logic, crouching, trench protection, and balance changes out of this patch.
+

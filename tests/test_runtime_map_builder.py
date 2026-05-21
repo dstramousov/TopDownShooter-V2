@@ -137,7 +137,7 @@ def test_runtime_map_builder_loads_runtime_objects_and_elevation(tmp_path: Path)
               "blocks_movement": true,
               "blocks_projectiles": true,
               "blocks_vision": true,
-              "interactive": false,
+              "interactive": true,
               "tags": ["cover"],
               "collision_profile": {
                 "movement": "blocked",
@@ -148,7 +148,7 @@ def test_runtime_map_builder_loads_runtime_objects_and_elevation(tmp_path: Path)
                 "cover_value": 0.9,
                 "concealment_value": 0.1,
                 "explosive": false,
-                "loot": false
+                "loot": true
               }
             },
             {
@@ -200,11 +200,17 @@ def test_runtime_map_builder_loads_runtime_objects_and_elevation(tmp_path: Path)
     assert runtime_map.runtime_objects_summary.projectile_blockers == 1
     assert runtime_map.runtime_objects_summary.vision_blockers == 1
     assert runtime_map.runtime_objects_summary.footprint_objects == 1
+    assert runtime_map.runtime_objects_summary.interactive_objects == 1
+    assert runtime_map.runtime_objects_summary.loot_objects == 1
+    assert runtime_map.runtime_objects_summary.explosive_objects == 0
     assert TileCoord(2, 1) in runtime_map.movement_blocked_tiles
     assert TileCoord(2, 1) in runtime_map.projectile_blocked_tiles
     assert runtime_map.movement_blocker_at(TileCoord(2, 1)) is runtime_map.runtime_objects[0]
     assert runtime_map.projectile_blocker_at(TileCoord(2, 1)) is runtime_map.runtime_objects[0]
     assert runtime_map.runtime_objects_at(TileCoord(1, 2)) == (runtime_map.runtime_objects[1],)
+    assert runtime_map.interactive_objects_at(TileCoord(2, 1)) == (runtime_map.runtime_objects[0],)
+    assert runtime_map.nearest_interactive_object(TileCoord(1, 1)) is runtime_map.runtime_objects[0]
+    assert runtime_map.nearest_interactive_object(TileCoord(0, 3), radius_tiles=1) is None
     assert runtime_map.elevation.level_at(TileCoord(1, 2)) == -1
     assert runtime_map.elevation.level_at(TileCoord(4, 3)) == 0
     assert runtime_map.runtime_objects[1].stance_hints["crouching"] == "protected_from_flat_fire"

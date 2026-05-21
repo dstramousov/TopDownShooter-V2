@@ -596,6 +596,7 @@ class ControlsConfig:
         weapon_slot_1: Key name used to equip weapon slot 1.
         weapon_slot_2: Key name used to equip weapon slot 2.
         weapon_slot_3: Key name used to equip weapon slot 3.
+        interact: Key name used to interact with nearby runtime objects.
     """
 
     quit: str
@@ -620,6 +621,7 @@ class ControlsConfig:
     weapon_slot_1: str
     weapon_slot_2: str
     weapon_slot_3: str
+    interact: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -1030,6 +1032,7 @@ class RuntimeConfigLoader:
                 weapon_slot_1=self._require_str(controls, "weapon_slot_1"),
                 weapon_slot_2=self._require_str(controls, "weapon_slot_2"),
                 weapon_slot_3=self._require_str(controls, "weapon_slot_3"),
+                interact=self._require_str(controls, "interact"),
             ),
         )
 

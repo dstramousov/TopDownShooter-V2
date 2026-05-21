@@ -438,6 +438,13 @@ class RuntimeMapBuilder:
             ),
             vision_blockers=sum(1 for map_object in runtime_objects if map_object.blocks_vision),
             footprint_objects=sum(1 for map_object in runtime_objects if map_object.is_footprint_object),
+            interactive_objects=sum(1 for map_object in runtime_objects if map_object.interactive),
+            loot_objects=sum(
+                1 for map_object in runtime_objects if map_object.combat_properties.loot
+            ),
+            explosive_objects=sum(
+                1 for map_object in runtime_objects if map_object.combat_properties.explosive
+            ),
         )
 
     def _parse_tile_coord(self, value: Any, *, context: str) -> TileCoord:

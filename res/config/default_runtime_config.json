@@ -85,7 +85,8 @@
     "weapon_slot_2": "KEY_TWO",
     "weapon_slot_3": "KEY_THREE",
     "help": "KEY_F1",
-    "mouse_capture_toggle": "KEY_F10"
+    "mouse_capture_toggle": "KEY_F10",
+    "interact": "KEY_SPACE"
   },
   "aim_debug": {
     "enabled": true,

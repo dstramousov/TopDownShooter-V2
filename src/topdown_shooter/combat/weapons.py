@@ -533,6 +533,24 @@ class WeaponController:
         self._state.reload_remaining_seconds = 0.0
         return True
 
+    def add_reserve_ammo_to_current(self, amount: int) -> int:
+        """Add reserve ammo to the currently equipped finite-reserve weapon.
+
+        Args:
+            amount: Requested reserve ammo amount to add.
+
+        Returns:
+            Actual reserve ammo amount added. Infinite-reserve weapons do not
+            consume cache ammo and return zero.
+        """
+        if amount <= 0:
+            return 0
+        ammo = self._state.current_ammo
+        if ammo.reserve_ammo is None:
+            return 0
+        ammo.reserve_ammo += amount
+        return amount
+
     def reload_current(self) -> bool:
         """Start reloading the currently equipped weapon from reserve ammo.
 

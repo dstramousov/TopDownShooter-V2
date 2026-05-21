@@ -10,6 +10,7 @@ from topdown_shooter.combat.weapons import WeaponConfigLoader, WeaponController,
 from topdown_shooter.config.runtime_config import RuntimeConfig
 from topdown_shooter.debug.overlay import DebugOverlay
 from topdown_shooter.gameplay.combat_runtime import update_combat_runtime
+from topdown_shooter.gameplay.interactions import RuntimeObjectInteractionSystem
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.rendering.camera import CameraRig
 from topdown_shooter.rendering.combat_feedback import CombatFeedbackOverlay
@@ -107,6 +108,8 @@ class RaylibWindow:
         self._weapon_slot_1_key = self._resolve_key(config.controls.weapon_slot_1)
         self._weapon_slot_2_key = self._resolve_key(config.controls.weapon_slot_2)
         self._weapon_slot_3_key = self._resolve_key(config.controls.weapon_slot_3)
+        self._interact_key = self._resolve_key(config.controls.interact)
+        self._interaction_system = RuntimeObjectInteractionSystem()
         self._ui = RuntimeUi(
             raylib=self._raylib,
             config=config,
@@ -226,6 +229,7 @@ class RaylibWindow:
                     input_camera = self._camera_rig.build_raylib_camera(raylib)
                     self._update_player_aim(input_camera)
                     self._update_combat_controls(frame_time)
+                    self._update_interactions(frame_time)
                     update_combat_runtime(
                         player=self._player,
                         enemy_system=self._enemy_system,
@@ -257,6 +261,9 @@ class RaylibWindow:
                     runtime_map=self._runtime_map,
                     camera=self._camera_rig.state,
                     window_config=self._config.window,
+                    consumed_runtime_object_ids=frozenset(
+                        self._interaction_system.consumed_object_ids,
+                    ),
                 )
                 self._projectile_renderer.draw(
                     projectiles=self._projectile_system.projectiles,
@@ -275,6 +282,7 @@ class RaylibWindow:
                     self._player,
                     self._weapon_controller.stats,
                     damage_pulse=self._combat_feedback.hud_damage_pulse,
+                    status_message=self._interaction_system.active_message,
                 )
                 self._combat_feedback.draw()
                 if self._ui.debug_overlay_enabled:
@@ -306,6 +314,7 @@ class RaylibWindow:
             ControlsHelpLine(config.controls.fire_primary, "fire"),
             ControlsHelpLine("1/2/3", "select weapon"),
             ControlsHelpLine(config.controls.reload, "reload"),
+            ControlsHelpLine(config.controls.interact, "interact / use cache"),
             ControlsHelpLine("Arrow keys", "pan camera"),
             ControlsHelpLine("Q/E or wheel", "zoom camera"),
             ControlsHelpLine(config.controls.camera_reset, "reset camera"),
@@ -357,6 +366,18 @@ class RaylibWindow:
             direction_x=self._player.aim.direction_x,
             direction_y=self._player.aim.direction_y,
             muzzle_offset_px=self._config.player.fire_muzzle_offset_px,
+        )
+
+
+    def _update_interactions(self, frame_time: float) -> None:
+        """Apply nearby runtime object interactions for this frame."""
+        self._interaction_system.update(frame_time)
+        if not self._raylib.is_key_pressed(self._interact_key):
+            return
+        self._interaction_system.try_interact(
+            runtime_map=self._runtime_map,
+            player=self._player,
+            weapon_controller=self._weapon_controller,
         )
 
     def _update_player_controls(self, frame_time: float) -> None:

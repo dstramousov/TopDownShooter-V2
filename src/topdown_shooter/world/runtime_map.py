@@ -131,6 +131,9 @@ class RuntimeObjectsSummary:
         projectile_blockers: Objects that block projectiles/hitscan rays.
         vision_blockers: Objects that block or soften vision.
         footprint_objects: Objects represented by multi-tile footprints.
+        interactive_objects: Objects that can later become player interactions.
+        loot_objects: Objects carrying loot metadata.
+        explosive_objects: Objects carrying explosive metadata.
     """
 
     total_objects: int = 0
@@ -139,6 +142,9 @@ class RuntimeObjectsSummary:
     projectile_blockers: int = 0
     vision_blockers: int = 0
     footprint_objects: int = 0
+    interactive_objects: int = 0
+    loot_objects: int = 0
+    explosive_objects: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -224,6 +230,54 @@ class RuntimeMap:
             and tile.y < self.height_tiles
         )
 
+
+
+    @property
+    def interactive_runtime_objects(self) -> tuple[RuntimeMapObject, ...]:
+        """Return runtime objects that are player interaction candidates."""
+        return tuple(map_object for map_object in self.runtime_objects if map_object.interactive)
+
+    def interactive_objects_at(self, tile: TileCoord) -> tuple[RuntimeMapObject, ...]:
+        """Return interactive runtime objects occupying a tile.
+
+        Args:
+            tile: Tile coordinate to query.
+
+        Returns:
+            Interactive runtime objects occupying the tile, or an empty tuple.
+        """
+        return tuple(map_object for map_object in self.runtime_objects_at(tile) if map_object.interactive)
+
+    def nearest_interactive_object(
+        self,
+        tile: TileCoord,
+        *,
+        radius_tiles: int = 2,
+    ) -> RuntimeMapObject | None:
+        """Return the nearest interactive runtime object around a tile.
+
+        Args:
+            tile: Search center tile.
+            radius_tiles: Maximum Manhattan distance in tiles.
+
+        Returns:
+            Nearest interactive object, or ``None`` if none is close enough.
+        """
+        best_object: RuntimeMapObject | None = None
+        best_distance: int | None = None
+        for map_object in self.runtime_objects:
+            if not map_object.interactive:
+                continue
+            distance = min(
+                abs(tile.x - occupied.x) + abs(tile.y - occupied.y)
+                for occupied in map_object.footprint
+            )
+            if distance > radius_tiles:
+                continue
+            if best_distance is None or distance < best_distance:
+                best_object = map_object
+                best_distance = distance
+        return best_object
 
     def runtime_objects_at(self, tile: TileCoord) -> tuple[RuntimeMapObject, ...]:
         """Return runtime objects occupying a tile.

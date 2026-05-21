@@ -230,6 +230,18 @@ class DebugOverlay:
         tactical = self._runtime_map.tactical_summary
         objects = self._runtime_map.runtime_objects_summary
         warning_codes = ", ".join(issue.code for issue in report.warnings) or "none"
+        nearest_interactive = self._runtime_map.nearest_interactive_object(
+            player.tile,
+            radius_tiles=2,
+        )
+        nearest_interactive_label = (
+            "none"
+            if nearest_interactive is None
+            else (
+                f"{nearest_interactive.object_type} "
+                f"({nearest_interactive.origin.x},{nearest_interactive.origin.y})"
+            )
+        )
 
         left_column = (
             DebugOverlaySection(
@@ -588,6 +600,10 @@ class DebugOverlay:
                     DebugOverlayRow("Shot blockers", str(objects.projectile_blockers)),
                     DebugOverlayRow("Vision blockers", str(objects.vision_blockers)),
                     DebugOverlayRow("Footprints", str(objects.footprint_objects)),
+                    DebugOverlayRow("Interactive", str(objects.interactive_objects)),
+                    DebugOverlayRow("Loot", str(objects.loot_objects)),
+                    DebugOverlayRow("Explosive", str(objects.explosive_objects)),
+                    DebugOverlayRow("Near", nearest_interactive_label),
                     DebugOverlayRow("Elevation", str(len(self._runtime_map.elevation.cells))),
                 ),
             ),

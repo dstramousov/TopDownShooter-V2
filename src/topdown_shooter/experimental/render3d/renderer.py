@@ -17,6 +17,7 @@ from topdown_shooter.combat.projectiles import (
 from topdown_shooter.combat.weapons import WeaponController
 from topdown_shooter.config.runtime_config import RuntimeConfig
 from topdown_shooter.gameplay.combat_runtime import update_combat_runtime
+from topdown_shooter.gameplay.interactions import RuntimeObjectInteractionSystem
 from topdown_shooter.experimental.render3d.camera import Render3DFollowCamera
 from topdown_shooter.experimental.render3d.scene import (
     Render3DSceneBuilder,
@@ -162,6 +163,8 @@ class Render3DRenderer:
         self._weapon_slot_1_key = self._resolve_key(config.controls.weapon_slot_1)
         self._weapon_slot_2_key = self._resolve_key(config.controls.weapon_slot_2)
         self._weapon_slot_3_key = self._resolve_key(config.controls.weapon_slot_3)
+        self._interact_key = self._resolve_key(config.controls.interact)
+        self._interaction_system = RuntimeObjectInteractionSystem()
         self._weapon_fire_events_last_update = 0
         self._muzzle_flashes: list[_Render3DMuzzleFlashState] = []
         self._projectile_trails: list[_Render3DProjectileTrailState] = []
@@ -243,6 +246,11 @@ class Render3DRenderer:
                     input_state = self._read_input_state()
                     self._update_player(player, player_controller, input_state, frame_time)
                     self._update_combat_controls(
+                        player=player,
+                        weapon_controller=weapon_controller,
+                        frame_time=frame_time,
+                    )
+                    self._update_interactions(
                         player=player,
                         weapon_controller=weapon_controller,
                         frame_time=frame_time,
@@ -339,6 +347,7 @@ class Render3DRenderer:
                     player,
                     weapon_controller.stats,
                     damage_pulse=self._combat_feedback.hud_damage_pulse,
+                    status_message=self._interaction_system.active_message,
                 )
                 self._combat_feedback.draw()
                 self._update_debug_overlay_scroll()
@@ -381,6 +390,7 @@ class Render3DRenderer:
             ControlsHelpLine(config.controls.fire_primary, "fire"),
             ControlsHelpLine("1/2/3", "select weapon"),
             ControlsHelpLine(config.controls.reload, "reload"),
+            ControlsHelpLine(config.controls.interact, "interact / use cache"),
             ControlsHelpLine(config.controls.mouse_capture_toggle, "capture / release mouse"),
             ControlsHelpLine(config.render3d.controls.camera_reset, "reset camera"),
             ControlsHelpLine(config.render3d.controls.view_mode_toggle, "view mode"),
@@ -441,6 +451,24 @@ class Render3DRenderer:
         if self._is_any_key_down(self._player_key_down):
             move_y += 1.0
         return Render3DInputState(move_x=move_x, move_y=move_y)
+
+
+    def _update_interactions(
+        self,
+        *,
+        player: PlayerState,
+        weapon_controller: WeaponController,
+        frame_time: float,
+    ) -> None:
+        """Apply nearby runtime object interactions in 3D gameplay."""
+        self._interaction_system.update(frame_time)
+        if not self._raylib.is_key_pressed(self._interact_key):
+            return
+        self._interaction_system.try_interact(
+            runtime_map=self._runtime_map,
+            player=player,
+            weapon_controller=weapon_controller,
+        )
 
     def _update_player(
         self,
@@ -673,12 +701,16 @@ class Render3DRenderer:
             if not self._runtime_object_is_visible(map_object, scene):
                 continue
             color = self._scene_color(
-                self._runtime_object_color(map_object),
+                self._runtime_object_color(
+                    map_object,
+                    consumed=map_object.object_id in self._interaction_system.consumed_object_ids,
+                ),
                 (map_object.origin.x + 0.5) * tile_size,
                 (map_object.origin.y + 0.5) * tile_size,
                 scene,
             )
             width = tile_size * self._runtime_object_width_scale(map_object)
+            depth = tile_size * self._runtime_object_depth_scale(map_object)
             height = tile_size * self._runtime_object_height_scale(map_object) * height_scale
             if map_object.object_type == "trench":
                 height = 0.025 * height_scale
@@ -692,7 +724,33 @@ class Render3DRenderer:
                     height * 0.5,
                     (tile.y + 0.5) * tile_size,
                 )
-                raylib.draw_cube(center, width, max(0.01, height), width, color)
+                self._draw_runtime_object_primitive(
+                    center=center,
+                    width=width,
+                    height=max(0.01, height),
+                    depth=depth,
+                    color=color,
+                    map_object=map_object,
+                )
+
+    def _draw_runtime_object_primitive(
+        self,
+        *,
+        center: object,
+        width: float,
+        height: float,
+        depth: float,
+        color: object,
+        map_object: RuntimeMapObject,
+    ) -> None:
+        """Draw a 3D primitive for one runtime object footprint tile."""
+        raylib = self._raylib
+        if map_object.object_type in {"rusted_barrel", "big_dead_tree", "broken_radio_mast"}:
+            radius = max(0.04, min(width, depth) * 0.5)
+            if hasattr(raylib, "draw_cylinder"):
+                raylib.draw_cylinder(center, radius, radius, height, 10, color)
+                return
+        raylib.draw_cube(center, width, height, depth, color)
 
     def _runtime_object_is_visible(
         self,
@@ -707,15 +765,46 @@ class Render3DRenderer:
 
     def _runtime_object_width_scale(self, map_object: RuntimeMapObject) -> float:
         """Return placeholder width scale for a runtime object."""
+        if map_object.object_type == "fallen_log":
+            return 0.86 if self._runtime_object_footprint_is_horizontal(map_object) else 0.36
         if map_object.object_type == "trench":
             return 0.94
         if map_object.object_type in {"ammo_cache", "medkit_cache"}:
             return 0.42
+        if map_object.object_type in {"big_dead_tree", "broken_radio_mast", "rusted_barrel"}:
+            return 0.38
         if map_object.role in {"landmark", "defensive_landmark"}:
             return 0.78
         if map_object.cover_type in {"soft", "partial"}:
             return 0.68
         return 0.72
+
+
+    def _runtime_object_depth_scale(self, map_object: RuntimeMapObject) -> float:
+        """Return placeholder depth scale for a runtime object."""
+        if map_object.object_type == "fallen_log":
+            return 0.36 if self._runtime_object_footprint_is_horizontal(map_object) else 0.86
+        if map_object.object_type == "fallen_log":
+            return 0.86 if self._runtime_object_footprint_is_horizontal(map_object) else 0.36
+        if map_object.object_type == "trench":
+            return 0.94
+        if map_object.object_type in {"ammo_cache", "medkit_cache"}:
+            return 0.42
+        if map_object.object_type in {"big_dead_tree", "broken_radio_mast", "rusted_barrel"}:
+            return 0.38
+        if map_object.object_type in {"big_dead_tree", "broken_radio_mast", "rusted_barrel"}:
+            return 0.38
+        if map_object.role in {"landmark", "defensive_landmark"}:
+            return 0.78
+        if map_object.cover_type in {"soft", "partial"}:
+            return 0.68
+        return 0.72
+
+    def _runtime_object_footprint_is_horizontal(self, map_object: RuntimeMapObject) -> bool:
+        """Return whether a runtime object footprint is wider than it is tall."""
+        xs = {tile.x for tile in map_object.footprint}
+        ys = {tile.y for tile in map_object.footprint}
+        return len(xs) >= len(ys)
 
     def _runtime_object_height_scale(self, map_object: RuntimeMapObject) -> float:
         """Return placeholder height scale for a runtime object."""
@@ -723,6 +812,14 @@ class Render3DRenderer:
             return 0.02
         if map_object.object_type in {"ammo_cache", "medkit_cache"}:
             return 0.2
+        if map_object.object_type == "fallen_log":
+            return 0.28
+        if map_object.object_type == "rusted_barrel":
+            return 0.62
+        if map_object.object_type == "broken_radio_mast":
+            return max(1.25, float(map_object.height) * 0.45)
+        if map_object.object_type == "big_dead_tree":
+            return max(1.1, float(map_object.height) * 0.4)
         if map_object.role in {"landmark", "defensive_landmark"}:
             return max(0.8, float(map_object.height) * 0.35)
         if map_object.cover_type == "soft":
@@ -731,15 +828,30 @@ class Render3DRenderer:
             return 0.45
         return max(0.25, min(0.9, float(map_object.height) * 0.25))
 
-    def _runtime_object_color(self, map_object: RuntimeMapObject) -> object:
+    def _runtime_object_color(
+        self,
+        map_object: RuntimeMapObject,
+        *,
+        consumed: bool = False,
+    ) -> object:
         """Return a stable 3D placeholder color for a runtime object."""
         raylib = self._raylib
-        if map_object.object_type in {"ammo_cache", "medkit_cache"}:
+        if consumed:
+            return raylib.Color(58, 58, 58, 135)
+        if map_object.object_type == "ammo_cache":
             return raylib.Color(238, 207, 92, 245)
+        if map_object.object_type == "medkit_cache":
+            return raylib.Color(220, 73, 73, 245)
         if map_object.object_type == "trench":
             return raylib.Color(64, 45, 32, 235)
         if map_object.cover_type == "soft" or map_object.object_type == "bush_thicket":
             return raylib.Color(43, 132, 61, 220)
+        if map_object.object_type == "fallen_log":
+            return raylib.Color(121, 77, 41, 240)
+        if map_object.object_type == "stone_chunk":
+            return raylib.Color(130, 130, 130, 240)
+        if map_object.object_type == "scrap_pile":
+            return raylib.Color(102, 110, 118, 240)
         if map_object.object_type == "rusted_barrel":
             return raylib.Color(144, 84, 42, 235)
         if map_object.role in {"landmark", "defensive_landmark"}:
