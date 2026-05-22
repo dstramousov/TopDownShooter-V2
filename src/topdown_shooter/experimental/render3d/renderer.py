@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 import math
-from pathlib import Path
 
 from topdown_shooter.combat.enemies import EnemyHitMarkerState, EnemySystem
 from topdown_shooter.combat.projectiles import (
@@ -90,28 +89,6 @@ class _Render3DProjectileTrailState:
     key: tuple[int, int, int, int, str, str]
     age_seconds: float = 0.0
     lifetime_seconds: float = 0.075
-
-
-@dataclass(slots=True)
-class _Render3DVegetationFrameStats:
-    """Per-frame diagnostics for 3D vegetation model scatter."""
-
-    visible_tree_tiles: int = 0
-    visible_bush_tiles: int = 0
-    model_draws: int = 0
-    textured_model_draws: int = 0
-    untextured_model_draws: int = 0
-    primitive_fallbacks: int = 0
-
-
-@dataclass(slots=True)
-class _Render3DLoadedModel:
-    """Loaded 3D model handle and its source path."""
-
-    path: str
-    resolved_path: Path
-    model: object
-    texture_applied: bool = False
 
 
 class Render3DRenderer:
@@ -212,12 +189,6 @@ class Render3DRenderer:
             renderer_name="3D",
             help_lines=self._build_help_lines(config),
         )
-        self._vegetation_models: dict[str, _Render3DLoadedModel] = {}
-        self._vegetation_failed_paths: tuple[str, ...] = ()
-        self._vegetation_texture: object | None = None
-        self._vegetation_texture_path: Path | None = None
-        self._vegetation_texture_failed_paths: tuple[str, ...] = ()
-        self._vegetation_stats = _Render3DVegetationFrameStats()
 
     def run_follow_preview(
         self,
@@ -248,8 +219,6 @@ class Render3DRenderer:
         window = self._config.window
         self._configure_raylib_logging()
         raylib.init_window(window.width, window.height, f"{window.title} - 3D experiment")
-        self._load_vegetation_texture()
-        self._load_vegetation_models()
         raylib.set_exit_key(raylib.KEY_NULL)
         self._apply_initial_window_position()
         raylib.set_target_fps(window.target_fps)
@@ -393,8 +362,6 @@ class Render3DRenderer:
                 self._ui.draw()
                 raylib.end_drawing()
         finally:
-            self._unload_vegetation_models()
-            self._unload_vegetation_texture()
             self._player_hud.unload()
             self._ui.unload()
             self._set_mouse_capture(False)
@@ -673,7 +640,6 @@ class Render3DRenderer:
             scene: Visible 3D scene snapshot.
         """
         raylib = self._raylib
-        self._reset_vegetation_frame_stats()
         tile_size = self._config.render3d.tile_size
         height_scale = self._config.render3d.height_scale
         ground_y = -0.03 * height_scale
@@ -698,16 +664,12 @@ class Render3DRenderer:
             )
             draw_detail = self._should_draw_environment_detail(primitive)
             if primitive.walkable:
-                if self._draw_vegetation_for_tile(primitive, center, scene):
-                    continue
                 self._draw_walkable_tile(
                     center,
                     primitive.symbol,
                     color,
                     draw_detail=draw_detail,
                 )
-                continue
-            if self._draw_vegetation_for_tile(primitive, center, scene):
                 continue
             self._draw_blocking_tile(
                 center,
@@ -716,446 +678,6 @@ class Render3DRenderer:
                 draw_detail=draw_detail,
             )
         self._draw_runtime_objects(scene)
-
-    def _reset_vegetation_frame_stats(self) -> None:
-        """Reset per-frame vegetation scatter counters."""
-        self._vegetation_stats = _Render3DVegetationFrameStats()
-
-    def _draw_vegetation_for_tile(
-        self,
-        primitive: Render3DTilePrimitive,
-        center: object,
-        scene: Render3DSceneSnapshot,
-    ) -> bool:
-        """Draw a deterministic vegetation model for a map tile when configured.
-
-        Args:
-            primitive: Tile primitive being rendered.
-            center: World-space 3D tile center.
-            scene: Current scene snapshot.
-
-        Returns:
-            True when a model was drawn and primitive fallback should be skipped.
-        """
-        vegetation = self._config.render3d.vegetation
-        if not vegetation.enabled:
-            return False
-        if vegetation.max_draws_per_frame <= 0:
-            return False
-        max_distance_squared = vegetation.max_distance_tiles * vegetation.max_distance_tiles
-        if primitive.distance_squared > max_distance_squared:
-            return False
-
-        if primitive.symbol in vegetation.tree_symbols:
-            self._vegetation_stats.visible_tree_tiles += 1
-            return self._draw_selected_vegetation_model(
-                primitive=primitive,
-                center=center,
-                scene=scene,
-                entries=vegetation.tree_models,
-                max_offset_tiles=vegetation.max_tree_offset_tiles,
-                salt="tree",
-            )
-        if primitive.symbol in vegetation.bush_symbols:
-            self._vegetation_stats.visible_bush_tiles += 1
-            return self._draw_selected_vegetation_model(
-                primitive=primitive,
-                center=center,
-                scene=scene,
-                entries=vegetation.bush_models,
-                max_offset_tiles=vegetation.max_bush_offset_tiles,
-                salt="bush",
-            )
-        return False
-
-    def _draw_selected_vegetation_model(
-        self,
-        *,
-        primitive: Render3DTilePrimitive,
-        center: object,
-        scene: Render3DSceneSnapshot,
-        entries: tuple[object, ...],
-        max_offset_tiles: float,
-        salt: str,
-    ) -> bool:
-        """Draw a deterministic weighted vegetation model for one tile."""
-        max_draws = self._config.render3d.vegetation.max_draws_per_frame
-        if self._vegetation_stats.model_draws >= max_draws:
-            self._vegetation_stats.primitive_fallbacks += 1
-            return False
-        entry = self._select_weighted_vegetation_entry(primitive.x, primitive.y, salt, entries)
-        if entry is None:
-            self._vegetation_stats.primitive_fallbacks += 1
-            return False
-        loaded_model = self._vegetation_models.get(entry.path)
-        if loaded_model is None:
-            self._vegetation_stats.primitive_fallbacks += 1
-            return False
-        draw_model_ex = getattr(self._raylib, "draw_model_ex", None)
-        if not callable(draw_model_ex):
-            self._vegetation_stats.primitive_fallbacks += 1
-            return False
-
-        tile_size = self._config.render3d.tile_size
-        offset_x = self._signed_vegetation_value(primitive.x, primitive.y, f"{salt}:x")
-        offset_z = self._signed_vegetation_value(primitive.x, primitive.y, f"{salt}:z")
-        scale_value = self._lerp(
-            entry.min_scale,
-            entry.max_scale,
-            self._vegetation_unit_value(primitive.x, primitive.y, f"{salt}:scale"),
-        )
-        rotation_degrees = 360.0 * self._vegetation_unit_value(
-            primitive.x,
-            primitive.y,
-            f"{salt}:rot",
-        )
-        brightness = self._distance_brightness_for_scene_position(center.x, center.z, scene)
-        tint = self._vegetation_tint(brightness)
-        position = self._raylib.Vector3(
-            center.x + offset_x * max_offset_tiles * tile_size,
-            0.0,
-            center.z + offset_z * max_offset_tiles * tile_size,
-        )
-        self._draw_vegetation_ground_patch(
-            primitive=primitive,
-            center=position,
-            scene=scene,
-            salt=salt,
-        )
-        axis = self._raylib.Vector3(0.0, 1.0, 0.0)
-        scale = self._raylib.Vector3(scale_value, scale_value, scale_value)
-        draw_model_ex(loaded_model.model, position, axis, rotation_degrees, scale, tint)
-        self._vegetation_stats.model_draws += 1
-        if loaded_model.texture_applied:
-            self._vegetation_stats.textured_model_draws += 1
-        else:
-            self._vegetation_stats.untextured_model_draws += 1
-        return True
-
-    def _select_weighted_vegetation_entry(
-        self,
-        x: int,
-        y: int,
-        salt: str,
-        entries: tuple[object, ...],
-    ) -> object | None:
-        """Select a vegetation model entry deterministically by tile coordinate."""
-        if not entries:
-            return None
-        total_weight = sum(entry.weight for entry in entries)
-        if total_weight <= 0:
-            return None
-        pick = int(self._vegetation_unit_value(x, y, f"{salt}:model") * total_weight)
-        cumulative = 0
-        for entry in entries:
-            cumulative += entry.weight
-            if pick < cumulative:
-                return entry
-        return entries[-1]
-
-    def _draw_vegetation_ground_patch(
-        self,
-        *,
-        primitive: Render3DTilePrimitive,
-        center: object,
-        scene: Render3DSceneSnapshot,
-        salt: str,
-    ) -> None:
-        """Draw a small organic ground patch under a rendered vegetation model."""
-        draw_cylinder = getattr(self._raylib, "draw_cylinder", None)
-        if not callable(draw_cylinder):
-            self._draw_vegetation_ground_patch_fallback(
-                primitive=primitive,
-                center=center,
-                scene=scene,
-            )
-            return
-
-        tile_size = self._config.render3d.tile_size
-        height_scale = self._config.render3d.height_scale
-        patch_height = 0.01 * height_scale
-        radius = self._vegetation_ground_patch_radius(primitive.symbol) * tile_size
-        count = self._vegetation_ground_patch_count(primitive.symbol)
-        for index in range(count):
-            offset_x = self._signed_vegetation_value(
-                primitive.x,
-                primitive.y,
-                f"{salt}:ground:{index}:x",
-            )
-            offset_z = self._signed_vegetation_value(
-                primitive.x,
-                primitive.y,
-                f"{salt}:ground:{index}:z",
-            )
-            radius_ratio = self._lerp(
-                0.46,
-                0.78,
-                self._vegetation_unit_value(
-                    primitive.x,
-                    primitive.y,
-                    f"{salt}:ground:{index}:r",
-                ),
-            )
-            patch_center = self._raylib.Vector3(
-                center.x + offset_x * radius * 0.42,
-                patch_height * 0.5,
-                center.z + offset_z * radius * 0.42,
-            )
-            color = self._scene_color(
-                self._vegetation_ground_patch_color(primitive.symbol, index),
-                patch_center.x,
-                patch_center.z,
-                scene,
-            )
-            draw_cylinder(
-                patch_center,
-                radius * radius_ratio,
-                radius * radius_ratio,
-                patch_height,
-                9,
-                color,
-            )
-
-    def _draw_vegetation_ground_patch_fallback(
-        self,
-        *,
-        primitive: Render3DTilePrimitive,
-        center: object,
-        scene: Render3DSceneSnapshot,
-    ) -> None:
-        """Draw a reduced square patch when cylinder primitives are unavailable."""
-        tile_size = self._config.render3d.tile_size
-        height_scale = self._config.render3d.height_scale
-        patch_height = 0.01 * height_scale
-        width = self._vegetation_ground_patch_radius(primitive.symbol) * tile_size * 1.35
-        patch_center = self._raylib.Vector3(center.x, patch_height * 0.5, center.z)
-        color = self._scene_color(
-            self._vegetation_ground_patch_color(primitive.symbol, 0),
-            patch_center.x,
-            patch_center.z,
-            scene,
-        )
-        self._raylib.draw_cube(patch_center, width, patch_height, width, color)
-
-    def _vegetation_ground_patch_radius(self, symbol: str) -> float:
-        """Return a radius in tile units for vegetation ground cleanup blobs."""
-        if symbol == "T":
-            return 0.36
-        if symbol == "b":
-            return 0.30
-        if symbol == "f":
-            return 0.24
-        if symbol == "m":
-            return 0.20
-        return 0.26
-
-    @staticmethod
-    def _vegetation_ground_patch_count(symbol: str) -> int:
-        """Return how many overlapping blobs to draw under one vegetation model."""
-        if symbol == "T":
-            return 3
-        return 2
-
-    def _vegetation_ground_patch_color(self, symbol: str, index: int) -> object:
-        """Return a muted terrain color for vegetation ground cleanup blobs."""
-        raylib = self._raylib
-        palettes = {
-            "T": ((34, 58, 30), (72, 55, 34), (28, 48, 26)),
-            "b": ((38, 83, 36), (52, 92, 39)),
-            "f": ((48, 94, 43), (77, 82, 44)),
-            "m": ((65, 59, 43), (48, 74, 40)),
-        }
-        palette = palettes.get(symbol, ((42, 78, 38),))
-        red, green, blue = palette[index % len(palette)]
-        color_factory = getattr(raylib, "Color", None)
-        if callable(color_factory):
-            return color_factory(red, green, blue, 255)
-        return getattr(raylib, "DARKGREEN", getattr(raylib, "GREEN", None))
-
-    @classmethod
-    def _vegetation_unit_value(cls, x: int, y: int, salt: str) -> float:
-        """Return a deterministic value in the 0..1 range for a tile."""
-        value = cls._vegetation_hash(x, y, salt) & 0xFFFFFFFF
-        return value / 0xFFFFFFFF
-
-    @classmethod
-    def _signed_vegetation_value(cls, x: int, y: int, salt: str) -> float:
-        """Return a deterministic value in the -1..1 range for a tile."""
-        return cls._vegetation_unit_value(x, y, salt) * 2.0 - 1.0
-
-    @staticmethod
-    def _vegetation_hash(x: int, y: int, salt: str) -> int:
-        """Hash tile coordinates and a salt without using runtime randomness."""
-        value = 2166136261
-        for part in (x, y, salt):
-            for byte in str(part).encode("utf-8"):
-                value ^= byte
-                value = (value * 16777619) & 0xFFFFFFFF
-        return value
-
-    @staticmethod
-    def _lerp(start: float, end: float, ratio: float) -> float:
-        """Linearly interpolate between two floats."""
-        return start + (end - start) * max(0.0, min(1.0, ratio))
-
-    def _vegetation_tint(self, brightness: float) -> object:
-        """Return model tint adjusted by distance fade brightness."""
-        raylib = self._raylib
-        brightness = max(0.0, min(1.0, brightness))
-        channel = int(255 * brightness)
-        color_factory = getattr(raylib, "Color", None)
-        if callable(color_factory):
-            return color_factory(channel, channel, channel, 255)
-        return getattr(raylib, "WHITE", getattr(raylib, "RAYWHITE", None))
-
-    def _load_vegetation_models(self) -> None:
-        """Load configured vegetation models after the raylib window exists."""
-        vegetation = self._config.render3d.vegetation
-        if not vegetation.enabled:
-            return
-        load_model = getattr(self._raylib, "load_model", None)
-        if not callable(load_model):
-            self._vegetation_failed_paths = tuple(
-                sorted({entry.path for entry in (*vegetation.tree_models, *vegetation.bush_models)}),
-            )
-            return
-        failed_paths: list[str] = []
-        for entry in (*vegetation.tree_models, *vegetation.bush_models):
-            if entry.path in self._vegetation_models or entry.path in failed_paths:
-                continue
-            resolved_path = self._resolve_vegetation_model_path(entry.path)
-            if resolved_path is None:
-                failed_paths.append(entry.path)
-                continue
-            try:
-                model = load_model(str(resolved_path))
-            except Exception:
-                failed_paths.append(entry.path)
-                continue
-            texture_applied = self._apply_vegetation_texture_to_model(model)
-            self._vegetation_models[entry.path] = _Render3DLoadedModel(
-                path=entry.path,
-                resolved_path=resolved_path,
-                model=model,
-                texture_applied=texture_applied,
-            )
-        self._vegetation_failed_paths = tuple(failed_paths)
-
-    def _load_vegetation_texture(self) -> None:
-        """Load the shared vegetation colormap texture when available."""
-        vegetation = self._config.render3d.vegetation
-        if not vegetation.enabled:
-            return
-        load_texture = getattr(self._raylib, "load_texture", None)
-        if not callable(load_texture):
-            self._vegetation_texture_failed_paths = tuple(
-                str(path) for path in self._vegetation_texture_candidates()
-            )
-            return
-        failed_paths: list[str] = []
-        for candidate in self._vegetation_texture_candidates():
-            if not candidate.is_file():
-                failed_paths.append(str(candidate))
-                continue
-            try:
-                self._vegetation_texture = load_texture(str(candidate))
-            except Exception:
-                failed_paths.append(str(candidate))
-                continue
-            self._vegetation_texture_path = candidate.resolve()
-            self._vegetation_texture_failed_paths = tuple(failed_paths)
-            return
-        self._vegetation_texture_failed_paths = tuple(failed_paths)
-
-    def _vegetation_texture_candidates(self) -> tuple[Path, ...]:
-        """Return supported shared vegetation colormap locations."""
-        project_root = Path(__file__).resolve().parents[4]
-        package_parent = self._package.package_dir.parent
-        return (
-            Path.cwd() / "res" / "models" / "Textures" / "colormap.png",
-            Path.cwd() / "res" / "Textures" / "colormap.png",
-            Path.cwd() / "res" / "models" / "colormap.png",
-            Path.cwd() / "res" / "colormap.png",
-            package_parent / "res" / "models" / "Textures" / "colormap.png",
-            package_parent / "res" / "Textures" / "colormap.png",
-            package_parent / "res" / "models" / "colormap.png",
-            package_parent / "res" / "colormap.png",
-            project_root / "res" / "models" / "Textures" / "colormap.png",
-            project_root / "res" / "Textures" / "colormap.png",
-            project_root / "res" / "models" / "colormap.png",
-            project_root / "res" / "colormap.png",
-        )
-
-    def _apply_vegetation_texture_to_model(self, model: object) -> bool:
-        """Bind the shared colormap to all model materials when possible."""
-        if self._vegetation_texture is None:
-            return False
-        set_material_texture = getattr(self._raylib, "set_material_texture", None)
-        if not callable(set_material_texture):
-            return False
-        material_map = self._vegetation_material_map_constant()
-        if material_map is None:
-            return False
-        materials = getattr(model, "materials", None)
-        material_count = int(getattr(model, "materialCount", 0) or getattr(model, "material_count", 0) or 0)
-        if materials is None or material_count <= 0:
-            return False
-        applied = False
-        for index in range(material_count):
-            try:
-                material = materials[index]
-                set_material_texture(material, material_map, self._vegetation_texture)
-            except Exception:
-                continue
-            applied = True
-        return applied
-
-    def _vegetation_material_map_constant(self) -> int | None:
-        """Return the raylib material map constant for albedo/diffuse textures."""
-        for name in ("MATERIAL_MAP_ALBEDO", "MATERIAL_MAP_DIFFUSE"):
-            value = getattr(self._raylib, name, None)
-            if value is not None:
-                return int(value)
-        return None
-
-    def _resolve_vegetation_model_path(self, model_path: str) -> Path | None:
-        """Resolve a vegetation model path from common runtime roots."""
-        raw_path = Path(model_path).expanduser()
-        if raw_path.is_absolute():
-            return raw_path if raw_path.is_file() else None
-        candidates = (
-            Path.cwd() / raw_path,
-            self._package.package_dir.parent / raw_path,
-            Path(__file__).resolve().parents[4] / raw_path,
-        )
-        for candidate in candidates:
-            if candidate.is_file():
-                return candidate.resolve()
-        return None
-
-    def _unload_vegetation_models(self) -> None:
-        """Unload vegetation models loaded by raylib."""
-        unload_model = getattr(self._raylib, "unload_model", None)
-        if callable(unload_model):
-            for loaded_model in self._vegetation_models.values():
-                try:
-                    unload_model(loaded_model.model)
-                except Exception:
-                    continue
-        self._vegetation_models.clear()
-
-    def _unload_vegetation_texture(self) -> None:
-        """Unload the shared vegetation colormap texture."""
-        if self._vegetation_texture is None:
-            return
-        unload_texture = getattr(self._raylib, "unload_texture", None)
-        if callable(unload_texture):
-            try:
-                unload_texture(self._vegetation_texture)
-            except Exception:
-                pass
-        self._vegetation_texture = None
-        self._vegetation_texture_path = None
 
     def _draw_runtime_objects(self, scene: Render3DSceneSnapshot) -> None:
         """Draw readable runtime object primitives in the 3D gameplay scene."""
@@ -2562,21 +2084,6 @@ class Render3DRenderer:
         """Reduce raylib logging noise before opening the 3D experiment window."""
         configure_raylib_logging(self._raylib)
 
-
-    def _format_vegetation_texture_source(self) -> str:
-        """Return a compact debug string for the loaded vegetation texture."""
-        if self._vegetation_texture_path is None:
-            return "-"
-        try:
-            return str(self._vegetation_texture_path.relative_to(Path.cwd()))
-        except ValueError:
-            return str(self._vegetation_texture_path)
-
-    def _format_vegetation_texture_failure(self) -> str:
-        """Return a compact debug string for the first texture lookup failure."""
-        if not self._vegetation_texture_failed_paths:
-            return "-"
-        return self._vegetation_texture_failed_paths[0]
 
     def _resolve_mouse_button(self, button_name: str) -> int:
         """Resolve a raylib mouse button constant by name."""

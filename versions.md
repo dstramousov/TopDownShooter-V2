@@ -790,3 +790,15 @@
 - Removed the runtime debug overlay module and all 2D/3D render-loop calls that built or drew diagnostic overlay rows.
 - Removed `debug_overlay` and `controls.debug_overlay` from the default runtime config and moved modal UI styling to `ui` settings.
 - Updated runtime config loading, controls help, documentation, and tests for the debug-overlay-free runtime.
+
+## v0.1.7 -> v0.1.8
+
+- Removed experimental 3D vegetation GLB scatter rendering from the runtime renderer to eliminate the large vegetation model draw-call budget.
+- Removed vegetation scatter configuration parsing and the `render3d.vegetation` section from the default runtime config.
+- Kept map gameplay, 2D rendering, collision, AI, weapons, and existing model asset files unchanged.
+
+## v0.1.8 -> v0.1.9
+
+- Added a bounded LRU cache for prepared 3D scene snapshots so recently visited center tiles are reused instead of rebuilt.
+- Replaced per-snapshot radius scanning and heap selection with cached nearest-first view-radius offsets.
+- Preserved 3D culling order, map-edge clipping, primitive caps, gameplay state, 2D rendering, AI, weapons, and collision behavior.

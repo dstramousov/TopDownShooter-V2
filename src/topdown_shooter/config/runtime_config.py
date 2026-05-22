@@ -493,50 +493,6 @@ class Render3DEnemyVisionConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class Render3DVegetationModelConfig:
-    """One weighted 3D vegetation model entry.
-
-    Attributes:
-        path: Model path relative to the project root or current working directory.
-        weight: Weighted selection weight for deterministic scatter.
-        min_scale: Minimum deterministic model scale.
-        max_scale: Maximum deterministic model scale.
-    """
-
-    path: str
-    weight: int
-    min_scale: float
-    max_scale: float
-
-
-@dataclass(frozen=True, slots=True)
-class Render3DVegetationConfig:
-    """3D vegetation model scatter settings.
-
-    Attributes:
-        enabled: Whether vegetation model scatter is enabled.
-        max_draws_per_frame: Safety cap for model draw calls per frame.
-        max_distance_tiles: Maximum distance from the snapshot center for models.
-        tree_symbols: Tile symbols treated as tree vegetation.
-        bush_symbols: Tile symbols treated as low vegetation.
-        max_tree_offset_tiles: Maximum deterministic tree model offset.
-        max_bush_offset_tiles: Maximum deterministic bush model offset.
-        tree_models: Weighted tree model entries.
-        bush_models: Weighted low vegetation model entries.
-    """
-
-    enabled: bool
-    max_draws_per_frame: int
-    max_distance_tiles: int
-    tree_symbols: tuple[str, ...]
-    bush_symbols: tuple[str, ...]
-    max_tree_offset_tiles: float
-    max_bush_offset_tiles: float
-    tree_models: tuple[Render3DVegetationModelConfig, ...]
-    bush_models: tuple[Render3DVegetationModelConfig, ...]
-
-
-@dataclass(frozen=True, slots=True)
 class Render3DConfig:
     """Experimental 3D renderer settings.
 
@@ -558,7 +514,6 @@ class Render3DConfig:
         enemy_vision: Experimental 3D enemy vision cone settings.
         projectiles: Experimental 3D projectile marker settings.
         combat_visuals: Experimental 3D combat readability settings.
-        vegetation: Experimental 3D vegetation model scatter settings.
     """
 
     enabled: bool
@@ -576,7 +531,6 @@ class Render3DConfig:
     enemy_vision: Render3DEnemyVisionConfig
     projectiles: Render3DProjectileConfig
     combat_visuals: Render3DCombatVisualsConfig
-    vegetation: Render3DVegetationConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -1048,7 +1002,6 @@ class RuntimeConfigLoader:
         enemy_vision = self._require_dict(render3d, "enemy_vision")
         projectiles = self._require_dict(render3d, "projectiles")
         combat_visuals = self._require_dict(render3d, "combat_visuals")
-        vegetation = self._require_dict(render3d, "vegetation")
         render_mode = self._require_render3d_mode(render3d, "render_mode")
         view_mode = self._require_render3d_view_mode(render3d, "view_mode")
         return Render3DConfig(
@@ -1223,7 +1176,6 @@ class RuntimeConfigLoader:
                     "enemy_hit_marker_height_tiles",
                 ),
             ),
-            vegetation=self._build_render3d_vegetation_config(vegetation),
             enemies=Render3DEnemyConfig(
                 draw_enemy_markers=self._require_bool(
                     enemies,
@@ -1269,73 +1221,6 @@ class RuntimeConfigLoader:
                 combat_alpha=self._require_alpha_int(enemy_vision, "combat_alpha"),
             ),
         )
-
-    def _build_render3d_vegetation_config(
-        self,
-        vegetation: dict[str, Any],
-    ) -> Render3DVegetationConfig:
-        """Build typed 3D vegetation scatter config from raw data.
-
-        Args:
-            vegetation: Raw vegetation configuration dictionary.
-
-        Returns:
-            Vegetation scatter configuration.
-        """
-        return Render3DVegetationConfig(
-            enabled=self._require_bool(vegetation, "enabled"),
-            max_draws_per_frame=self._require_non_negative_int(
-                vegetation,
-                "max_draws_per_frame",
-            ),
-            max_distance_tiles=self._require_non_negative_int(
-                vegetation,
-                "max_distance_tiles",
-            ),
-            tree_symbols=self._require_symbol_tuple(vegetation, "tree_symbols"),
-            bush_symbols=self._require_symbol_tuple(vegetation, "bush_symbols"),
-            max_tree_offset_tiles=self._require_non_negative_float(
-                vegetation,
-                "max_tree_offset_tiles",
-            ),
-            max_bush_offset_tiles=self._require_non_negative_float(
-                vegetation,
-                "max_bush_offset_tiles",
-            ),
-            tree_models=self._require_vegetation_models(vegetation, "tree_models"),
-            bush_models=self._require_vegetation_models(vegetation, "bush_models"),
-        )
-
-    def _require_vegetation_models(
-        self,
-        data: dict[str, Any],
-        key: str,
-    ) -> tuple[Render3DVegetationModelConfig, ...]:
-        """Read weighted vegetation model entries."""
-        value = data.get(key)
-        if not isinstance(value, list):
-            raise RuntimeConfigError(f"Runtime config vegetation list is missing: {key}")
-        models: list[Render3DVegetationModelConfig] = []
-        for index, item in enumerate(value):
-            if not isinstance(item, dict):
-                raise RuntimeConfigError(
-                    f"Runtime config vegetation entry is invalid: {key}[{index}]",
-                )
-            min_scale = self._require_positive_float(item, "min_scale")
-            max_scale = self._require_positive_float(item, "max_scale")
-            if min_scale > max_scale:
-                raise RuntimeConfigError(
-                    f"Runtime config vegetation scale range is invalid: {key}[{index}]",
-                )
-            models.append(
-                Render3DVegetationModelConfig(
-                    path=self._require_str(item, "path"),
-                    weight=self._require_positive_int(item, "weight"),
-                    min_scale=min_scale,
-                    max_scale=max_scale,
-                ),
-            )
-        return tuple(models)
 
     def _require_symbol_tuple(self, data: dict[str, Any], key: str) -> tuple[str, ...]:
         """Read one-character tile symbols from runtime config."""

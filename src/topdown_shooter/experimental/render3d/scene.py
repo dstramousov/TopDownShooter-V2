@@ -2,12 +2,44 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
-import heapq
 
 from topdown_shooter.config.runtime_config import Render3DConfig
 from topdown_shooter.world.coordinates import TileCoord
 from topdown_shooter.world.runtime_map import RuntimeMap
+
+
+@dataclass(frozen=True, slots=True)
+class _Render3DSceneCacheKey:
+    """Stable cache key for a prepared 3D scene snapshot.
+
+    Attributes:
+        center_x: Snapshot center tile X coordinate.
+        center_y: Snapshot center tile Y coordinate.
+        radius: View-radius culling value used for the snapshot.
+        max_visible_primitives: Primitive cap used for the snapshot.
+    """
+
+    center_x: int
+    center_y: int
+    radius: int
+    max_visible_primitives: int
+
+
+@dataclass(frozen=True, slots=True)
+class _Render3DVisibleTileOffset:
+    """Precomputed view-radius offset from the snapshot center.
+
+    Attributes:
+        dx: Tile X offset from the center.
+        dy: Tile Y offset from the center.
+        distance_squared: Squared tile distance from the center.
+    """
+
+    dx: int
+    dy: int
+    distance_squared: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,10 +98,13 @@ class Render3DSceneBuilder:
         """
         self._runtime_map = runtime_map
         self._config = config
-        self._cached_snapshot: Render3DSceneSnapshot | None = None
-        self._cached_center_tile: TileCoord | None = None
-        self._cached_radius = config.view_radius_tiles
-        self._cached_max_visible_primitives = config.max_visible_primitives
+        self._snapshot_cache: OrderedDict[
+            _Render3DSceneCacheKey,
+            Render3DSceneSnapshot,
+        ] = OrderedDict()
+        self._visible_offset_cache: tuple[_Render3DVisibleTileOffset, ...] = ()
+        self._visible_offset_cache_radius: int | None = None
+        self._max_cached_snapshots = 32
 
     def build_snapshot(self, center_tile: TileCoord) -> Render3DSceneSnapshot:
         """Build a visible tile snapshot around a center tile.
@@ -80,7 +115,8 @@ class Render3DSceneBuilder:
         Returns:
             Visible 3D scene snapshot.
         """
-        cached_snapshot = self._snapshot_from_cache(center_tile)
+        cache_key = self._cache_key(center_tile)
+        cached_snapshot = self._snapshot_from_cache(cache_key)
         if cached_snapshot is not None:
             return cached_snapshot
 
@@ -89,35 +125,12 @@ class Render3DSceneBuilder:
         max_x = min(self._runtime_map.width_tiles - 1, center_tile.x + radius)
         min_y = max(0, center_tile.y - radius)
         max_y = min(self._runtime_map.height_tiles - 1, center_tile.y + radius)
-        radius_squared = radius * radius
-        candidates: list[tuple[int, int, int, Render3DTilePrimitive]] = []
-        for y in range(min_y, max_y + 1):
-            row = self._runtime_map.tiles[y]
-            for x in range(min_x, max_x + 1):
-                dx = x - center_tile.x
-                dy = y - center_tile.y
-                distance_squared = dx * dx + dy * dy
-                if distance_squared > radius_squared:
-                    continue
-                tile = row[x]
-                candidates.append(
-                    (
-                        distance_squared,
-                        y,
-                        x,
-                        Render3DTilePrimitive(
-                            x=x,
-                            y=y,
-                            symbol=tile.symbol,
-                            walkable=tile.walkable,
-                            distance_squared=distance_squared,
-                        ),
-                    ),
-                )
-        visible_candidates = self._nearest_candidates(candidates)
-        primitives = tuple(
-            primitive
-            for _, _, _, primitive in visible_candidates
+        primitives = self._build_visible_primitives(
+            center_tile=center_tile,
+            min_x=min_x,
+            max_x=max_x,
+            min_y=min_y,
+            max_y=max_y,
         )
         snapshot = self._build_snapshot(
             primitives=primitives,
@@ -127,55 +140,134 @@ class Render3DSceneBuilder:
             min_y=min_y,
             max_y=max_y,
         )
-        self._cached_snapshot = snapshot
-        self._cached_center_tile = center_tile
-        self._cached_radius = self._config.view_radius_tiles
-        self._cached_max_visible_primitives = self._config.max_visible_primitives
+        self._store_snapshot(cache_key, snapshot)
         return snapshot
 
-    def _snapshot_from_cache(
-        self,
-        center_tile: TileCoord,
-    ) -> Render3DSceneSnapshot | None:
-        """Return a cached snapshot if the culling input did not change.
+    def _cache_key(self, center_tile: TileCoord) -> _Render3DSceneCacheKey:
+        """Return the current scene snapshot cache key.
 
         Args:
             center_tile: Current player tile used as culling center.
 
         Returns:
-            Cached scene snapshot, or ``None`` when it must be rebuilt.
+            Cache key matching every input that affects visible tile output.
         """
-        if self._cached_snapshot is None:
-            return None
-        if self._cached_center_tile != center_tile:
-            return None
-        if self._cached_radius != self._config.view_radius_tiles:
-            return None
-        if self._cached_max_visible_primitives != self._config.max_visible_primitives:
-            return None
-        return self._cached_snapshot
+        return _Render3DSceneCacheKey(
+            center_x=center_tile.x,
+            center_y=center_tile.y,
+            radius=self._config.view_radius_tiles,
+            max_visible_primitives=self._config.max_visible_primitives,
+        )
 
-    def _nearest_candidates(
+    def _snapshot_from_cache(
         self,
-        candidates: list[tuple[int, int, int, Render3DTilePrimitive]],
-    ) -> list[tuple[int, int, int, Render3DTilePrimitive]]:
-        """Return nearest candidates without sorting the full list when capped.
+        cache_key: _Render3DSceneCacheKey,
+    ) -> Render3DSceneSnapshot | None:
+        """Return a cached snapshot if the same culling input was seen recently.
 
         Args:
-            candidates: Distance-tagged candidate tile primitives.
+            cache_key: Current scene snapshot cache key.
 
         Returns:
-            Distance-ordered candidate primitives up to the configured cap.
+            Cached scene snapshot, or ``None`` when it must be rebuilt.
         """
+        cached_snapshot = self._snapshot_cache.get(cache_key)
+        if cached_snapshot is None:
+            return None
+        self._snapshot_cache.move_to_end(cache_key)
+        return cached_snapshot
+
+    def _store_snapshot(
+        self,
+        cache_key: _Render3DSceneCacheKey,
+        snapshot: Render3DSceneSnapshot,
+    ) -> None:
+        """Store a scene snapshot in the bounded LRU cache.
+
+        Args:
+            cache_key: Scene snapshot cache key.
+            snapshot: Prepared scene snapshot.
+        """
+        self._snapshot_cache[cache_key] = snapshot
+        self._snapshot_cache.move_to_end(cache_key)
+        while len(self._snapshot_cache) > self._max_cached_snapshots:
+            self._snapshot_cache.popitem(last=False)
+
+    def _build_visible_primitives(
+        self,
+        center_tile: TileCoord,
+        min_x: int,
+        max_x: int,
+        min_y: int,
+        max_y: int,
+    ) -> tuple[Render3DTilePrimitive, ...]:
+        """Build visible primitives from cached radius offsets.
+
+        Args:
+            center_tile: Tile coordinate used as the culling center.
+            min_x: Minimum tile X included in the view bounds.
+            max_x: Maximum tile X included in the view bounds.
+            min_y: Minimum tile Y included in the view bounds.
+            max_y: Maximum tile Y included in the view bounds.
+
+        Returns:
+            Visible tile primitives in stable distance order.
+        """
+        primitives: list[Render3DTilePrimitive] = []
         limit = self._config.max_visible_primitives
-        if len(candidates) <= limit:
-            candidates.sort(key=lambda item: (item[0], item[1], item[2]))
-            return candidates
-        return heapq.nsmallest(
-            limit,
-            candidates,
-            key=lambda item: (item[0], item[1], item[2]),
-        )
+        tiles = self._runtime_map.tiles
+        for offset in self._visible_tile_offsets(self._config.view_radius_tiles):
+            x = center_tile.x + offset.dx
+            y = center_tile.y + offset.dy
+            if x < min_x or x > max_x or y < min_y or y > max_y:
+                continue
+            tile = tiles[y][x]
+            primitives.append(
+                Render3DTilePrimitive(
+                    x=x,
+                    y=y,
+                    symbol=tile.symbol,
+                    walkable=tile.walkable,
+                    distance_squared=offset.distance_squared,
+                ),
+            )
+            if len(primitives) >= limit:
+                break
+        return tuple(primitives)
+
+    def _visible_tile_offsets(
+        self,
+        radius: int,
+    ) -> tuple[_Render3DVisibleTileOffset, ...]:
+        """Return cached view-radius offsets in stable nearest-first order.
+
+        Args:
+            radius: View radius in tiles.
+
+        Returns:
+            Sorted tile offsets inside the radius circle.
+        """
+        if self._visible_offset_cache_radius == radius:
+            return self._visible_offset_cache
+
+        radius_squared = radius * radius
+        offsets: list[_Render3DVisibleTileOffset] = []
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                distance_squared = dx * dx + dy * dy
+                if distance_squared > radius_squared:
+                    continue
+                offsets.append(
+                    _Render3DVisibleTileOffset(
+                        dx=dx,
+                        dy=dy,
+                        distance_squared=distance_squared,
+                    ),
+                )
+        offsets.sort(key=lambda item: (item.distance_squared, item.dy, item.dx))
+        self._visible_offset_cache = tuple(offsets)
+        self._visible_offset_cache_radius = radius
+        return self._visible_offset_cache
 
     def _build_snapshot(
         self,
