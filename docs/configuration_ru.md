@@ -19,7 +19,7 @@ res/config/
 
 # res/config/default_runtime_config.json
 
-Основной runtime-конфиг приложения. Он управляет окном, камерой, HUD, debug-интерфейсом, управлением, игроком, врагами, pathfinding и тактическим позиционированием.
+Основной runtime-конфиг приложения. Он управляет окном, камерой, HUD, runtime UI, управлением, игроком, врагами, pathfinding и тактическим позиционированием.
 
 ## window
 
@@ -101,51 +101,10 @@ res/config/
 
 ---
 
-## debug_overlay
-
-### enabled_by_default
-Показывать debug-интерфейс при старте.
-
-### layout
-Режим отображения debug-информации.
-
-Поддерживаемые значения:
-
-- `right_panel` — правая debug-панель внутри основного окна;
-- `overlay` — старый overlay поверх карты.
-
-### panel_width
-Ширина старой overlay-панели в режиме `overlay`.
-
-### side_panel_width
-Ширина правой debug-панели в режиме `right_panel`.
-
-### scroll_step_px
-Шаг скролла debug-панели колесом мыши.
-
-### padding
-Внутренний отступ панели.
-
-### font_size
-Размер шрифта debug-текста.
-
-### line_spacing
-Вертикальный интервал между строками.
-
-### section_spacing
-Вертикальный интервал между секциями.
-
-### column_gap
-Расстояние между колонками debug-вывода.
-
-### label_width
-Ширина колонки label-ов.
-
-### background_alpha
-Прозрачность фона debug-панели. Значение находится в диапазоне `0..255`.
+## ui
 
 ### font_path
-Путь к TTF-шрифту.
+Путь к TTF-шрифту для HUD и модальных runtime-окон.
 
 Сейчас используется:
 
@@ -156,18 +115,25 @@ res/fonts/PressStart2P-Regular.ttf
 ### font_spacing
 Дополнительный spacing между символами для raylib font rendering.
 
----
+### modal_padding
+Внутренний отступ модальных runtime-окон.
+
+### modal_font_size
+Размер шрифта окна помощи и подтверждения выхода.
+
+### modal_line_spacing
+Вертикальный интервал между строками в модальных runtime-окнах.
+
+### modal_section_spacing
+Вертикальный интервал между секциями в модальных runtime-окнах.
+
+### modal_background_alpha
+Прозрачность фона модальных runtime-окон. Значение находится в диапазоне `0..255`.
 
 ## controls
 
 ### quit
 Клавиша выхода из приложения.
-
-### debug_overlay.key
-Основная клавиша переключения debug overlay.
-
-### debug_overlay.modifiers
-Модификаторы для переключения debug overlay.
 
 ### camera_up / camera_down / camera_left / camera_right
 Клавиши ручного перемещения камеры.
@@ -182,7 +148,7 @@ Zoom-out клавишей.
 Сброс камеры.
 
 ### camera_zoom_mouse_wheel
-Если `true`, колесо мыши управляет zoom камеры, когда курсор не находится над debug-панелью.
+Если `true`, колесо мыши управляет zoom камеры.
 
 ### player_up / player_down / player_left / player_right
 Клавиши движения игрока.
@@ -214,25 +180,6 @@ Zoom-out клавишей.
 
 ### line_thickness_px
 Толщина aim-линии.
-
----
-
-## fps_counter
-
-### enabled
-Включает отдельный FPS-счётчик вне debug overlay.
-
-### position
-Позиция счётчика. Сейчас используется `top_right`.
-
-### margin_x
-Горизонтальный отступ.
-
-### margin_y
-Вертикальный отступ.
-
-### font_size
-Размер шрифта FPS-счётчика.
 
 ---
 

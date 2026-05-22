@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from topdown_shooter.config.runtime_config import RuntimeConfig
-from topdown_shooter.rendering.raylib_input import RaylibInputResolver, is_key_chord_pressed
+from topdown_shooter.rendering.raylib_input import RaylibInputResolver
 from topdown_shooter.rendering.text import RaylibTextRenderer
 
 
@@ -56,7 +56,7 @@ class RuntimeUi:
     """Draw and handle shared modal gameplay UI.
 
     The class owns UI state that must be identical across 2D and 3D modes:
-    controls help, exit confirmation and debug overlay toggle state.
+    controls help and exit confirmation.
     """
 
     _OVERLAY_WIDTH = 760
@@ -89,18 +89,12 @@ class RuntimeUi:
             font_path=config.ui.font_path,
             font_spacing=config.ui.font_spacing,
         )
-        self._debug_overlay_enabled = config.debug_overlay.enabled_by_default
         self._help_visible = False
         self._exit_confirm_visible = False
         self._exit_yes_selected = False
         self._yes_button = _ButtonRect(0, 0, 0, 0)
         self._no_button = _ButtonRect(0, 0, 0, 0)
         self._input = RaylibInputResolver(raylib)
-        self._debug_key = self._input.optional_key(config.controls.debug_overlay.key)
-        self._debug_modifiers = tuple(
-            self._input.optional_key(modifier)
-            for modifier in config.controls.debug_overlay.modifiers
-        )
         self._help_key = self._input.optional_key(config.controls.help)
         self._quit_key = self._input.optional_key(config.controls.quit)
         self._enter_key = self._input.optional_key("KEY_ENTER")
@@ -110,11 +104,6 @@ class RuntimeUi:
         self._d_key = self._input.optional_key("KEY_D")
         self._mouse_left_button = self._input.optional_mouse_button("MOUSE_BUTTON_LEFT")
 
-    @property
-    def debug_overlay_enabled(self) -> bool:
-        """Return whether the shared debug overlay should be drawn."""
-        return self._debug_overlay_enabled
-
     def handle_input(self) -> RuntimeUiInput:
         """Handle modal UI input for the current frame.
 
@@ -122,9 +111,6 @@ class RuntimeUi:
             Input result that tells the caller whether to exit or pause gameplay.
         """
         should_exit = False
-        if is_key_chord_pressed(self._raylib, self._debug_key, self._debug_modifiers):
-            self._debug_overlay_enabled = not self._debug_overlay_enabled
-
         if self._raylib.is_key_pressed(self._help_key):
             self._help_visible = not self._help_visible
             if self._help_visible:
@@ -189,15 +175,15 @@ class RuntimeUi:
 
     def _draw_help_overlay(self) -> None:
         """Draw the centered controls overlay."""
-        config = self._config.debug_overlay
-        font_size = config.font_size
-        line_height = font_size + config.line_spacing
-        title_height = font_size + config.section_spacing
+        config = self._config.ui
+        font_size = config.modal_font_size
+        line_height = font_size + config.modal_line_spacing
+        title_height = font_size + config.modal_section_spacing
         body_height = max(1, len(self._help_lines)) * line_height
-        footer_height = line_height + config.section_spacing
+        footer_height = line_height + config.modal_section_spacing
         panel_width = min(self._OVERLAY_WIDTH, max(360, self._config.window.width - 80))
         panel_height = (
-            config.padding * 2
+            config.modal_padding * 2
             + title_height
             + body_height
             + footer_height
@@ -206,8 +192,8 @@ class RuntimeUi:
         y = max(20, (self._config.window.height - panel_height) // 2)
         self._draw_panel(x, y, panel_width, panel_height)
 
-        text_x = x + config.padding
-        cursor_y = y + config.padding
+        text_x = x + config.modal_padding
+        cursor_y = y + config.modal_padding
         self._draw_text(
             f"{self._HELP_TITLE} - {self._renderer_name}",
             text_x,
@@ -227,7 +213,7 @@ class RuntimeUi:
                 self._raylib.RAYWHITE,
             )
             cursor_y += line_height
-        cursor_y += config.section_spacing
+        cursor_y += config.modal_section_spacing
         self._draw_text(
             "F1: close help / resume",
             text_x,
@@ -238,8 +224,8 @@ class RuntimeUi:
 
     def _draw_exit_confirmation(self) -> None:
         """Draw the centered exit confirmation dialog."""
-        config = self._config.debug_overlay
-        font_size = config.font_size
+        config = self._config.ui
+        font_size = config.modal_font_size
         panel_width = 420
         panel_height = 170
         x = max(20, (self._config.window.width - panel_width) // 2)
@@ -250,7 +236,7 @@ class RuntimeUi:
         self._draw_text(
             self._EXIT_TITLE,
             x + (panel_width - title_width) // 2,
-            y + config.padding,
+            y + config.modal_padding,
             font_size,
             self._raylib.RAYWHITE,
         )
@@ -259,7 +245,7 @@ class RuntimeUi:
         button_height = 42
         gap = 28
         buttons_total_width = button_width * 2 + gap
-        button_y = y + panel_height - config.padding - button_height
+        button_y = y + panel_height - config.modal_padding - button_height
         yes_x = x + (panel_width - buttons_total_width) // 2
         no_x = yes_x + button_width + gap
         self._yes_button = _ButtonRect(yes_x, button_y, button_width, button_height)
@@ -269,7 +255,7 @@ class RuntimeUi:
 
     def _draw_panel(self, x: int, y: int, width: int, height: int) -> None:
         """Draw a semi-transparent panel rectangle."""
-        background = self._raylib.Color(0, 0, 0, self._config.debug_overlay.background_alpha)
+        background = self._raylib.Color(0, 0, 0, self._config.ui.modal_background_alpha)
         border = self._raylib.Color(220, 220, 220, 210)
         self._raylib.draw_rectangle(x, y, width, height, background)
         self._raylib.draw_rectangle_lines(x, y, width, height, border)
@@ -280,7 +266,7 @@ class RuntimeUi:
         border = self._raylib.YELLOW if selected else self._raylib.LIGHTGRAY
         self._raylib.draw_rectangle(rect.x, rect.y, rect.width, rect.height, fill)
         self._raylib.draw_rectangle_lines(rect.x, rect.y, rect.width, rect.height, border)
-        font_size = self._config.debug_overlay.font_size
+        font_size = self._config.ui.modal_font_size
         text_width = self._text.measure_text(label, font_size)
         self._draw_text(
             label,

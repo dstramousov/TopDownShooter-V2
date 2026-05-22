@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 import math
 from pathlib import Path
 
-from topdown_shooter.combat.enemies import EnemyHitMarkerState, EnemyState, EnemySystem
+from topdown_shooter.combat.enemies import EnemyHitMarkerState, EnemySystem
 from topdown_shooter.combat.projectiles import (
     ImpactMarkerState,
     ProjectileEvent,
@@ -32,15 +32,7 @@ from topdown_shooter.experimental.render3d.scene import (
     Render3DSceneSnapshot,
     Render3DTilePrimitive,
 )
-from topdown_shooter.debug.overlay import DebugOverlay, DebugOverlayRow, DebugOverlaySection, MouseDebugInfo
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
-from topdown_shooter.rendering.camera import (
-    CameraAimOffset,
-    CameraLookahead,
-    CameraVelocity,
-    RuntimeCamera,
-)
-from topdown_shooter.rendering.map_renderer import RenderStats
 from topdown_shooter.rendering.combat_feedback import CombatFeedbackOverlay
 from topdown_shooter.rendering.player_hud import PlayerHud
 from topdown_shooter.rendering.raylib_input import (
@@ -55,7 +47,7 @@ from topdown_shooter.rendering.window_layout import (
 )
 from topdown_shooter.ui.runtime_ui import ControlsHelpLine, RuntimeUi
 from topdown_shooter.world.collision import TileCollisionService
-from topdown_shooter.world.coordinates import ScreenCoord, WorldCoord
+from topdown_shooter.world.coordinates import WorldCoord
 from topdown_shooter.world.pathfinding import GridPathfinder
 from topdown_shooter.world.player import PlayerState
 from topdown_shooter.world.player_aim import PlayerAimState
@@ -214,12 +206,6 @@ class Render3DRenderer:
             font_path=config.ui.font_path,
             font_spacing=config.ui.font_spacing,
         )
-        self._debug_overlay = DebugOverlay(
-            raylib=self._raylib,
-            runtime_map=runtime_map,
-            package=package,
-            config=config,
-        )
         self._ui = RuntimeUi(
             raylib=self._raylib,
             config=config,
@@ -345,11 +331,6 @@ class Render3DRenderer:
                     hit_markers=enemy_system.hit_markers,
                     player_position=player.world_position,
                 )
-                render_stats = RenderStats(
-                    visible_tiles=len(scene.primitives),
-                    drawn_tiles=len(scene.primitives),
-                    total_tiles=scene.total_tile_count,
-                )
                 camera_state = camera_controller.build_state(
                     player_position=player.world_position,
                     facing_x=self._last_facing_x,
@@ -409,33 +390,12 @@ class Render3DRenderer:
                     status_message=self._interaction_system.active_message,
                 )
                 self._combat_feedback.draw()
-                self._update_debug_overlay_scroll()
-                if self._ui.debug_overlay_enabled:
-                    self._debug_overlay.draw(
-                        camera=self._debug_camera_state(player),
-                        raylib_camera=None,
-                        player=player,
-                        render_stats=render_stats,
-                        projectile_stats=projectile_system.stats,
-                        weapon_stats=weapon_controller.stats,
-                        enemy_stats=enemy_system.stats,
-                        renderer_name="3D",
-                        mouse=self._debug_mouse_info(player),
-                        extra_sections=self._debug_3d_sections(
-                            scene=scene,
-                            visible_enemies=visible_enemies,
-                            visible_projectiles=visible_projectiles,
-                            visible_impacts=visible_impacts,
-                            visible_enemy_hit_markers=visible_enemy_hit_markers,
-                        ),
-                    )
                 self._ui.draw()
                 raylib.end_drawing()
         finally:
             self._unload_vegetation_models()
             self._unload_vegetation_texture()
             self._player_hud.unload()
-            self._debug_overlay.unload()
             self._ui.unload()
             self._set_mouse_capture(False)
             raylib.close_window()
@@ -458,7 +418,6 @@ class Render3DRenderer:
             ControlsHelpLine(config.render3d.controls.distance_fade_toggle, "fog / fade"),
             ControlsHelpLine(config.render3d.controls.enemy_vision_toggle, "enemy vision cones"),
             ControlsHelpLine(config.controls.help, "pause / controls"),
-            ControlsHelpLine(config.controls.debug_overlay.key, "debug overlay"),
             ControlsHelpLine(config.controls.quit, "exit confirmation"),
         )
 
@@ -2523,91 +2482,6 @@ class Render3DRenderer:
         raylib.draw_line_3d(center, direction_end, raylib.ORANGE)
         raylib.draw_sphere(direction_end, tile_size * 0.18, raylib.ORANGE)
 
-    def _update_debug_overlay_scroll(self) -> None:
-        """Scroll the shared debug overlay when it is visible."""
-        if not self._ui.debug_overlay_enabled:
-            return
-        wheel_delta = self._raylib.get_mouse_wheel_move()
-        if wheel_delta != 0.0:
-            self._debug_overlay.scroll_by_wheel_delta(wheel_delta)
-
-    def _debug_camera_state(self, player: PlayerState) -> RuntimeCamera:
-        """Return a 2D-compatible camera state for the shared debug overlay."""
-        position = player.world_position
-        return RuntimeCamera(
-            target=position,
-            desired_target=position,
-            zoom=1.0,
-            follow_player=True,
-            velocity=CameraVelocity(x=0.0, y=0.0),
-            lookahead_offset=CameraLookahead(x=0.0, y=0.0),
-            aim_offset=CameraAimOffset(x=0.0, y=0.0),
-            dead_zone_radius_px=0.0,
-        )
-
-    def _debug_mouse_info(self, player: PlayerState) -> MouseDebugInfo:
-        """Return mouse diagnostics for the shared overlay in captured 3D mode."""
-        mouse_position = self._raylib.get_mouse_position()
-        runtime_tile = self._runtime_map.tiles[player.tile.y][player.tile.x]
-        return MouseDebugInfo(
-            screen=ScreenCoord(x=float(mouse_position.x), y=float(mouse_position.y)),
-            world=player.world_position,
-            tile=player.tile,
-            tile_symbol=runtime_tile.symbol,
-            tile_walkable=runtime_tile.walkable,
-        )
-
-    def _debug_3d_sections(
-        self,
-        scene: Render3DSceneSnapshot,
-        visible_enemies: tuple[EnemyState, ...],
-        visible_projectiles: tuple[ProjectileState, ...],
-        visible_impacts: tuple[ImpactMarkerState, ...],
-        visible_enemy_hit_markers: tuple[EnemyHitMarkerState, ...],
-    ) -> tuple[DebugOverlaySection, ...]:
-        """Build renderer-specific rows for the shared debug overlay."""
-        return (
-            DebugOverlaySection(
-                title="3D Renderer",
-                rows=(
-                    DebugOverlayRow("Camera", self._camera_mode),
-                    DebugOverlayRow("View mode", self._view_mode),
-                    DebugOverlayRow("Render mode", self._config.render3d.render_mode),
-                    DebugOverlayRow("View radius", f"{self._config.render3d.view_radius_tiles} tiles"),
-                    DebugOverlayRow("Distance fog", "on" if self._distance_fade_enabled else "off"),
-                    DebugOverlayRow("Enemy vision", "on" if self._enemy_vision_enabled else "off"),
-                    DebugOverlayRow("Primitives", str(len(scene.primitives))),
-                    DebugOverlayRow("Culled", f"{scene.culled_tile_count}/{scene.total_tile_count}"),
-                    DebugOverlayRow("Center tile", f"{scene.center_tile.x}, {scene.center_tile.y}"),
-                    DebugOverlayRow("Visible enemies", str(len(visible_enemies))),
-                    DebugOverlayRow("Visible projectiles", str(len(visible_projectiles))),
-                    DebugOverlayRow("Visible impacts", str(len(visible_impacts))),
-                    DebugOverlayRow("Visible enemy hits", str(len(visible_enemy_hit_markers))),
-                    DebugOverlayRow("Vegetation loaded", str(len(self._vegetation_models))),
-                    DebugOverlayRow("Vegetation failed", str(len(self._vegetation_failed_paths))),
-                    DebugOverlayRow("Vegetation texture", self._format_vegetation_texture_source()),
-                    DebugOverlayRow("Vegetation tex fail", self._format_vegetation_texture_failure()),
-                    DebugOverlayRow("Vegetation trees", str(self._vegetation_stats.visible_tree_tiles)),
-                    DebugOverlayRow("Vegetation bushes", str(self._vegetation_stats.visible_bush_tiles)),
-                    DebugOverlayRow("Vegetation draws", str(self._vegetation_stats.model_draws)),
-                    DebugOverlayRow("Vegetation textured", str(self._vegetation_stats.textured_model_draws)),
-                    DebugOverlayRow("Vegetation untextured", str(self._vegetation_stats.untextured_model_draws)),
-                    DebugOverlayRow("Vegetation fallbacks", str(self._vegetation_stats.primitive_fallbacks)),
-                    DebugOverlayRow("Vegetation first fail", self._vegetation_failed_paths[0] if self._vegetation_failed_paths else "-"),
-                ),
-            ),
-            DebugOverlaySection(
-                title="3D Controls",
-                rows=(
-                    DebugOverlayRow("View", self._config.render3d.controls.view_mode_toggle),
-                    DebugOverlayRow("Fog", self._config.render3d.controls.distance_fade_toggle),
-                    DebugOverlayRow("Vision", self._config.render3d.controls.enemy_vision_toggle),
-                    DebugOverlayRow("Reset camera", self._config.render3d.controls.camera_reset),
-                    DebugOverlayRow("Debug overlay", self._format_debug_binding()),
-                ),
-            ),
-        )
-
     def _enemy_marker_color(self, enemy: EnemyState) -> object:
         """Return the current enemy body color, including hit flash feedback."""
         raylib = self._raylib
@@ -2703,13 +2577,6 @@ class Render3DRenderer:
         if not self._vegetation_texture_failed_paths:
             return "-"
         return self._vegetation_texture_failed_paths[0]
-
-    def _format_debug_binding(self) -> str:
-        """Return the configured debug-overlay binding for diagnostics."""
-        chord = self._config.controls.debug_overlay
-        if not chord.modifiers:
-            return chord.key
-        return "+".join((*chord.modifiers, chord.key))
 
     def _resolve_mouse_button(self, button_name: str) -> int:
         """Resolve a raylib mouse button constant by name."""

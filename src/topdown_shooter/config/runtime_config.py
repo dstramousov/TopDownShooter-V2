@@ -274,43 +274,20 @@ class UiConfig:
     Attributes:
         font_path: Relative or absolute path to the shared UI TTF font.
         font_spacing: Extra spacing between rendered font glyphs.
+        modal_padding: Inner modal panel padding in pixels.
+        modal_font_size: Modal text font size in pixels.
+        modal_line_spacing: Extra spacing between modal text lines in pixels.
+        modal_section_spacing: Extra spacing between modal sections in pixels.
+        modal_background_alpha: Modal panel background alpha value in the 0..255 range.
     """
 
     font_path: str
     font_spacing: float
-
-
-@dataclass(frozen=True, slots=True)
-class DebugOverlayConfig:
-    """Debug overlay display settings.
-
-    Attributes:
-        enabled_by_default: Whether the overlay starts enabled.
-        layout: Overlay layout mode. Supported values are ``overlay`` and ``right_panel``.
-        panel_width: Overlay panel width in pixels for the classic overlay layout.
-        side_panel_width: Right-side debug panel width in pixels.
-        scroll_step_px: Scroll distance applied per mouse wheel tick in the right panel.
-        padding: Inner panel padding in pixels.
-        font_size: Text font size in pixels.
-        line_spacing: Extra spacing between text lines in pixels.
-        section_spacing: Extra spacing between overlay sections in pixels.
-        column_gap: Horizontal spacing between two overlay columns in pixels.
-        label_width: Reserved label area width in pixels.
-        background_alpha: Panel background alpha value in the 0..255 range.
-    """
-
-    enabled_by_default: bool
-    layout: str
-    panel_width: int
-    side_panel_width: int
-    scroll_step_px: int
-    padding: int
-    font_size: int
-    line_spacing: int
-    section_spacing: int
-    column_gap: int
-    label_width: int
-    background_alpha: int
+    modal_padding: int
+    modal_font_size: int
+    modal_line_spacing: int
+    modal_section_spacing: int
+    modal_background_alpha: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -603,25 +580,11 @@ class Render3DConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class KeyChordConfig:
-    """A configurable key chord.
-
-    Attributes:
-        key: Main raylib key constant name.
-        modifiers: Modifier raylib key constant names. Any pressed modifier matches.
-    """
-
-    key: str
-    modifiers: tuple[str, ...]
-
-
-@dataclass(frozen=True, slots=True)
 class ControlsConfig:
     """Input binding names for the runtime.
 
     Attributes:
         quit: Key name used to close the runtime window.
-        debug_overlay: Key chord used to toggle debug overlay visibility.
         help: Key name used to toggle the controls help overlay.
         mouse_capture_toggle: Key name used to release or capture the mouse in 3D.
         camera_up: Key names used to pan the camera up.
@@ -646,7 +609,6 @@ class ControlsConfig:
     """
 
     quit: str
-    debug_overlay: KeyChordConfig
     help: str
     mouse_capture_toggle: str
     camera_up: tuple[str, ...]
@@ -683,7 +645,6 @@ class RuntimeConfig:
         projectile_impacts: Projectile impact marker settings.
         enemies: Enemy marker display settings.
         ui: Shared UI display settings.
-        debug_overlay: Debug overlay display settings.
         hud: Player HUD display settings.
         render3d: Experimental 3D renderer settings.
         controls: Control bindings.
@@ -697,7 +658,6 @@ class RuntimeConfig:
     projectile_impacts: ProjectileImpactConfig
     enemies: EnemyConfig
     ui: UiConfig
-    debug_overlay: DebugOverlayConfig
     hud: HudConfig
     render3d: Render3DConfig
     controls: ControlsConfig
@@ -759,7 +719,6 @@ class RuntimeConfigLoader:
         projectile_impacts = self._require_dict(raw_config, "projectile_impacts")
         enemies = self._require_dict(raw_config, "enemies")
         ui = self._require_dict(raw_config, "ui")
-        debug_overlay = self._require_dict(raw_config, "debug_overlay")
         hud = self._require_dict(raw_config, "hud")
         render3d = self._require_dict(raw_config, "render3d")
         controls = self._require_dict(raw_config, "controls")
@@ -1025,23 +984,14 @@ class RuntimeConfigLoader:
             ui=UiConfig(
                 font_path=self._require_str(ui, "font_path"),
                 font_spacing=self._require_non_negative_float(ui, "font_spacing"),
-            ),
-            debug_overlay=DebugOverlayConfig(
-                enabled_by_default=self._require_bool(debug_overlay, "enabled_by_default"),
-                layout=self._require_debug_overlay_layout(debug_overlay, "layout"),
-                panel_width=self._require_positive_int(debug_overlay, "panel_width"),
-                side_panel_width=self._require_positive_int(debug_overlay, "side_panel_width"),
-                scroll_step_px=self._require_positive_int(debug_overlay, "scroll_step_px"),
-                padding=self._require_non_negative_int(debug_overlay, "padding"),
-                font_size=self._require_positive_int(debug_overlay, "font_size"),
-                line_spacing=self._require_non_negative_int(debug_overlay, "line_spacing"),
-                section_spacing=self._require_non_negative_int(
-                    debug_overlay,
-                    "section_spacing",
+                modal_padding=self._require_non_negative_int(ui, "modal_padding"),
+                modal_font_size=self._require_positive_int(ui, "modal_font_size"),
+                modal_line_spacing=self._require_non_negative_int(ui, "modal_line_spacing"),
+                modal_section_spacing=self._require_non_negative_int(
+                    ui,
+                    "modal_section_spacing",
                 ),
-                column_gap=self._require_non_negative_int(debug_overlay, "column_gap"),
-                label_width=self._require_positive_int(debug_overlay, "label_width"),
-                background_alpha=self._require_alpha(debug_overlay, "background_alpha"),
+                modal_background_alpha=self._require_alpha(ui, "modal_background_alpha"),
             ),
             hud=HudConfig(
                 position=self._require_str(hud, "position"),
@@ -1054,7 +1004,6 @@ class RuntimeConfigLoader:
             render3d=self._build_render3d_config(render3d),
             controls=ControlsConfig(
                 quit=self._require_str(controls, "quit"),
-                debug_overlay=self._require_key_chord(controls, "debug_overlay"),
                 help=self._require_str(controls, "help"),
                 mouse_capture_toggle=self._require_str(controls, "mouse_capture_toggle"),
                 camera_up=self._require_key_names(controls, "camera_up"),
@@ -1463,26 +1412,6 @@ class RuntimeConfigLoader:
             )
         return value
 
-    def _require_debug_overlay_layout(self, data: dict[str, Any], field: str) -> str:
-        """Read and validate a debug overlay layout value.
-
-        Args:
-            data: Source mapping.
-            field: Field name to read.
-
-        Returns:
-            Validated debug overlay layout.
-
-        Raises:
-            RuntimeConfigError: If the layout value is unsupported.
-        """
-        value = self._require_str(data, field)
-        if value not in {"overlay", "right_panel"}:
-            raise RuntimeConfigError(
-                f"Runtime config field '{field}' must be 'overlay' or 'right_panel'.",
-            )
-        return value
-
     def _build_camera_config(self, camera: dict[str, Any]) -> CameraConfig:
         """Build typed camera config from raw data.
 
@@ -1684,23 +1613,3 @@ class RuntimeConfigLoader:
             return tuple(value)
         raise RuntimeConfigError(f"Runtime config key list is missing or invalid: {key}")
 
-    def _require_key_chord(self, data: dict[str, Any], key: str) -> KeyChordConfig:
-        """Return a required key chord value.
-
-        Args:
-            data: Source dictionary.
-            key: Required key.
-
-        Returns:
-            Key chord configuration.
-        """
-        raw_chord = self._require_dict(data, key)
-        raw_modifiers = raw_chord.get("modifiers", [])
-        if not isinstance(raw_modifiers, list) or not all(
-            isinstance(modifier, str) and modifier.strip() for modifier in raw_modifiers
-        ):
-            raise RuntimeConfigError(f"Runtime config key chord modifiers are invalid: {key}")
-        return KeyChordConfig(
-            key=self._require_str(raw_chord, "key"),
-            modifiers=tuple(raw_modifiers),
-        )

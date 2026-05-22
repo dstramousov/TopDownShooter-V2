@@ -247,20 +247,7 @@ Fallback-поведение:
 
 - view cones врагов;
 - enemy paths;
-- tactical slots;
-- debug overlay с counters.
-
-Полезные debug-поля:
-
-- active enemies;
-- alerted enemies;
-- moving enemies;
-- pathing enemies;
-- path rebuilds;
-- failed paths;
-- player stationary;
-- tactical positioning enemies;
-- tactical slots assigned.
+- tactical slots.
 
 ---
 

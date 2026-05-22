@@ -8,7 +8,6 @@ from topdown_shooter.combat.enemies import EnemySystem
 from topdown_shooter.combat.projectiles import ProjectileSystem
 from topdown_shooter.combat.weapons import WeaponConfigLoader, WeaponController, WeaponState
 from topdown_shooter.config.runtime_config import RuntimeConfig
-from topdown_shooter.debug.overlay import DebugOverlay
 from topdown_shooter.gameplay.camera_feedback import CameraFeedbackSystem
 from topdown_shooter.gameplay.combat_runtime import update_combat_runtime
 from topdown_shooter.gameplay.explosions import RuntimeExplosionSystem
@@ -197,12 +196,6 @@ class RaylibWindow:
             font_path=config.ui.font_path,
             font_spacing=config.ui.font_spacing,
         )
-        self._debug_overlay = DebugOverlay(
-            raylib=self._raylib,
-            runtime_map=runtime_map,
-            package=package,
-            config=config,
-        )
         self._camera_rig = CameraRig(
             runtime_map=runtime_map,
             window_config=config.window,
@@ -285,7 +278,7 @@ class RaylibWindow:
                 raylib.begin_drawing()
                 raylib.clear_background(raylib.BLACK)
                 raylib.begin_mode_2d(camera)
-                render_stats = self._renderer.draw(
+                self._renderer.draw(
                     runtime_map=self._runtime_map,
                     camera=self._camera_rig.state,
                     window_config=self._config.window,
@@ -314,22 +307,10 @@ class RaylibWindow:
                     status_message=self._interaction_system.active_message,
                 )
                 self._combat_feedback.draw()
-                if self._ui.debug_overlay_enabled:
-                    self._debug_overlay.draw(
-                        camera=self._camera_rig.state,
-                        raylib_camera=camera,
-                        player=self._player,
-                        render_stats=render_stats,
-                        projectile_stats=self._projectile_system.stats,
-                        weapon_stats=self._weapon_controller.stats,
-                        enemy_stats=self._enemy_system.stats,
-                        renderer_name="2D",
-                    )
                 self._ui.draw()
                 raylib.end_drawing()
         finally:
             self._player_hud.unload()
-            self._debug_overlay.unload()
             self._ui.unload()
             raylib.close_window()
 
@@ -349,7 +330,6 @@ class RaylibWindow:
             ControlsHelpLine(config.controls.camera_reset, "reset camera"),
             ControlsHelpLine(config.controls.camera_toggle_follow, "toggle follow camera"),
             ControlsHelpLine(config.controls.help, "pause / controls"),
-            ControlsHelpLine(config.controls.debug_overlay.key, "debug overlay"),
             ControlsHelpLine(config.controls.quit, "exit confirmation"),
         )
 
@@ -471,9 +451,7 @@ class RaylibWindow:
             self._camera_rig.zoom_by(-self._config.camera.zoom_step)
         if self._camera_zoom_mouse_wheel_enabled:
             wheel_delta = self._raylib.get_mouse_wheel_move()
-            if wheel_delta != 0.0 and self._ui.debug_overlay_enabled and self._debug_overlay.is_mouse_over_panel():
-                self._debug_overlay.scroll_by_wheel_delta(wheel_delta)
-            elif wheel_delta != 0.0:
+            if wheel_delta != 0.0:
                 self._camera_rig.zoom_by(wheel_delta * self._config.camera.zoom_step)
         if self._raylib.is_key_pressed(self._camera_reset_key):
             self._camera_rig.reset_to_start()

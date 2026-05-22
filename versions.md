@@ -784,3 +784,9 @@
 - Reworked 3D walkable vegetation rendering so model-drawn bushes, flowers and mushrooms skip the full square tile fill.
 - Added small deterministic organic ground patches under rendered vegetation models, including trees, to soften tile-shaped bases.
 - Preserved primitive fallback tiles when vegetation models are unavailable and kept gameplay, 2D rendering, scatter density, AI and weapon balance unchanged.
+
+## v0.1.6 -> v0.1.7
+
+- Removed the runtime debug overlay module and all 2D/3D render-loop calls that built or drew diagnostic overlay rows.
+- Removed `debug_overlay` and `controls.debug_overlay` from the default runtime config and moved modal UI styling to `ui` settings.
+- Updated runtime config loading, controls help, documentation, and tests for the debug-overlay-free runtime.

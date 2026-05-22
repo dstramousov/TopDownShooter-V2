@@ -12,8 +12,6 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.window.screen_margin_px == 300
     assert config.window.target_fps == 60
     assert config.controls.quit == "KEY_ESCAPE"
-    assert config.controls.debug_overlay.key == "KEY_F12"
-    assert config.controls.debug_overlay.modifiers == ()
     assert config.controls.help == "KEY_F1"
     assert config.controls.mouse_capture_toggle == "KEY_F10"
     assert config.controls.camera_up == ("KEY_UP",)
@@ -56,19 +54,13 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.controls.weapon_slot_2 == "KEY_TWO"
     assert config.controls.weapon_slot_3 == "KEY_THREE"
     assert config.weapons.database_path == "res/config/weapons.json"
-    assert config.debug_overlay.enabled_by_default is False
-    assert config.debug_overlay.layout == "right_panel"
-    assert config.debug_overlay.panel_width == 1200
-    assert config.debug_overlay.side_panel_width == 420
-    assert config.debug_overlay.scroll_step_px == 36
     assert config.ui.font_path == "res/fonts/PressStart2P-Regular.ttf"
     assert config.ui.font_spacing == 0.0
-    assert config.debug_overlay.font_size == 8
-    assert config.debug_overlay.line_spacing == 6
-    assert config.debug_overlay.section_spacing == 12
-    assert config.debug_overlay.column_gap == 32
-    assert config.debug_overlay.label_width == 128
-    assert config.debug_overlay.background_alpha == 120
+    assert config.ui.modal_padding == 18
+    assert config.ui.modal_font_size == 8
+    assert config.ui.modal_line_spacing == 6
+    assert config.ui.modal_section_spacing == 12
+    assert config.ui.modal_background_alpha == 120
     assert config.projectile_impacts.enabled is True
     assert config.projectile_impacts.lifetime_seconds == 0.16
     assert config.projectile_impacts.radius_px == 5.0

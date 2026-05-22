@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from topdown_shooter.config.runtime_config import KeyChordConfig
-
 
 class InvalidRaylibBindingError(RuntimeError):
     """Raised when a configured raylib binding cannot be resolved."""
@@ -76,26 +74,9 @@ class RaylibInputResolver:
         """Resolve multiple raylib key constants by name."""
         return tuple(self.key(key_name) for key_name in key_names)
 
-    def key_chord(self, chord: KeyChordConfig) -> tuple[int, tuple[int, ...]]:
-        """Resolve a configured key chord."""
-        return (
-            self.key(chord.key),
-            tuple(self.key(modifier) for modifier in chord.modifiers),
-        )
-
-
 def is_any_key_down(raylib: object, keys: tuple[int, ...]) -> bool:
     """Return whether any key in ``keys`` is held down."""
     return any(raylib.is_key_down(key) for key in keys)
-
-
-def is_key_chord_pressed(raylib: object, key: int, modifiers: tuple[int, ...]) -> bool:
-    """Return whether a key chord was pressed this frame."""
-    if key < 0 or not raylib.is_key_pressed(key):
-        return False
-    if not modifiers:
-        return True
-    return any(modifier >= 0 and raylib.is_key_down(modifier) for modifier in modifiers)
 
 
 def configure_raylib_logging(raylib: object) -> None:
