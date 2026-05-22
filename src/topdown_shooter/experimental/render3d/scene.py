@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from topdown_shooter.config.runtime_config import Render3DConfig
 from topdown_shooter.world.coordinates import TileCoord
-from topdown_shooter.world.runtime_map import RuntimeMap
+from topdown_shooter.world.runtime_map import RuntimeMap, RuntimeMapObject
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +67,7 @@ class Render3DSceneSnapshot:
 
     Attributes:
         primitives: Visible tile primitives.
+        runtime_objects: Runtime objects intersecting the visible scene bounds.
         center_tile: Tile coordinate used as the culling center.
         min_x: Minimum tile X included in the view bounds.
         max_x: Maximum tile X included in the view bounds.
@@ -77,6 +78,7 @@ class Render3DSceneSnapshot:
     """
 
     primitives: tuple[Render3DTilePrimitive, ...]
+    runtime_objects: tuple[RuntimeMapObject, ...]
     center_tile: TileCoord
     min_x: int
     max_x: int
@@ -105,6 +107,10 @@ class Render3DSceneBuilder:
         self._visible_offset_cache: tuple[_Render3DVisibleTileOffset, ...] = ()
         self._visible_offset_cache_radius: int | None = None
         self._max_cached_snapshots = 32
+        self._runtime_object_order = {
+            map_object.object_id: index
+            for index, map_object in enumerate(runtime_map.runtime_objects)
+        }
 
     def build_snapshot(self, center_tile: TileCoord) -> Render3DSceneSnapshot:
         """Build a visible tile snapshot around a center tile.
@@ -132,8 +138,15 @@ class Render3DSceneBuilder:
             min_y=min_y,
             max_y=max_y,
         )
+        runtime_objects = self._build_visible_runtime_objects(
+            min_x=min_x,
+            max_x=max_x,
+            min_y=min_y,
+            max_y=max_y,
+        )
         snapshot = self._build_snapshot(
             primitives=primitives,
+            runtime_objects=runtime_objects,
             center_tile=center_tile,
             min_x=min_x,
             max_x=max_x,
@@ -269,9 +282,45 @@ class Render3DSceneBuilder:
         self._visible_offset_cache_radius = radius
         return self._visible_offset_cache
 
+    def _build_visible_runtime_objects(
+        self,
+        min_x: int,
+        max_x: int,
+        min_y: int,
+        max_y: int,
+    ) -> tuple[RuntimeMapObject, ...]:
+        """Collect visible runtime objects through the tile occupancy index.
+
+        Args:
+            min_x: Minimum tile X included in the view bounds.
+            max_x: Maximum tile X included in the view bounds.
+            min_y: Minimum tile Y included in the view bounds.
+            max_y: Maximum tile Y included in the view bounds.
+
+        Returns:
+            Runtime objects intersecting the visible bounds in stable source order.
+        """
+        objects_by_id: dict[str, RuntimeMapObject] = {}
+        for y in range(min_y, max_y + 1):
+            for x in range(min_x, max_x + 1):
+                tile_objects = self._runtime_map.runtime_objects_at(TileCoord(x=x, y=y))
+                for map_object in tile_objects:
+                    objects_by_id.setdefault(map_object.object_id, map_object)
+
+        return tuple(
+            sorted(
+                objects_by_id.values(),
+                key=lambda map_object: self._runtime_object_order.get(
+                    map_object.object_id,
+                    len(self._runtime_object_order),
+                ),
+            ),
+        )
+
     def _build_snapshot(
         self,
         primitives: tuple[Render3DTilePrimitive, ...],
+        runtime_objects: tuple[RuntimeMapObject, ...],
         center_tile: TileCoord,
         min_x: int,
         max_x: int,
@@ -282,6 +331,7 @@ class Render3DSceneBuilder:
 
         Args:
             primitives: Visible tile primitives.
+            runtime_objects: Runtime objects intersecting the visible scene bounds.
             center_tile: Tile coordinate used as the culling center.
             min_x: Minimum tile X included in the view bounds.
             max_x: Maximum tile X included in the view bounds.
@@ -294,6 +344,7 @@ class Render3DSceneBuilder:
         total_tile_count = self._runtime_map.width_tiles * self._runtime_map.height_tiles
         return Render3DSceneSnapshot(
             primitives=primitives,
+            runtime_objects=runtime_objects,
             center_tile=center_tile,
             min_x=min_x,
             max_x=max_x,

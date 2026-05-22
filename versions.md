@@ -802,3 +802,9 @@
 - Added a bounded LRU cache for prepared 3D scene snapshots so recently visited center tiles are reused instead of rebuilt.
 - Replaced per-snapshot radius scanning and heap selection with cached nearest-first view-radius offsets.
 - Preserved 3D culling order, map-edge clipping, primitive caps, gameplay state, 2D rendering, AI, weapons, and collision behavior.
+
+## v0.1.9 -> v0.2.0
+
+- Added visible runtime object lists to prepared 3D scene snapshots so the renderer no longer scans every runtime object each frame.
+- Built visible runtime objects through the existing tile occupancy index while preserving stable source ordering and multi-tile object de-duplication.
+- Kept gameplay, collisions, AI, weapons, 2D rendering, and 3D visual output unchanged.

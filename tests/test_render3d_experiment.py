@@ -7,7 +7,7 @@ from topdown_shooter.experimental.render3d.camera import Render3DFollowCamera
 from topdown_shooter.experimental.render3d.renderer import Render3DInputState, Render3DRenderer
 from topdown_shooter.experimental.render3d.scene import Render3DSceneBuilder
 from topdown_shooter.world.coordinates import TileCoord, WorldCoord
-from topdown_shooter.world.runtime_map import RuntimeMap, TacticalRuntimeSummary
+from topdown_shooter.world.runtime_map import RuntimeMap, RuntimeMapObject, TacticalRuntimeSummary
 from topdown_shooter.world.tile import RuntimeTile
 
 
@@ -225,6 +225,81 @@ def test_render3d_scene_builder_keeps_cap_after_edge_clipping() -> None:
     snapshot = builder.build_snapshot(TileCoord(0, 0))
 
     assert len(snapshot.primitives) == 4
+
+
+def test_render3d_scene_builder_collects_visible_runtime_objects_by_tile_index() -> None:
+    """Scene snapshots should include only bounds-intersecting runtime objects."""
+    from dataclasses import replace
+
+    visible_multi_tile = RuntimeMapObject(
+        object_id="visible-log",
+        object_type="fallen_log",
+        role="cover",
+        origin=TileCoord(2, 0),
+        footprint=(TileCoord(1, 0), TileCoord(2, 0)),
+    )
+    visible_single_tile = RuntimeMapObject(
+        object_id="visible-cache",
+        object_type="ammo_cache",
+        role="loot",
+        origin=TileCoord(0, 1),
+        footprint=(TileCoord(0, 1),),
+        interactive=True,
+    )
+    hidden_object = RuntimeMapObject(
+        object_id="hidden-stone",
+        object_type="stone_chunk",
+        role="cover",
+        origin=TileCoord(2, 1),
+        footprint=(TileCoord(2, 1),),
+    )
+    runtime_map = replace(
+        _build_runtime_map(),
+        runtime_objects=(visible_multi_tile, hidden_object, visible_single_tile),
+        runtime_objects_by_tile={
+            TileCoord(1, 0): (visible_multi_tile,),
+            TileCoord(2, 0): (visible_multi_tile,),
+            TileCoord(0, 1): (visible_single_tile,),
+            TileCoord(2, 1): (hidden_object,),
+        },
+    )
+    base_config = RuntimeConfigLoader().load_default().render3d
+    config = replace(base_config, view_radius_tiles=1)
+    builder = Render3DSceneBuilder(runtime_map=runtime_map, config=config)
+
+    snapshot = builder.build_snapshot(TileCoord(0, 0))
+
+    assert tuple(map_object.object_id for map_object in snapshot.runtime_objects) == (
+        "visible-log",
+        "visible-cache",
+    )
+
+
+def test_render3d_scene_builder_reuses_visible_runtime_objects_with_snapshot_cache() -> None:
+    """Cached snapshots should also reuse their prepared runtime-object list."""
+    from dataclasses import replace
+
+    visible_object = RuntimeMapObject(
+        object_id="visible-cache",
+        object_type="ammo_cache",
+        role="loot",
+        origin=TileCoord(0, 0),
+        footprint=(TileCoord(0, 0),),
+        interactive=True,
+    )
+    runtime_map = replace(
+        _build_runtime_map(),
+        runtime_objects=(visible_object,),
+        runtime_objects_by_tile={TileCoord(0, 0): (visible_object,)},
+    )
+    config = RuntimeConfigLoader().load_default().render3d
+    builder = Render3DSceneBuilder(runtime_map=runtime_map, config=config)
+
+    first_snapshot = builder.build_snapshot(TileCoord(0, 0))
+    second_snapshot = builder.build_snapshot(TileCoord(0, 0))
+
+    assert second_snapshot is first_snapshot
+    assert second_snapshot.runtime_objects is first_snapshot.runtime_objects
 
 
 def test_render3d_facing_relative_movement_supports_strafe() -> None:

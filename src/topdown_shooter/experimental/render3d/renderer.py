@@ -688,9 +688,7 @@ class Render3DRenderer:
             self._interaction_system.consumed_object_ids
             | self._explosion_system.destroyed_object_ids
         )
-        for map_object in self._runtime_map.runtime_objects:
-            if not self._runtime_object_is_visible(map_object, scene):
-                continue
+        for map_object in scene.runtime_objects:
             base_color = self._runtime_object_color(
                 map_object,
                 consumed=map_object.object_id in consumed_ids,
@@ -838,17 +836,6 @@ class Render3DRenderer:
         dot_center = raylib.Vector3(x, y - stem_height * 0.18, z)
         raylib.draw_cube(stem_center, stem_width, stem_height, stem_width, color)
         raylib.draw_cube(dot_center, stem_width * 1.45, stem_width * 1.45, stem_width * 1.45, color)
-
-    def _runtime_object_is_visible(
-        self,
-        map_object: RuntimeMapObject,
-        scene: Render3DSceneSnapshot,
-    ) -> bool:
-        """Return whether a runtime object intersects the visible 3D scene bounds."""
-        return any(
-            scene.min_x <= tile.x <= scene.max_x and scene.min_y <= tile.y <= scene.max_y
-            for tile in map_object.footprint
-        )
 
     def _runtime_object_width_scale(self, map_object: RuntimeMapObject) -> float:
         """Return placeholder width scale for a runtime object."""
