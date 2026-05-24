@@ -808,3 +808,10 @@
 - Added visible runtime object lists to prepared 3D scene snapshots so the renderer no longer scans every runtime object each frame.
 - Built visible runtime objects through the existing tile occupancy index while preserving stable source ordering and multi-tile object de-duplication.
 - Kept gameplay, collisions, AI, weapons, 2D rendering, and 3D visual output unchanged.
+
+
+## v0.2.0 -> v0.2.1
+
+- Added a compact standalone FPS counter anchored to the top-right corner of both 2D and 3D runtimes.
+- Reused the shared UI font renderer without restoring the removed debug overlay or diagnostic row building.
+- Kept gameplay, rendering budgets, controls, AI, weapons, and runtime config unchanged.

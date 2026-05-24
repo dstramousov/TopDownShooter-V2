@@ -33,6 +33,7 @@ from topdown_shooter.experimental.render3d.scene import (
 )
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.rendering.combat_feedback import CombatFeedbackOverlay
+from topdown_shooter.rendering.fps_counter import FpsCounter
 from topdown_shooter.rendering.player_hud import PlayerHud
 from topdown_shooter.rendering.raylib_input import (
     RaylibInputResolver,
@@ -182,6 +183,11 @@ class Render3DRenderer:
             window=config.window,
             font_path=config.ui.font_path,
             font_spacing=config.ui.font_spacing,
+        )
+        self._fps_counter = FpsCounter(
+            raylib=self._raylib,
+            window=config.window,
+            ui=config.ui,
         )
         self._ui = RuntimeUi(
             raylib=self._raylib,
@@ -359,10 +365,12 @@ class Render3DRenderer:
                     status_message=self._interaction_system.active_message,
                 )
                 self._combat_feedback.draw()
+                self._fps_counter.draw()
                 self._ui.draw()
                 raylib.end_drawing()
         finally:
             self._player_hud.unload()
+            self._fps_counter.unload()
             self._ui.unload()
             self._set_mouse_capture(False)
             raylib.close_window()
