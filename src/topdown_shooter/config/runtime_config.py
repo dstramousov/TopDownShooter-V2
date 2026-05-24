@@ -173,6 +173,7 @@ class EnemyConfig:
         path_rebuild_interval_seconds: Minimum delay between enemy path rebuilds.
         path_target_rebuild_distance_px: Player movement distance that forces path rebuild.
         path_max_iterations: Maximum A* iterations per enemy path query.
+        path_max_rebuilds_per_frame: Maximum enemy A* path rebuilds allowed per update.
         path_waypoint_reach_distance_px: Distance used to advance enemy path waypoints.
         draw_enemy_paths: Whether debug enemy A* paths are drawn.
         max_debug_enemy_paths: Maximum enemy A* paths drawn per frame. Zero disables them.
@@ -240,6 +241,7 @@ class EnemyConfig:
     path_rebuild_interval_seconds: float
     path_target_rebuild_distance_px: float
     path_max_iterations: int
+    path_max_rebuilds_per_frame: int
     path_waypoint_reach_distance_px: float
     draw_enemy_paths: bool
     max_debug_enemy_paths: int
@@ -847,6 +849,10 @@ class RuntimeConfigLoader:
                     "path_target_rebuild_distance_px",
                 ),
                 path_max_iterations=self._require_positive_int(enemies, "path_max_iterations"),
+                path_max_rebuilds_per_frame=self._require_non_negative_int(
+                    enemies,
+                    "path_max_rebuilds_per_frame",
+                ),
                 path_waypoint_reach_distance_px=self._require_non_negative_float(
                     enemies,
                     "path_waypoint_reach_distance_px",

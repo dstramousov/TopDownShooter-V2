@@ -112,6 +112,20 @@ class EnemyHitMarkerState:
     alive: bool = True
 
 
+@dataclass(slots=True)
+class _PathRebuildBudget:
+    """Mutable per-frame budget for enemy A* path rebuilds."""
+
+    remaining: int
+
+    def try_consume(self) -> bool:
+        """Return whether one path rebuild is allowed and reserve it."""
+        if self.remaining <= 0:
+            return False
+        self.remaining -= 1
+        return True
+
+
 @dataclass(frozen=True, slots=True)
 class EnemyStats:
     """Runtime enemy diagnostics.
@@ -471,6 +485,7 @@ class EnemySystem:
         path_rebuild_interval_seconds: float = 0.35,
         path_target_rebuild_distance_px: float = 48.0,
         path_max_iterations: int = 2048,
+        path_max_rebuilds_per_frame: int = 4,
         path_waypoint_reach_distance_px: float = 8.0,
         player_speed_px_per_second: float = 0.0,
         tactical_positioning_enabled: bool = False,
@@ -511,6 +526,7 @@ class EnemySystem:
             path_rebuild_interval_seconds: Minimum delay between path rebuilds.
             path_target_rebuild_distance_px: Player movement distance that forces path rebuild.
             path_max_iterations: Maximum A* iterations per path rebuild.
+            path_max_rebuilds_per_frame: Maximum A* path rebuilds allowed per update.
             path_waypoint_reach_distance_px: Distance used to advance path waypoints.
             player_speed_px_per_second: Current player movement speed.
             tactical_positioning_enabled: Whether stationary-player surround slots are used.
@@ -539,6 +555,8 @@ class EnemySystem:
         self._tactical_slots_assigned = 0
         if frame_time <= 0.0 or chase_speed_px_per_second <= 0.0:
             return
+
+        path_rebuild_budget = _PathRebuildBudget(max(0, path_max_rebuilds_per_frame))
 
         self._update_player_stationary_state(
             frame_time=frame_time,
@@ -622,6 +640,7 @@ class EnemySystem:
                         path_rebuild_interval_seconds=path_rebuild_interval_seconds,
                         path_target_rebuild_distance_px=path_target_rebuild_distance_px,
                         path_max_iterations=path_max_iterations,
+                        path_rebuild_budget=path_rebuild_budget,
                         path_waypoint_reach_distance_px=path_waypoint_reach_distance_px,
                         movement_direction_smoothing=movement_direction_smoothing,
                     )
@@ -650,6 +669,7 @@ class EnemySystem:
                         path_rebuild_interval_seconds=path_rebuild_interval_seconds,
                         path_target_rebuild_distance_px=path_target_rebuild_distance_px,
                         path_max_iterations=path_max_iterations,
+                        path_rebuild_budget=path_rebuild_budget,
                         path_waypoint_reach_distance_px=path_waypoint_reach_distance_px,
                         tactical_slot_reached_distance_px=tactical_slot_reached_distance_px,
                         tactical_pressure_active=(
@@ -1191,6 +1211,7 @@ class EnemySystem:
         path_rebuild_interval_seconds: float,
         path_target_rebuild_distance_px: float,
         path_max_iterations: int,
+        path_rebuild_budget: _PathRebuildBudget,
         path_waypoint_reach_distance_px: float,
         tactical_slot_reached_distance_px: float = 18.0,
         tactical_pressure_active: bool = False,
@@ -1219,6 +1240,7 @@ class EnemySystem:
             path_rebuild_interval_seconds: Minimum delay between path rebuilds.
             path_target_rebuild_distance_px: Player movement distance that forces path rebuild.
             path_max_iterations: Maximum A* iterations per path rebuild.
+            path_rebuild_budget: Per-frame budget used to avoid A* spikes.
             path_waypoint_reach_distance_px: Distance used to advance path waypoints.
 
         Returns:
@@ -1260,6 +1282,7 @@ class EnemySystem:
                 path_rebuild_interval_seconds=path_rebuild_interval_seconds,
                 path_target_rebuild_distance_px=path_target_rebuild_distance_px,
                 path_max_iterations=path_max_iterations,
+                path_rebuild_budget=path_rebuild_budget,
                 path_waypoint_reach_distance_px=path_waypoint_reach_distance_px,
                 movement_direction_smoothing=movement_direction_smoothing,
             )
@@ -1307,6 +1330,7 @@ class EnemySystem:
                 path_rebuild_interval_seconds=path_rebuild_interval_seconds,
                 path_target_rebuild_distance_px=path_target_rebuild_distance_px,
                 path_max_iterations=path_max_iterations,
+                path_rebuild_budget=path_rebuild_budget,
                 path_waypoint_reach_distance_px=path_waypoint_reach_distance_px,
                 movement_direction_smoothing=movement_direction_smoothing,
             )
@@ -1380,6 +1404,7 @@ class EnemySystem:
         path_rebuild_interval_seconds: float,
         path_target_rebuild_distance_px: float,
         path_max_iterations: int,
+        path_rebuild_budget: _PathRebuildBudget,
         path_waypoint_reach_distance_px: float,
         movement_direction_smoothing: float,
     ) -> tuple[bool, bool, bool, bool, bool, bool, bool, bool]:
@@ -1396,6 +1421,7 @@ class EnemySystem:
             path_rebuild_interval_seconds: Minimum delay between path rebuilds.
             path_target_rebuild_distance_px: Home movement distance that forces path rebuild.
             path_max_iterations: Maximum A* iterations for route-home queries.
+            path_rebuild_budget: Per-frame budget used to avoid A* spikes.
             path_waypoint_reach_distance_px: Distance used to advance path waypoints.
             movement_direction_smoothing: Blend factor for movement direction.
 
@@ -1424,6 +1450,7 @@ class EnemySystem:
                 path_rebuild_interval_seconds=path_rebuild_interval_seconds,
                 path_target_rebuild_distance_px=path_target_rebuild_distance_px,
                 path_max_iterations=path_max_iterations,
+                path_rebuild_budget=path_rebuild_budget,
                 path_waypoint_reach_distance_px=path_waypoint_reach_distance_px,
                 movement_direction_smoothing=movement_direction_smoothing,
             )
@@ -1509,6 +1536,7 @@ class EnemySystem:
         path_rebuild_interval_seconds: float,
         path_target_rebuild_distance_px: float,
         path_max_iterations: int,
+        path_rebuild_budget: _PathRebuildBudget,
         path_waypoint_reach_distance_px: float,
         movement_direction_smoothing: float,
     ) -> tuple[bool, bool, bool, bool, bool, bool, bool, bool]:
@@ -1526,6 +1554,7 @@ class EnemySystem:
             path_rebuild_interval_seconds: Minimum delay between path rebuilds.
             path_target_rebuild_distance_px: Player movement distance that forces path rebuild.
             path_max_iterations: Maximum A* iterations per path rebuild.
+            path_rebuild_budget: Per-frame budget used to avoid A* spikes.
             path_waypoint_reach_distance_px: Distance used to advance path waypoints.
             movement_direction_smoothing: Blend factor for path movement direction.
 
@@ -1535,11 +1564,15 @@ class EnemySystem:
         enemy.path_rebuild_timer_seconds -= frame_time
         rebuilt = False
         failed_path = False
-        if EnemySystem._should_rebuild_enemy_path(
-            enemy=enemy,
-            player_position=player_position,
-            path_target_rebuild_distance_px=path_target_rebuild_distance_px,
-        ) or enemy.path_rebuild_timer_seconds <= 0.0:
+        needs_rebuild = (
+            EnemySystem._should_rebuild_enemy_path(
+                enemy=enemy,
+                player_position=player_position,
+                path_target_rebuild_distance_px=path_target_rebuild_distance_px,
+            )
+            or enemy.path_rebuild_timer_seconds <= 0.0
+        )
+        if needs_rebuild and path_rebuild_budget.try_consume():
             rebuilt, failed_path = EnemySystem._rebuild_enemy_path(
                 enemy=enemy,
                 player_position=player_position,
@@ -1633,7 +1666,10 @@ class EnemySystem:
         start_tile = world_to_tile(enemy.world_position, tile_size_px)
         goal_tile = world_to_tile(player_position, tile_size_px)
         result = pathfinder.find_path(start_tile, goal_tile, max_iterations=path_max_iterations)
-        enemy.path_rebuild_timer_seconds = max(0.0, path_rebuild_interval_seconds)
+        enemy.path_rebuild_timer_seconds = EnemySystem._path_rebuild_delay_for_enemy(
+            enemy=enemy,
+            path_rebuild_interval_seconds=path_rebuild_interval_seconds,
+        )
         enemy.last_path_target_position = player_position
         if not result.tiles:
             EnemySystem._clear_enemy_path(enemy)
@@ -1641,6 +1677,20 @@ class EnemySystem:
         enemy.path_tiles = result.tiles
         enemy.path_waypoint_index = 1 if len(result.tiles) > 1 else 0
         return True, False
+
+    @staticmethod
+    def _path_rebuild_delay_for_enemy(
+        enemy: EnemyState,
+        path_rebuild_interval_seconds: float,
+    ) -> float:
+        """Return a deterministic staggered delay before the next path rebuild."""
+        safe_interval = max(0.0, path_rebuild_interval_seconds)
+        if safe_interval <= 0.0:
+            return 0.0
+        stable_hash = sum(ord(character) for character in enemy.enemy_id)
+        jitter_fraction = (stable_hash % 7) / 20.0
+        return safe_interval * (1.0 + jitter_fraction)
+
 
     @staticmethod
     def _current_path_waypoint(

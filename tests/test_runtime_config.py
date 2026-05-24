@@ -100,11 +100,12 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.enemies.path_rebuild_interval_seconds == 0.35
     assert config.enemies.path_target_rebuild_distance_px == 48.0
     assert config.enemies.path_max_iterations == 2048
+    assert config.enemies.path_max_rebuilds_per_frame == 4
     assert config.enemies.path_waypoint_reach_distance_px == 12.0
     assert config.enemies.draw_enemy_paths is False
     assert config.enemies.max_debug_enemy_paths == 6
     assert config.enemies.debug_enemy_render_distance_px == 900.0
-    assert config.enemies.tactical_positioning_enabled is True
+    assert config.enemies.tactical_positioning_enabled is False
     assert config.enemies.player_stationary_speed_threshold_px_per_second == 12.0
     assert config.enemies.player_stationary_time_seconds == 0.7
     assert config.enemies.tactical_slot_count == 12

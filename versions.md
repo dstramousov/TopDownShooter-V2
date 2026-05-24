@@ -815,3 +815,9 @@
 - Added a compact standalone FPS counter anchored to the top-right corner of both 2D and 3D runtimes.
 - Reused the shared UI font renderer without restoring the removed debug overlay or diagnostic row building.
 - Kept gameplay, rendering budgets, controls, AI, weapons, and runtime config unchanged.
+
+## v0.2.1 -> v0.2.2
+
+- Disabled tactical positioning by default to prevent heavy surround-slot assignment spikes during mass alerts.
+- Added a per-frame enemy A* rebuild budget so alerted groups spread pathfinding work across updates instead of rebuilding every path at once.
+- Added deterministic path rebuild staggering and tests for budgeted path queries without changing rendering, weapons, collisions, or enemy damage.

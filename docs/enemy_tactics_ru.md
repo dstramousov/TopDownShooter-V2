@@ -161,7 +161,8 @@ enemy_spawn_zone
 - diagonal corner cutting запрещён;
 - путь не перестраивается каждый кадр;
 - перестроение зависит от `path_rebuild_interval_seconds` и смещения цели `path_target_rebuild_distance_px`;
-- есть лимит `path_max_iterations`.
+- есть лимит `path_max_iterations`;
+- есть per-frame лимит `path_max_rebuilds_per_frame`, чтобы массовый alert не запускал десятки A* в одном кадре.
 
 Враг двигается к текущему waypoint. Когда он достаточно близко к нему, waypoint считается достигнутым. Это расстояние задаётся `path_waypoint_reach_distance_px`.
 
@@ -178,6 +179,8 @@ Debug-пути можно включить через `draw_enemy_paths`.
 
 Если игрок почти остановился, враги не должны просто стоять на preferred distance.
 Они пытаются занять огневые позиции вокруг игрока.
+
+Важно: по умолчанию этот режим выключен, потому что старая реализация дорогая для массовых боёв и может вызывать frame spike-и.
 
 Игрок считается стоящим, если его скорость ниже `player_stationary_speed_threshold_px_per_second` в течение `player_stationary_time_seconds`.
 
