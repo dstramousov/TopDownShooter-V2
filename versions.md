@@ -821,3 +821,9 @@
 - Disabled tactical positioning by default to prevent heavy surround-slot assignment spikes during mass alerts.
 - Added a per-frame enemy A* rebuild budget so alerted groups spread pathfinding work across updates instead of rebuilding every path at once.
 - Added deterministic path rebuild staggering and tests for budgeted path queries without changing rendering, weapons, collisions, or enemy damage.
+
+## v0.2.2 -> v0.2.3
+
+- Fixed enemy hit reactions so damaged enemies search from the incoming shot origin instead of targeting their own position.
+- Allowed returning enemies to be interrupted by new gunshot sounds or hits, resetting stale search timers and clearing return-home paths.
+- Kept squad alert broadcast range based on the alerted enemy while sending squadmates to investigate the actual stimulus position.

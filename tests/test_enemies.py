@@ -1,6 +1,6 @@
 """Tests for static enemy marker spawning."""
 
-from topdown_shooter.combat.enemies import EnemySystem
+from topdown_shooter.combat.enemies import EnemyState, EnemySystem
 from topdown_shooter.combat.projectiles import ProjectileState
 from topdown_shooter.world.coordinates import TileCoord, WorldCoord, world_to_tile
 from topdown_shooter.world.runtime_map import RuntimeMap, TacticalRuntimeSummary
@@ -1562,6 +1562,143 @@ def test_returned_enemy_snaps_home_and_restores_initial_facing() -> None:
     assert enemy.facing_angle_degrees == 135.0
     assert system.stats.returned_home_enemies == 1
 
+
+
+def test_projectile_hit_sets_search_target_to_shot_origin() -> None:
+    """Damaged idle enemies should investigate the incoming shot origin."""
+    runtime_map = _build_runtime_map()
+    system = EnemySystem.from_tactical_map(
+        {"enemy_spawn_zones": [{"id": "spawn_0", "position": [2, 1]}]},
+        runtime_map,
+        enemy_max_health=100.0,
+    )
+    enemy = system.enemies[0]
+    enemy.time_since_player_seen_seconds = 99.0
+    shot_origin = WorldCoord(x=8.0, y=24.0)
+    projectile = ProjectileState(
+        position=enemy.world_position,
+        previous_position=shot_origin,
+        direction_x=1.0,
+        direction_y=0.0,
+        max_distance_px=128.0,
+        radius_px=3.0,
+        damage=10.0,
+    )
+
+    system.apply_projectile_hits((projectile,), enemy_collision_radius_px=8.0)
+
+    assert enemy.alerted is True
+    assert enemy.awareness_state == "searching"
+    assert enemy.last_seen_player_position == shot_origin
+    assert enemy.time_since_player_seen_seconds == 0.0
+
+
+def test_returning_enemy_is_interrupted_by_new_sound_alert() -> None:
+    """Returning enemies should stop going home when a fresh shot is heard."""
+    runtime_map = _build_runtime_map()
+    system = EnemySystem.from_tactical_map(
+        {"enemy_spawn_zones": [{"id": "spawn_0", "position": [1, 1]}]},
+        runtime_map,
+    )
+    enemy = system.enemies[0]
+    sound_origin = WorldCoord(x=72.0, y=24.0)
+    enemy.alerted = True
+    enemy.awareness_state = "returning"
+    enemy.last_seen_player_position = WorldCoord(x=120.0, y=24.0)
+    enemy.time_since_player_seen_seconds = 99.0
+    enemy.path_tiles = (TileCoord(x=1, y=1), TileCoord(x=2, y=1))
+    enemy.path_waypoint_index = 1
+
+    alerted = system.alert_enemies_by_sound(
+        origin=sound_origin,
+        noise_radius_px=128.0,
+    )
+
+    assert alerted == 1
+    assert enemy.alerted is True
+    assert enemy.awareness_state == "searching"
+    assert enemy.last_seen_player_position == sound_origin
+    assert enemy.time_since_player_seen_seconds == 0.0
+    assert enemy.path_tiles == ()
+    assert enemy.path_waypoint_index == 0
+
+
+def test_returning_enemy_hit_interrupts_return_home_path() -> None:
+    """Damaging a returning enemy should immediately replace return-home with search."""
+    runtime_map = _build_runtime_map()
+    system = EnemySystem.from_tactical_map(
+        {"enemy_spawn_zones": [{"id": "spawn_0", "position": [2, 1]}]},
+        runtime_map,
+        enemy_max_health=100.0,
+    )
+    enemy = system.enemies[0]
+    shot_origin = WorldCoord(x=8.0, y=24.0)
+    enemy.alerted = True
+    enemy.awareness_state = "returning"
+    enemy.time_since_player_seen_seconds = 99.0
+    enemy.path_tiles = (TileCoord(x=2, y=1), TileCoord(x=1, y=1))
+    enemy.path_waypoint_index = 1
+    projectile = ProjectileState(
+        position=enemy.world_position,
+        previous_position=shot_origin,
+        direction_x=1.0,
+        direction_y=0.0,
+        max_distance_px=128.0,
+        radius_px=3.0,
+        damage=10.0,
+    )
+
+    system.apply_projectile_hits((projectile,), enemy_collision_radius_px=8.0)
+
+    assert enemy.awareness_state == "searching"
+    assert enemy.last_seen_player_position == shot_origin
+    assert enemy.time_since_player_seen_seconds == 0.0
+    assert enemy.path_tiles == ()
+    assert enemy.path_waypoint_index == 0
+
+
+def test_squad_alert_investigates_sound_origin_not_broadcaster_position() -> None:
+    """Squadmates should search the stimulus point, not the broadcaster position."""
+    source = EnemyState(
+        enemy_id="enemy_0",
+        spawn_id="squad",
+        zone_id="zone",
+        spawn_type="test",
+        role="rifleman",
+        tile=TileCoord(x=5, y=1),
+        world_position=WorldCoord(x=88.0, y=24.0),
+        home_position=WorldCoord(x=88.0, y=24.0),
+        max_health=100.0,
+        health=100.0,
+        facing_angle_degrees=180.0,
+    )
+    squadmate = EnemyState(
+        enemy_id="enemy_1",
+        spawn_id="squad",
+        zone_id="zone",
+        spawn_type="test",
+        role="rifleman",
+        tile=TileCoord(x=8, y=1),
+        world_position=WorldCoord(x=136.0, y=24.0),
+        home_position=WorldCoord(x=136.0, y=24.0),
+        max_health=100.0,
+        health=100.0,
+        facing_angle_degrees=180.0,
+    )
+    system = EnemySystem(enemies=(source, squadmate), source_spawn_zones=1)
+    sound_origin = WorldCoord(x=72.0, y=24.0)
+
+    system.alert_enemies_by_sound(
+        origin=sound_origin,
+        noise_radius_px=24.0,
+        squad_alert_broadcast_delay_seconds=0.0,
+    )
+
+    assert source.alerted is True
+    assert squadmate.alerted is True
+    assert source.last_seen_player_position == sound_origin
+    assert squadmate.last_seen_player_position == sound_origin
+    assert squadmate.last_seen_player_position != source.world_position
 
 def test_enemy_system_ignores_enemy_owned_projectiles_for_enemy_damage() -> None:
     """Enemy-owned projectiles should not damage enemies."""

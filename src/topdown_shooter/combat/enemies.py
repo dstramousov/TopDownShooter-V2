@@ -127,6 +127,16 @@ class _PathRebuildBudget:
 
 
 @dataclass(frozen=True, slots=True)
+class _PendingSquadAlert:
+    """Delayed squad alert with separate broadcast and search positions."""
+
+    timer_seconds: float
+    broadcast_origin_position: WorldCoord
+    search_target_position: WorldCoord
+    radius_px: float
+
+
+@dataclass(frozen=True, slots=True)
 class EnemyStats:
     """Runtime enemy diagnostics.
 
@@ -233,7 +243,7 @@ class EnemySystem:
         self._tactical_positioning_enemies = 0
         self._tactical_slots_assigned = 0
         self._returned_home_enemies = 0
-        self._pending_squad_alerts: dict[str, tuple[float, WorldCoord, float]] = {}
+        self._pending_squad_alerts: dict[str, _PendingSquadAlert] = {}
         self._squad_alerts_triggered = 0
         self._sound_alerts_triggered = 0
         self._returned_home_enemies = 0
@@ -2065,18 +2075,23 @@ class EnemySystem:
             squad_alert_broadcast_radius_px: Radius for nearby squad alert fallback.
 
         Returns:
-            Number of enemies newly alerted by sound.
+            Number of enemies newly alerted or re-tasked by sound.
         """
         if noise_radius_px <= 0.0:
             return 0
         alerted_count = 0
         for enemy in self._enemies:
-            if not enemy.alive or enemy.alerted:
+            if not enemy.alive:
+                continue
+            if enemy.alerted and enemy.awareness_state == "engaged":
                 continue
             dx = enemy.world_position.x - origin.x
             dy = enemy.world_position.y - origin.y
             if math.hypot(dx, dy) > noise_radius_px:
                 continue
+            was_alerted = enemy.alerted
+            was_search_target = enemy.last_seen_player_position
+            was_state = enemy.awareness_state
             self._alert_enemy(
                 enemy,
                 squad_alert_broadcast_delay_seconds=squad_alert_broadcast_delay_seconds,
@@ -2084,7 +2099,12 @@ class EnemySystem:
                 awareness_state="searching",
                 last_seen_player_position=origin,
             )
-            alerted_count += 1
+            if (
+                not was_alerted
+                or was_state != enemy.awareness_state
+                or was_search_target != enemy.last_seen_player_position
+            ):
+                alerted_count += 1
         self._sound_alerts_triggered += alerted_count
         return alerted_count
 
@@ -2250,6 +2270,7 @@ class EnemySystem:
                     self._damage_enemy(
                         enemy,
                         projectile.damage,
+                        last_seen_player_position=projectile.previous_position,
                         squad_alert_broadcast_delay_seconds=squad_alert_broadcast_delay_seconds,
                         squad_alert_broadcast_radius_px=squad_alert_broadcast_radius_px,
                     )
@@ -2274,6 +2295,7 @@ class EnemySystem:
         self,
         enemy: EnemyState,
         damage: float,
+        last_seen_player_position: WorldCoord | None = None,
         squad_alert_broadcast_delay_seconds: float = 0.0,
         squad_alert_broadcast_radius_px: float = 0.0,
     ) -> None:
@@ -2282,6 +2304,7 @@ class EnemySystem:
         Args:
             enemy: Enemy receiving damage.
             damage: Damage amount.
+            last_seen_player_position: Threat source position used for search behavior.
             squad_alert_broadcast_delay_seconds: Delay before squadmates are alerted.
             squad_alert_broadcast_radius_px: Radius for nearby squad alert fallback.
         """
@@ -2292,7 +2315,7 @@ class EnemySystem:
             squad_alert_broadcast_delay_seconds=squad_alert_broadcast_delay_seconds,
             squad_alert_broadcast_radius_px=squad_alert_broadcast_radius_px,
             awareness_state="searching",
-            last_seen_player_position=enemy.world_position,
+            last_seen_player_position=last_seen_player_position or enemy.world_position,
         )
         enemy.health = max(0.0, enemy.health - damage)
         enemy.last_hit_age_seconds = 0.0
@@ -2321,17 +2344,19 @@ class EnemySystem:
         if not enemy.alive:
             return
         was_alerted = enemy.alerted
+        previous_state = enemy.awareness_state
         enemy.alerted = True
         EnemySystem._set_enemy_awareness(
             enemy,
             awareness_state,
             last_seen_player_position,
         )
-        if was_alerted:
+        if was_alerted and previous_state != "returning":
             return
         self._schedule_squad_alert(
             spawn_id=enemy.spawn_id,
-            origin_position=enemy.world_position,
+            broadcast_origin_position=enemy.world_position,
+            search_target_position=last_seen_player_position or enemy.world_position,
             delay_seconds=squad_alert_broadcast_delay_seconds,
             radius_px=squad_alert_broadcast_radius_px,
         )
@@ -2339,7 +2364,8 @@ class EnemySystem:
     def _schedule_squad_alert(
         self,
         spawn_id: str,
-        origin_position: WorldCoord,
+        broadcast_origin_position: WorldCoord,
+        search_target_position: WorldCoord,
         delay_seconds: float,
         radius_px: float,
     ) -> None:
@@ -2347,27 +2373,30 @@ class EnemySystem:
 
         Args:
             spawn_id: Source spawn id shared by squad members.
-            origin_position: Position of the enemy that raised the alert.
+            broadcast_origin_position: Position of the enemy that raised the alert.
+            search_target_position: Stimulus position squadmates should investigate.
             delay_seconds: Broadcast delay in seconds.
             radius_px: Nearby-enemy fallback radius in world pixels.
         """
-        if not self._has_unalerted_squadmates(spawn_id, origin_position, radius_px):
+        if not self._has_unalerted_squadmates(spawn_id, broadcast_origin_position, radius_px):
             return
         safe_delay = max(0.0, delay_seconds)
         safe_radius = max(0.0, radius_px)
         if safe_delay <= 0.0:
             self._squad_alerts_triggered += self._alert_squad(
                 spawn_id,
-                origin_position,
+                broadcast_origin_position,
+                search_target_position,
                 safe_radius,
             )
             return
         previous_alert = self._pending_squad_alerts.get(spawn_id)
-        if previous_alert is None or safe_delay < previous_alert[0]:
-            self._pending_squad_alerts[spawn_id] = (
-                safe_delay,
-                origin_position,
-                safe_radius,
+        if previous_alert is None or safe_delay < previous_alert.timer_seconds:
+            self._pending_squad_alerts[spawn_id] = _PendingSquadAlert(
+                timer_seconds=safe_delay,
+                broadcast_origin_position=broadcast_origin_position,
+                search_target_position=search_target_position,
+                radius_px=safe_radius,
             )
 
     def _update_pending_squad_alerts(
@@ -2387,39 +2416,50 @@ class EnemySystem:
             return
         max_delay = max(0.0, squad_alert_broadcast_delay_seconds)
         max_radius = max(0.0, squad_alert_broadcast_radius_px)
-        ready_alerts: list[tuple[str, WorldCoord, float]] = []
-        for spawn_id, (timer_seconds, origin_position, radius_px) in tuple(
-            self._pending_squad_alerts.items(),
-        ):
-            next_timer = min(timer_seconds, max_delay) - frame_time if max_delay > 0.0 else 0.0
-            next_radius = max(radius_px, max_radius)
-            if next_timer <= 0.0:
-                ready_alerts.append((spawn_id, origin_position, next_radius))
-                continue
-            self._pending_squad_alerts[spawn_id] = (
-                next_timer,
-                origin_position,
-                next_radius,
+        ready_alerts: list[tuple[str, WorldCoord, WorldCoord, float]] = []
+        for spawn_id, pending_alert in tuple(self._pending_squad_alerts.items()):
+            next_timer = (
+                min(pending_alert.timer_seconds, max_delay) - frame_time
+                if max_delay > 0.0
+                else 0.0
             )
-        for spawn_id, origin_position, radius_px in ready_alerts:
+            next_radius = max(pending_alert.radius_px, max_radius)
+            if next_timer <= 0.0:
+                ready_alerts.append((
+                    spawn_id,
+                    pending_alert.broadcast_origin_position,
+                    pending_alert.search_target_position,
+                    next_radius,
+                ))
+                continue
+            self._pending_squad_alerts[spawn_id] = _PendingSquadAlert(
+                timer_seconds=next_timer,
+                broadcast_origin_position=pending_alert.broadcast_origin_position,
+                search_target_position=pending_alert.search_target_position,
+                radius_px=next_radius,
+            )
+        for spawn_id, broadcast_origin_position, search_target_position, radius_px in ready_alerts:
             self._pending_squad_alerts.pop(spawn_id, None)
             self._squad_alerts_triggered += self._alert_squad(
                 spawn_id,
-                origin_position,
+                broadcast_origin_position,
+                search_target_position,
                 radius_px,
             )
 
     def _alert_squad(
         self,
         spawn_id: str,
-        origin_position: WorldCoord,
+        broadcast_origin_position: WorldCoord,
+        search_target_position: WorldCoord,
         radius_px: float,
     ) -> int:
         """Alert every alive squadmate or nearby enemy in broadcast range.
 
         Args:
             spawn_id: Source spawn id shared by squad members.
-            origin_position: Position of the enemy that raised the alert.
+            broadcast_origin_position: Position of the enemy that raised the alert.
+            search_target_position: Stimulus position squadmates should investigate.
             radius_px: Nearby-enemy fallback radius in world pixels.
 
         Returns:
@@ -2429,10 +2469,15 @@ class EnemySystem:
         for squadmate in self._enemies:
             if not squadmate.alive or squadmate.alerted:
                 continue
-            if not self._is_squad_alert_target(squadmate, spawn_id, origin_position, radius_px):
+            if not self._is_squad_alert_target(
+                squadmate,
+                spawn_id,
+                broadcast_origin_position,
+                radius_px,
+            ):
                 continue
             squadmate.alerted = True
-            EnemySystem._set_enemy_searching(squadmate, origin_position)
+            EnemySystem._set_enemy_searching(squadmate, search_target_position)
             alerted_count += 1
         return alerted_count
 
@@ -2524,9 +2569,10 @@ class EnemySystem:
         enemy.awareness_state = "searching"
         if last_seen_player_position is not None:
             enemy.last_seen_player_position = last_seen_player_position
-        enemy.time_since_player_seen_seconds = max(0.0, enemy.time_since_player_seen_seconds)
+        enemy.time_since_player_seen_seconds = 0.0
         enemy.tactical_target_position = None
         enemy.tactical_target_age_seconds = 0.0
+        EnemySystem._clear_enemy_path(enemy)
 
     @staticmethod
     def _set_enemy_returning(enemy: EnemyState) -> None:
