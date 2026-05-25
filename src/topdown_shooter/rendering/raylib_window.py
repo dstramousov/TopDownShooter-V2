@@ -184,7 +184,11 @@ class RaylibWindow:
             marker_radius_px=config.player.marker_radius_px,
             aim_debug=config.aim_debug,
         )
-        self._projectile_renderer = ProjectileRenderer(raylib=self._raylib)
+        self._projectile_renderer = ProjectileRenderer(
+            raylib=self._raylib,
+            impact_config=config.projectile_impacts,
+            shell_ejection_config=config.shell_ejection,
+        )
         self._combat_feedback = CombatFeedbackOverlay(
             raylib=self._raylib,
             window=config.window,

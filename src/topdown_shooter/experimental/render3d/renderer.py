@@ -92,6 +92,21 @@ class _Render3DProjectileTrailState:
     lifetime_seconds: float = 0.075
 
 
+@dataclass(slots=True)
+class _Render3DShellCasingState:
+    """Short-lived 3D shell casing state."""
+
+    origin: WorldCoord
+    direction_x: float
+    direction_y: float
+    size_px: float
+    travel_distance_px: float
+    owner: ProjectileOwner
+    visual_profile: str
+    age_seconds: float = 0.0
+    lifetime_seconds: float = 1.0
+
+
 class Render3DRenderer:
     """Draw a minimal experimental 3D view of the current runtime map."""
 
@@ -170,6 +185,8 @@ class Render3DRenderer:
         self._muzzle_flashes: list[_Render3DMuzzleFlashState] = []
         self._projectile_trails: list[_Render3DProjectileTrailState] = []
         self._projectile_trail_keys: set[tuple[int, int, int, int, str, str]] = set()
+        self._shell_casings: list[_Render3DShellCasingState] = []
+        self._shell_sequence = 0
         self._combat_feedback = CombatFeedbackOverlay(
             raylib=self._raylib,
             window=config.window,
@@ -317,6 +334,7 @@ class Render3DRenderer:
                 active_frame_time = frame_time if not ui_input.blocks_gameplay else 0.0
                 self._update_muzzle_flashes(active_frame_time)
                 self._update_projectile_trails(active_frame_time)
+                self._update_shell_casings(active_frame_time)
                 self._combat_feedback.update(active_frame_time)
                 self._camera_feedback.update(active_frame_time)
                 camera_state = self._apply_camera_feedback(camera_state)
@@ -344,6 +362,7 @@ class Render3DRenderer:
                     self._draw_enemy_markers(visible_enemies)
                     self._draw_muzzle_flashes()
                     self._draw_projectile_markers(visible_projectiles)
+                    self._draw_shell_casings()
                     self._draw_impact_markers(visible_impacts)
                     self._draw_aim_line(
                         player.world_position,
@@ -1515,6 +1534,7 @@ class Render3DRenderer:
                     lifetime_seconds=self._muzzle_flash_lifetime(event.visual_profile),
                 ),
             )
+            self._spawn_shell_casing(event)
 
     def _update_muzzle_flashes(self, frame_time: float) -> None:
         """Advance active 3D muzzle flashes."""
@@ -1527,6 +1547,163 @@ class Render3DRenderer:
             for flash in self._muzzle_flashes
             if flash.age_seconds < flash.lifetime_seconds
         ]
+
+    def _spawn_shell_casing(self, event: ProjectileEvent) -> None:
+        """Create one 3D shell casing for one spawned shot event."""
+        shell_config = self._config.shell_ejection
+        if not shell_config.enabled:
+            return
+        direction_length = math.hypot(event.direction_x, event.direction_y)
+        if direction_length <= 0.0001:
+            return
+        direction_x = event.direction_x / direction_length
+        direction_y = event.direction_y / direction_length
+        right_x, right_y = self._rotated_right_normal(
+            direction_x,
+            direction_y,
+            self._shell_spread_offset_degrees(self._shell_sequence),
+        )
+        size = self._shell_size(self._shell_sequence, event.visual_profile)
+        travel = (
+            shell_config.ejection_distance_px
+            * shell_config.ejection_intensity
+            * self._shell_profile_distance_scale(event.visual_profile)
+            * self._sequence_unit(self._shell_sequence, salt=17, min_value=0.72, max_value=1.15)
+        )
+        self._shell_casings.append(
+            _Render3DShellCasingState(
+                origin=WorldCoord(
+                    event.position.x + right_x * max(2.0, size),
+                    event.position.y + right_y * max(2.0, size),
+                ),
+                direction_x=right_x,
+                direction_y=right_y,
+                size_px=size,
+                travel_distance_px=travel,
+                owner=event.owner,
+                visual_profile=event.visual_profile,
+                lifetime_seconds=self._shell_lifetime(
+                    self._shell_sequence,
+                    event.visual_profile,
+                ),
+            ),
+        )
+        self._shell_sequence += 1
+        overflow = len(self._shell_casings) - shell_config.max_active_shells
+        if overflow > 0:
+            del self._shell_casings[:overflow]
+
+    def _update_shell_casings(self, frame_time: float) -> None:
+        """Advance visible shell casings."""
+        if frame_time <= 0.0:
+            return
+        for shell in self._shell_casings:
+            shell.age_seconds += frame_time
+        self._shell_casings = [
+            shell
+            for shell in self._shell_casings
+            if shell.age_seconds < shell.lifetime_seconds
+        ]
+
+    def _draw_shell_casings(self) -> None:
+        """Draw shell casings in 3D without affecting gameplay."""
+        if not self._shell_casings:
+            return
+        raylib = self._raylib
+        render_config = self._config.render3d
+        tile_size = render_config.tile_size
+        height_scale = render_config.height_scale
+        tile_size_px = self._runtime_map.tile_size_px
+        base_y = render_config.projectiles.projectile_height_tiles * height_scale * 0.38
+        for shell in self._shell_casings:
+            progress = self._age_progress(shell.age_seconds, shell.lifetime_seconds)
+            alpha = int(220 * max(0.0, 1.0 - progress))
+            if alpha <= 0:
+                continue
+            travel_curve = min(1.0, progress * 1.65)
+            settle = travel_curve * (2.0 - travel_curve)
+            world_x = shell.origin.x + shell.direction_x * shell.travel_distance_px * settle
+            world_y = shell.origin.y + shell.direction_y * shell.travel_distance_px * settle
+            center = raylib.Vector3(
+                world_x / tile_size_px * tile_size,
+                base_y,
+                world_y / tile_size_px * tile_size,
+            )
+            size = max(0.035 * tile_size, shell.size_px / tile_size_px * tile_size)
+            color = raylib.Color(204, 154, 62, alpha)
+            raylib.draw_cube(center, size * 1.8, size * 0.35, size * 0.55, color)
+
+    def _shell_size(self, sequence: int, visual_profile: str) -> float:
+        """Return deterministic shell size for one 3D casing."""
+        config = self._config.shell_ejection
+        size = self._sequence_unit(
+            sequence,
+            salt=3,
+            min_value=config.shell_size_min_px,
+            max_value=config.shell_size_max_px,
+        )
+        if visual_profile == "minigun":
+            return max(1.0, size * 0.78)
+        if visual_profile == "ak47":
+            return size * 1.08
+        return size
+
+    def _shell_lifetime(self, sequence: int, visual_profile: str) -> float:
+        """Return deterministic shell lifetime for one 3D casing."""
+        config = self._config.shell_ejection
+        lifetime = self._sequence_unit(
+            sequence,
+            salt=11,
+            min_value=config.lifetime_min_seconds,
+            max_value=config.lifetime_max_seconds,
+        )
+        if visual_profile == "minigun":
+            return max(config.lifetime_min_seconds, lifetime * 0.82)
+        return lifetime
+
+    def _shell_spread_offset_degrees(self, sequence: int) -> float:
+        """Return deterministic shell ejection spread angle."""
+        half_spread = self._config.shell_ejection.spread_degrees / 2.0
+        return self._sequence_unit(
+            sequence,
+            salt=23,
+            min_value=-half_spread,
+            max_value=half_spread,
+        )
+
+    @staticmethod
+    def _shell_profile_distance_scale(visual_profile: str) -> float:
+        """Return shell travel scale for a weapon visual profile."""
+        if visual_profile == "minigun":
+            return 0.78
+        if visual_profile == "ak47":
+            return 1.08
+        return 1.0
+
+    @staticmethod
+    def _rotated_right_normal(
+        direction_x: float,
+        direction_y: float,
+        offset_degrees: float,
+    ) -> tuple[float, float]:
+        """Return right-side ejection normal rotated by a spread offset."""
+        right_x = -direction_y
+        right_y = direction_x
+        angle = math.atan2(right_y, right_x) + math.radians(offset_degrees)
+        return math.cos(angle), math.sin(angle)
+
+    @staticmethod
+    def _sequence_unit(
+        sequence: int,
+        *,
+        salt: int,
+        min_value: float,
+        max_value: float,
+    ) -> float:
+        """Return a deterministic pseudo-random value in a closed range."""
+        hashed = (sequence * 1103515245 + 12345 + salt * 2654435761) & 0x7FFFFFFF
+        unit = float(hashed % 10000) / 9999.0
+        return min_value + (max_value - min_value) * unit
 
     def _draw_muzzle_flashes(self) -> None:
         """Draw short-lived muzzle flashes in 3D space."""
@@ -1625,30 +1802,6 @@ class Render3DRenderer:
         radius = projectile_config.projectile_radius_tiles * tile_size
         self._add_projectile_trails(projectiles)
         self._draw_projectile_trails(projectile_y + trail_y_offset)
-        for projectile in projectiles:
-            end = self._world_to_projectile_vector(projectile.position, projectile_y)
-            if render_config.combat_visuals.draw_projectile_tracers:
-                start = self._world_to_projectile_vector(
-                    projectile.previous_position,
-                    projectile_y + trail_y_offset,
-                )
-                tracer_end = self._world_to_projectile_vector(
-                    projectile.position,
-                    projectile_y + trail_y_offset,
-                )
-                raylib.draw_line_3d(
-                    start,
-                    tracer_end,
-                    self._projectile_tracer_color(
-                        projectile.owner,
-                        projectile.visual_profile,
-                    ),
-                )
-            raylib.draw_sphere(
-                end,
-                max(radius, 0.03 * tile_size),
-                self._projectile_core_color(projectile.owner),
-            )
 
     def _add_projectile_trails(self, projectiles: tuple[ProjectileState, ...]) -> None:
         """Capture real previous-to-current projectile segments for short 3D trails."""
@@ -1671,15 +1824,35 @@ class Render3DRenderer:
             if key in self._projectile_trail_keys:
                 continue
             self._projectile_trail_keys.add(key)
+            trail_start = self._clip_projectile_trail_start(projectile)
             self._projectile_trails.append(
                 _Render3DProjectileTrailState(
-                    previous_position=projectile.previous_position,
+                    previous_position=trail_start,
                     position=projectile.position,
                     owner=owner,
                     visual_profile=projectile.visual_profile,
                     key=key,
                 ),
             )
+
+    def _clip_projectile_trail_start(self, projectile: ProjectileState) -> WorldCoord:
+        """Return a shortened 3D tracer start to avoid full-ray laser lines."""
+        dx = projectile.position.x - projectile.previous_position.x
+        dy = projectile.position.y - projectile.previous_position.y
+        distance = math.hypot(dx, dy)
+        if distance <= 0.0001:
+            return projectile.previous_position
+        max_length_px = (
+            self._config.render3d.combat_visuals.projectile_tracer_length_tiles
+            * self._runtime_map.tile_size_px
+        )
+        if distance <= max_length_px:
+            return projectile.previous_position
+        ratio = max_length_px / distance
+        return WorldCoord(
+            x=projectile.position.x - dx * ratio,
+            y=projectile.position.y - dy * ratio,
+        )
 
     def _update_projectile_trails(self, frame_time: float) -> None:
         """Advance active short-lived 3D projectile trails."""
@@ -1816,71 +1989,139 @@ class Render3DRenderer:
                 impact_y,
                 impact.position.y / tile_size_px * tile_size,
             )
-            radius = max(impact.radius_px / tile_size_px * tile_size, 0.08 * tile_size)
             progress = self._age_progress(impact.age_seconds, impact.lifetime_seconds)
-            impact_color = self._impact_color(impact.surface_material)
-            raylib.draw_sphere(
-                center,
-                radius * self._impact_radius_scale(impact.surface_material, progress),
-                impact_color,
-            )
             material = self._normalize_surface_material(impact.surface_material)
-            if material in {SurfaceMaterial.METAL, SurfaceMaterial.EXPLOSIVE_METAL, SurfaceMaterial.EXPLOSION}:
-                spark_radius = radius * (1.25 + progress * 0.4)
+            particle_config = self._impact_particle_config(material)
+            flash_alpha = int(230 * max(0.0, 1.0 - progress / 0.28))
+            if flash_alpha > 0:
+                flash_radius = max(0.05 * tile_size, impact.radius_px / tile_size_px * tile_size)
                 raylib.draw_line_3d(
-                    raylib.Vector3(center.x - spark_radius, center.y, center.z),
-                    raylib.Vector3(center.x + spark_radius, center.y, center.z),
-                    impact_color,
+                    raylib.Vector3(center.x - flash_radius, center.y, center.z),
+                    raylib.Vector3(center.x + flash_radius, center.y, center.z),
+                    self._impact_color(material, flash_alpha),
                 )
                 raylib.draw_line_3d(
-                    raylib.Vector3(center.x, center.y, center.z - spark_radius),
-                    raylib.Vector3(center.x, center.y, center.z + spark_radius),
-                    impact_color,
+                    raylib.Vector3(center.x, center.y, center.z - flash_radius),
+                    raylib.Vector3(center.x, center.y, center.z + flash_radius),
+                    self._impact_color(material, flash_alpha),
                 )
-            combat_config = render_config.combat_visuals
-            if combat_config.draw_impact_rings:
-                ring_radius = (
-                    combat_config.impact_ring_radius_tiles * tile_size * (1.0 + progress)
-                )
-                if material == SurfaceMaterial.FOLIAGE:
-                    ring_radius *= 0.75
-                elif material == SurfaceMaterial.EXPLOSIVE_METAL:
-                    ring_radius *= 1.25
-                elif material == SurfaceMaterial.EXPLOSION:
-                    ring_radius *= 1.8
-                ring_center = raylib.Vector3(
-                    center.x,
-                    combat_config.impact_ring_height_tiles * height_scale,
-                    center.z,
-                )
-                raylib.draw_cylinder_wires(
-                    ring_center,
-                    ring_radius,
-                    ring_radius,
-                    0.04 * height_scale,
-                    20,
-                    self._impact_ring_color(impact.surface_material),
+            debris_alpha = int(210 * max(0.0, 1.0 - progress / 0.78))
+            if debris_alpha > 0:
+                self._draw_impact_particles_3d(
+                    center=center,
+                    material=material,
+                    particle_config=particle_config,
+                    progress=progress,
+                    alpha=debris_alpha,
                 )
 
 
-    def _impact_color(self, material: SurfaceMaterial | str) -> object:
+    def _draw_impact_particles_3d(
+        self,
+        *,
+        center: object,
+        material: SurfaceMaterial,
+        particle_config: object,
+        progress: float,
+        alpha: int,
+    ) -> None:
+        """Draw configured 3D impact particles without sphere/ring markers."""
+        raylib = self._raylib
+        tile_size = self._config.render3d.tile_size
+        tile_size_px = self._runtime_map.tile_size_px
+        distance = (
+            particle_config.spread_distance_px
+            * particle_config.burst_intensity
+            / tile_size_px
+            * tile_size
+            * (0.25 + progress * 0.75)
+        )
+        size = max(
+            0.025 * tile_size,
+            self._impact_particle_size(particle_config, progress) / tile_size_px * tile_size,
+        )
+        color = self._impact_color(material, alpha)
+        for index, (offset_x, offset_y) in enumerate(
+            self._particle_offsets(material, particle_config.particle_count),
+        ):
+            particle_center = raylib.Vector3(
+                center.x + offset_x * distance,
+                center.y + size * (0.5 + 0.1 * (index % 3)),
+                center.z + offset_y * distance,
+            )
+            if material in {
+                SurfaceMaterial.METAL,
+                SurfaceMaterial.EXPLOSIVE_METAL,
+                SurfaceMaterial.EXPLOSION,
+                SurfaceMaterial.WOOD,
+            }:
+                raylib.draw_line_3d(
+                    center,
+                    particle_center,
+                    color,
+                )
+            else:
+                raylib.draw_cube(particle_center, size, size * 0.4, size, color)
+
+    def _impact_color(self, material: SurfaceMaterial | str, alpha: int = 255) -> object:
         """Return a material-aware 3D impact core color."""
         normalized = self._normalize_surface_material(material)
         if normalized == SurfaceMaterial.STONE:
-            return self._raylib.LIGHTGRAY
+            return self._raylib.Color(200, 200, 190, alpha)
         if normalized == SurfaceMaterial.WOOD:
-            return self._raylib.BROWN
+            return self._raylib.Color(160, 104, 52, alpha)
         if normalized == SurfaceMaterial.METAL:
-            return self._raylib.YELLOW
+            return self._raylib.Color(255, 218, 92, alpha)
         if normalized == SurfaceMaterial.EXPLOSIVE_METAL:
-            return self._raylib.ORANGE
+            return self._raylib.Color(255, 128, 52, alpha)
         if normalized == SurfaceMaterial.EXPLOSION:
-            return self._raylib.RED
+            return self._raylib.Color(255, 76, 28, alpha)
         if normalized == SurfaceMaterial.FOLIAGE:
-            return self._raylib.GREEN
+            return self._raylib.Color(92, 184, 72, alpha)
         if normalized == SurfaceMaterial.DIRT:
-            return self._raylib.BROWN
-        return self._raylib.ORANGE
+            return self._raylib.Color(128, 94, 62, alpha)
+        return self._raylib.Color(255, 220, 160, alpha)
+
+    def _impact_particle_config(self, material: SurfaceMaterial) -> object:
+        """Return configured impact particles for one material."""
+        return self._config.projectile_impacts.material_effects.get(
+            material.value,
+            self._config.projectile_impacts.material_effects["default"],
+        )
+
+    @staticmethod
+    def _impact_particle_size(particle_config: object, progress: float) -> float:
+        """Return current configured impact particle size."""
+        return max(
+            particle_config.particle_size_min_px,
+            particle_config.particle_size_max_px
+            - (particle_config.particle_size_max_px - particle_config.particle_size_min_px)
+            * min(1.0, progress),
+        )
+
+    @staticmethod
+    def _particle_offsets(
+        material: SurfaceMaterial,
+        particle_count: int,
+    ) -> tuple[tuple[float, float], ...]:
+        """Return deterministic unit directions for 3D impact particles."""
+        count = max(1, particle_count)
+        material_phase = {
+            SurfaceMaterial.METAL: 0.08,
+            SurfaceMaterial.EXPLOSIVE_METAL: 0.0,
+            SurfaceMaterial.WOOD: 0.19,
+            SurfaceMaterial.FOLIAGE: 0.31,
+            SurfaceMaterial.DIRT: 0.43,
+            SurfaceMaterial.EXPLOSION: 0.0,
+            SurfaceMaterial.STONE: 0.12,
+        }.get(material, 0.25)
+        offsets: list[tuple[float, float]] = []
+        golden_angle = math.pi * (3.0 - math.sqrt(5.0))
+        for index in range(count):
+            angle = material_phase * math.tau + golden_angle * index
+            radius_scale = 0.72 + 0.28 * ((index * 37) % 11) / 10.0
+            offsets.append((math.cos(angle) * radius_scale, math.sin(angle) * radius_scale))
+        return tuple(offsets)
 
     def _impact_ring_color(self, material: SurfaceMaterial | str) -> object:
         """Return a material-aware 3D impact ring color."""

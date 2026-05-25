@@ -100,7 +100,7 @@ def test_render3d_config_loads_from_default_config() -> None:
     assert config.render3d.combat_visuals.draw_projectile_tracers is True
     assert config.render3d.combat_visuals.projectile_tracer_length_tiles == 2.8
     assert config.render3d.combat_visuals.projectile_tracer_height_offset_tiles == 0.08
-    assert config.render3d.combat_visuals.draw_impact_rings is True
+    assert config.render3d.combat_visuals.draw_impact_rings is False
     assert config.render3d.combat_visuals.impact_ring_radius_tiles == 0.34
     assert config.render3d.combat_visuals.impact_ring_height_tiles == 0.08
     assert config.render3d.combat_visuals.enemy_hit_flash_seconds == 0.12

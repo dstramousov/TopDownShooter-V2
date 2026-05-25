@@ -86,8 +86,82 @@
   },
   "projectile_impacts": {
     "enabled": true,
-    "lifetime_seconds": 0.16,
-    "radius_px": 5.0
+    "lifetime_seconds": 0.56,
+    "radius_px": 15.0,
+    "material_effects": {
+      "default": {
+        "particle_count": 5,
+        "particle_size_px": [
+          1.0,
+          2.0
+        ],
+        "spread_distance_px": 12.0,
+        "burst_intensity": 1.0
+      },
+      "stone": {
+        "particle_count": 7,
+        "particle_size_px": [
+          1.0,
+          2.0
+        ],
+        "spread_distance_px": 12.0,
+        "burst_intensity": 3.15
+      },
+      "wood": {
+        "particle_count": 5,
+        "particle_size_px": [
+          1.0,
+          3.0
+        ],
+        "spread_distance_px": 17.0,
+        "burst_intensity": 1.1
+      },
+      "metal": {
+        "particle_count": 6,
+        "particle_size_px": [
+          1.0,
+          2.0
+        ],
+        "spread_distance_px": 20.0,
+        "burst_intensity": 1.35
+      },
+      "foliage": {
+        "particle_count": 6,
+        "particle_size_px": [
+          1.0,
+          2.0
+        ],
+        "spread_distance_px": 14.0,
+        "burst_intensity": 0.85
+      },
+      "dirt": {
+        "particle_count": 8,
+        "particle_size_px": [
+          2.0,
+          4.0
+        ],
+        "spread_distance_px": 15.0,
+        "burst_intensity": 0.75
+      },
+      "explosive_metal": {
+        "particle_count": 9,
+        "particle_size_px": [
+          1.0,
+          3.0
+        ],
+        "spread_distance_px": 26.0,
+        "burst_intensity": 1.65
+      },
+      "explosion": {
+        "particle_count": 12,
+        "particle_size_px": [
+          2.0,
+          5.0
+        ],
+        "spread_distance_px": 34.0,
+        "burst_intensity": 1.8
+      }
+    }
   },
   "hud": {
     "position": "top",
@@ -208,7 +282,7 @@
       "draw_projectile_tracers": true,
       "projectile_tracer_length_tiles": 2.8,
       "projectile_tracer_height_offset_tiles": 0.08,
-      "draw_impact_rings": true,
+      "draw_impact_rings": false,
       "impact_ring_radius_tiles": 0.34,
       "impact_ring_height_tiles": 0.08,
       "enemy_hit_flash_seconds": 0.12,
@@ -241,5 +315,20 @@
       "alert_alpha": 105,
       "combat_alpha": 145
     }
+  },
+  "shell_ejection": {
+    "enabled": true,
+    "shell_size_px": [
+      1.0,
+      4.0
+    ],
+    "lifetime_seconds": [
+      1.0,
+      2.0
+    ],
+    "ejection_distance_px": 18.0,
+    "ejection_intensity": 1.0,
+    "spread_degrees": 36.0,
+    "max_active_shells": 2048
   }
 }

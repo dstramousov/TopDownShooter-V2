@@ -114,6 +114,25 @@ class WeaponsConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class ImpactParticleConfig:
+    """Material impact particle settings.
+
+    Attributes:
+        particle_count: Number of visible particles emitted by one impact.
+        particle_size_min_px: Minimum particle size in world pixels.
+        particle_size_max_px: Maximum particle size in world pixels.
+        spread_distance_px: Maximum travel distance from the impact center.
+        burst_intensity: Ejection strength multiplier from the impact center.
+    """
+
+    particle_count: int
+    particle_size_min_px: float
+    particle_size_max_px: float
+    spread_distance_px: float
+    burst_intensity: float
+
+
+@dataclass(frozen=True, slots=True)
 class ProjectileImpactConfig:
     """Projectile impact marker settings.
 
@@ -121,11 +140,55 @@ class ProjectileImpactConfig:
         enabled: Whether blocked projectile hits create short-lived markers.
         lifetime_seconds: Impact marker lifetime in seconds.
         radius_px: Impact marker radius in world pixels.
+        material_effects: Material-specific impact particle settings.
     """
 
     enabled: bool
     lifetime_seconds: float
     radius_px: float
+    material_effects: dict[str, ImpactParticleConfig]
+
+
+@dataclass(frozen=True, slots=True)
+class ShellEjectionConfig:
+    """Shell casing ejection visual settings.
+
+    Attributes:
+        enabled: Whether every fired shot emits one visible shell casing.
+        shell_size_min_px: Minimum shell casing size in world pixels.
+        shell_size_max_px: Maximum shell casing size in world pixels.
+        lifetime_min_seconds: Minimum shell casing lifetime.
+        lifetime_max_seconds: Maximum shell casing lifetime.
+        ejection_distance_px: Maximum shell travel distance from the weapon side.
+        ejection_intensity: Ejection strength multiplier from the weapon side.
+        spread_degrees: Directional spread around the right-side ejection normal.
+        max_active_shells: Safety cap for currently retained shell casings.
+    """
+
+    enabled: bool
+    shell_size_min_px: float
+    shell_size_max_px: float
+    lifetime_min_seconds: float
+    lifetime_max_seconds: float
+    ejection_distance_px: float
+    ejection_intensity: float
+    spread_degrees: float
+    max_active_shells: int
+
+
+@dataclass(frozen=True, slots=True)
+class DisabledShellEjectionConfig:
+    """Fallback shell ejection settings used by tests and legacy callers."""
+
+    enabled: bool = False
+    shell_size_min_px: float = 2.0
+    shell_size_max_px: float = 4.0
+    lifetime_min_seconds: float = 1.0
+    lifetime_max_seconds: float = 2.0
+    ejection_distance_px: float = 16.0
+    ejection_intensity: float = 1.0
+    spread_degrees: float = 35.0
+    max_active_shells: int = 2048
 
 
 @dataclass(frozen=True, slots=True)
@@ -595,6 +658,7 @@ class RuntimeConfig:
         aim_debug: Aim debug display settings.
         weapons: Weapon database settings.
         projectile_impacts: Projectile impact marker settings.
+        shell_ejection: Shell casing ejection visual settings.
         enemies: Enemy marker display settings.
         ui: Shared UI display settings.
         hud: Player HUD display settings.
@@ -608,6 +672,7 @@ class RuntimeConfig:
     aim_debug: AimDebugConfig
     weapons: WeaponsConfig
     projectile_impacts: ProjectileImpactConfig
+    shell_ejection: ShellEjectionConfig
     enemies: EnemyConfig
     ui: UiConfig
     hud: HudConfig
@@ -669,6 +734,7 @@ class RuntimeConfigLoader:
         aim_debug = self._require_dict(raw_config, "aim_debug")
         weapons = self._require_dict(raw_config, "weapons")
         projectile_impacts = self._require_dict(raw_config, "projectile_impacts")
+        shell_ejection = self._require_dict(raw_config, "shell_ejection")
         enemies = self._require_dict(raw_config, "enemies")
         ui = self._require_dict(raw_config, "ui")
         hud = self._require_dict(raw_config, "hud")
@@ -719,6 +785,42 @@ class RuntimeConfigLoader:
                     "lifetime_seconds",
                 ),
                 radius_px=self._require_positive_float(projectile_impacts, "radius_px"),
+                material_effects=self._build_impact_material_effects(projectile_impacts),
+            ),
+            shell_ejection=ShellEjectionConfig(
+                enabled=self._require_bool(shell_ejection, "enabled"),
+                shell_size_min_px=self._require_float_pair_min(
+                    shell_ejection,
+                    "shell_size_px",
+                ),
+                shell_size_max_px=self._require_float_pair_max(
+                    shell_ejection,
+                    "shell_size_px",
+                ),
+                lifetime_min_seconds=self._require_float_pair_min(
+                    shell_ejection,
+                    "lifetime_seconds",
+                ),
+                lifetime_max_seconds=self._require_float_pair_max(
+                    shell_ejection,
+                    "lifetime_seconds",
+                ),
+                ejection_distance_px=self._require_positive_float(
+                    shell_ejection,
+                    "ejection_distance_px",
+                ),
+                ejection_intensity=self._require_positive_float(
+                    shell_ejection,
+                    "ejection_intensity",
+                ),
+                spread_degrees=self._require_non_negative_float(
+                    shell_ejection,
+                    "spread_degrees",
+                ),
+                max_active_shells=self._require_positive_int(
+                    shell_ejection,
+                    "max_active_shells",
+                ),
             ),
             enemies=EnemyConfig(
                 marker_radius_px=self._require_positive_int(enemies, "marker_radius_px"),
@@ -1222,6 +1324,56 @@ class RuntimeConfigLoader:
             ),
         )
 
+    def _build_impact_material_effects(
+        self,
+        projectile_impacts: dict[str, Any],
+    ) -> dict[str, ImpactParticleConfig]:
+        """Build material-specific impact particle configuration.
+
+        Args:
+            projectile_impacts: Raw projectile impact configuration section.
+
+        Returns:
+            Validated material effect mapping.
+        """
+        raw_effects = self._require_dict(projectile_impacts, "material_effects")
+        effects: dict[str, ImpactParticleConfig] = {}
+        for material_name, raw_effect in raw_effects.items():
+            if not isinstance(material_name, str) or not material_name.strip():
+                raise RuntimeConfigError("Runtime config impact material key is invalid.")
+            if not isinstance(raw_effect, dict):
+                raise RuntimeConfigError(
+                    "Runtime config impact material effect must be an object: "
+                    f"{material_name}",
+                )
+            effects[material_name.strip()] = ImpactParticleConfig(
+                particle_count=self._require_positive_int(
+                    raw_effect,
+                    "particle_count",
+                ),
+                particle_size_min_px=self._require_float_pair_min(
+                    raw_effect,
+                    "particle_size_px",
+                ),
+                particle_size_max_px=self._require_float_pair_max(
+                    raw_effect,
+                    "particle_size_px",
+                ),
+                spread_distance_px=self._require_positive_float(
+                    raw_effect,
+                    "spread_distance_px",
+                ),
+                burst_intensity=self._require_positive_float(
+                    raw_effect,
+                    "burst_intensity",
+                ),
+            )
+        if "default" not in effects:
+            raise RuntimeConfigError(
+                "Runtime config projectile impact effects must include 'default'.",
+            )
+        return effects
+
     def _require_symbol_tuple(self, data: dict[str, Any], key: str) -> tuple[str, ...]:
         """Read one-character tile symbols from runtime config."""
         value = data.get(key)
@@ -1478,6 +1630,37 @@ class RuntimeConfigLoader:
                 f"Runtime config field '{key}' must be less than or equal to 1.0.",
             )
         return value
+
+    def _require_float_pair_min(self, data: dict[str, Any], key: str) -> float:
+        """Return the validated lower value from a two-number range."""
+        return self._require_positive_float_pair(data, key)[0]
+
+    def _require_float_pair_max(self, data: dict[str, Any], key: str) -> float:
+        """Return the validated upper value from a two-number range."""
+        return self._require_positive_float_pair(data, key)[1]
+
+    def _require_positive_float_pair(
+        self,
+        data: dict[str, Any],
+        key: str,
+    ) -> tuple[float, float]:
+        """Read a positive inclusive numeric range from config."""
+        value = data.get(key)
+        if (
+            not isinstance(value, list)
+            or len(value) != 2
+            or not all(isinstance(item, int | float) for item in value)
+        ):
+            raise RuntimeConfigError(
+                f"Runtime config number range is missing or invalid: {key}",
+            )
+        min_value = float(value[0])
+        max_value = float(value[1])
+        if min_value <= 0.0 or max_value <= 0.0 or min_value > max_value:
+            raise RuntimeConfigError(
+                f"Runtime config number range is invalid: {key}",
+            )
+        return min_value, max_value
 
     def _require_key_names(self, data: dict[str, Any], key: str) -> tuple[str, ...]:
         """Return one or more required key names.

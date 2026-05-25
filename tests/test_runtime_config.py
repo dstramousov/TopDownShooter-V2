@@ -64,6 +64,20 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.projectile_impacts.enabled is True
     assert config.projectile_impacts.lifetime_seconds == 0.16
     assert config.projectile_impacts.radius_px == 5.0
+    assert config.projectile_impacts.material_effects["stone"].particle_count == 7
+    assert config.projectile_impacts.material_effects["stone"].particle_size_min_px == 1.0
+    assert config.projectile_impacts.material_effects["stone"].particle_size_max_px == 3.0
+    assert config.projectile_impacts.material_effects["stone"].spread_distance_px == 18.0
+    assert config.projectile_impacts.material_effects["stone"].burst_intensity == 1.15
+    assert config.shell_ejection.enabled is True
+    assert config.shell_ejection.shell_size_min_px == 2.0
+    assert config.shell_ejection.shell_size_max_px == 4.0
+    assert config.shell_ejection.lifetime_min_seconds == 1.0
+    assert config.shell_ejection.lifetime_max_seconds == 2.0
+    assert config.shell_ejection.ejection_distance_px == 18.0
+    assert config.shell_ejection.ejection_intensity == 1.0
+    assert config.shell_ejection.spread_degrees == 36.0
+    assert config.shell_ejection.max_active_shells == 2048
     assert config.enemies.marker_radius_px == 6
     assert config.enemies.max_health == 100.0
     assert config.enemies.hit_marker_lifetime_seconds == 0.14
@@ -152,7 +166,7 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.render3d.projectiles.projectile_radius_tiles == 0.08
     assert config.render3d.combat_visuals.draw_projectile_tracers is True
     assert config.render3d.combat_visuals.projectile_tracer_length_tiles == 2.8
-    assert config.render3d.combat_visuals.draw_impact_rings is True
+    assert config.render3d.combat_visuals.draw_impact_rings is False
     assert config.render3d.combat_visuals.enemy_hit_flash_seconds == 0.12
     assert config.render3d.combat_visuals.draw_enemy_hit_markers is True
     assert config.render3d.controls.enemy_vision_toggle == "KEY_O"

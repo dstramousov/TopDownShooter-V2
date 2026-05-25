@@ -13,6 +13,12 @@ from topdown_shooter.combat.projectiles import (
     ProjectileState,
     SurfaceMaterial,
 )
+from topdown_shooter.config.runtime_config import (
+    DisabledShellEjectionConfig,
+    ImpactParticleConfig,
+    ProjectileImpactConfig,
+    ShellEjectionConfig,
+)
 
 
 @dataclass(slots=True)
@@ -40,6 +46,22 @@ class _ProjectileTrailState:
     key: tuple[int, int, int, int, str, str]
     age_seconds: float = 0.0
     lifetime_seconds: float = 0.075
+
+
+@dataclass(slots=True)
+class _ShellCasingState:
+    """Short-lived visual shell casing state."""
+
+    origin_x: float
+    origin_y: float
+    direction_x: float
+    direction_y: float
+    size_px: float
+    travel_distance_px: float
+    owner: ProjectileOwner
+    visual_profile: str
+    age_seconds: float = 0.0
+    lifetime_seconds: float = 1.0
 
 
 class ProjectileRenderer:
@@ -73,16 +95,27 @@ class ProjectileRenderer:
         "enemy": 11.0,
     }
 
-    def __init__(self, raylib: object) -> None:
+    def __init__(
+        self,
+        raylib: object,
+        impact_config: ProjectileImpactConfig | None = None,
+        shell_ejection_config: ShellEjectionConfig | DisabledShellEjectionConfig | None = None,
+    ) -> None:
         """Initialize the renderer.
 
         Args:
             raylib: Imported pyray module.
+            impact_config: Configured material impact particle settings.
+            shell_ejection_config: Configured shell casing ejection settings.
         """
         self._raylib = raylib
+        self._impact_config = impact_config
+        self._shell_config = shell_ejection_config or DisabledShellEjectionConfig()
         self._muzzle_flashes: list[_MuzzleFlashState] = []
         self._trails: list[_ProjectileTrailState] = []
         self._trail_keys: set[tuple[int, int, int, int, str, str]] = set()
+        self._shells: list[_ShellCasingState] = []
+        self._shell_sequence = 0
 
     def add_events(self, events: tuple[ProjectileEvent, ...]) -> None:
         """Add projectile feedback events used by short-lived 2D visuals."""
@@ -98,6 +131,7 @@ class ProjectileRenderer:
                     lifetime_seconds=self._muzzle_flash_lifetime(event.visual_profile),
                 ),
             )
+            self._spawn_shell_casing(event)
 
     def draw(
         self,
@@ -117,6 +151,7 @@ class ProjectileRenderer:
         for impact in impacts:
             self._draw_impact_marker(impact)
         self._draw_projectile_trails()
+        self._draw_shell_casings()
         self._draw_muzzle_flashes()
 
 
@@ -182,63 +217,67 @@ class ProjectileRenderer:
         progress: float,
     ) -> None:
         """Draw material-specific debris, sparks, splinters, dust, or leaves."""
+        particle_config = self._impact_particle_config(material)
+        offsets = self._particle_offsets(material, particle_config.particle_count)
+        travel_radius = particle_config.spread_distance_px * particle_config.burst_intensity
+        particle_size = self._particle_size(particle_config, progress)
         if material in {SurfaceMaterial.METAL, SurfaceMaterial.EXPLOSIVE_METAL}:
             self._draw_debris_lines(
                 position,
-                radius,
-                self._metal_spark_offsets(explosive=material == SurfaceMaterial.EXPLOSIVE_METAL),
+                travel_radius,
+                offsets,
                 self._raylib.Color(255, 218, 92, int(220 * strength)),
                 progress,
-                thickness=1.4,
+                thickness=max(1.0, particle_size * 0.7),
             )
             return
         if material == SurfaceMaterial.WOOD:
             self._draw_debris_lines(
                 position,
-                radius,
-                ((-0.9, -0.35), (-0.35, 0.85), (0.72, 0.28), (0.18, -0.75)),
+                travel_radius,
+                offsets,
                 self._raylib.Color(160, 104, 52, int(190 * strength)),
                 progress,
-                thickness=1.2,
+                thickness=max(1.0, particle_size * 0.65),
             )
             return
         if material == SurfaceMaterial.FOLIAGE:
-            self._draw_debris_pixels(
+            self._draw_debris_rectangles(
                 position,
-                radius,
-                ((-0.6, 0.2), (0.45, -0.35), (0.2, 0.65), (-0.25, -0.55)),
+                travel_radius,
+                offsets,
                 self._raylib.Color(92, 184, 72, int(160 * strength)),
                 progress,
-                pixel_size=1,
+                particle_size=particle_size,
             )
             return
         if material == SurfaceMaterial.DIRT:
-            self._draw_debris_pixels(
+            self._draw_debris_rectangles(
                 position,
-                radius,
-                ((-0.65, 0.15), (0.55, 0.25), (0.2, -0.5), (-0.15, 0.62), (0.0, 0.0)),
+                travel_radius,
+                offsets,
                 self._raylib.Color(128, 94, 62, int(130 * strength)),
                 progress,
-                pixel_size=2,
+                particle_size=particle_size,
             )
             return
         if material == SurfaceMaterial.EXPLOSION:
             self._draw_debris_lines(
                 position,
-                radius,
-                ((-0.9, 0.0), (-0.35, -0.75), (0.45, -0.55), (0.85, 0.1), (0.2, 0.82)),
+                travel_radius,
+                offsets,
                 self._raylib.Color(255, 128, 52, int(210 * strength)),
                 progress,
-                thickness=1.5,
+                thickness=max(1.0, particle_size * 0.65),
             )
             return
-        self._draw_debris_pixels(
+        self._draw_debris_rectangles(
             position,
-            radius,
-            ((-0.55, -0.2), (0.52, -0.1), (-0.2, 0.58), (0.18, 0.42)),
+            travel_radius,
+            offsets,
             self._raylib.Color(154, 146, 128, int(145 * strength)),
             progress,
-            pixel_size=1,
+            particle_size=particle_size,
         )
 
     def _draw_impact_decal(
@@ -359,6 +398,73 @@ class ProjectileRenderer:
             y = int(round(position.y + offset_y * (travel + index * 0.25)))
             self._draw_pixel_rect(x, y, pixel_size, pixel_size, color)
 
+    def _draw_debris_rectangles(
+        self,
+        position: object,
+        radius: float,
+        offsets: tuple[tuple[float, float], ...],
+        color: object,
+        progress: float,
+        *,
+        particle_size: float,
+    ) -> None:
+        """Draw sized debris particles moving away from an impact."""
+        travel = radius * (0.25 + progress * 0.75)
+        size = max(1, int(round(particle_size)))
+        for index, (offset_x, offset_y) in enumerate(offsets):
+            x = int(round(position.x + offset_x * (travel + index * 0.25)))
+            y = int(round(position.y + offset_y * (travel + index * 0.18)))
+            width = max(1, size + (index % 2))
+            height = max(1, size - (index % 2))
+            self._draw_pixel_rect(x, y, width, height, color)
+
+    def _impact_particle_config(self, material: SurfaceMaterial) -> ImpactParticleConfig:
+        """Return configured particle settings for an impact material."""
+        if self._impact_config is None:
+            return ImpactParticleConfig(
+                particle_count=5,
+                particle_size_min_px=1.0,
+                particle_size_max_px=2.0,
+                spread_distance_px=12.0,
+                burst_intensity=1.0,
+            )
+        return self._impact_config.material_effects.get(
+            material.value,
+            self._impact_config.material_effects["default"],
+        )
+
+    @staticmethod
+    def _particle_size(config: ImpactParticleConfig, progress: float) -> float:
+        """Return current impact particle size from configured bounds."""
+        base = config.particle_size_max_px - (
+            config.particle_size_max_px - config.particle_size_min_px
+        ) * min(1.0, progress)
+        return max(config.particle_size_min_px, base)
+
+    @staticmethod
+    def _particle_offsets(
+        material: SurfaceMaterial,
+        particle_count: int,
+    ) -> tuple[tuple[float, float], ...]:
+        """Return deterministic unit directions for material particles."""
+        count = max(1, particle_count)
+        material_phase = {
+            SurfaceMaterial.METAL: 0.08,
+            SurfaceMaterial.EXPLOSIVE_METAL: 0.0,
+            SurfaceMaterial.WOOD: 0.19,
+            SurfaceMaterial.FOLIAGE: 0.31,
+            SurfaceMaterial.DIRT: 0.43,
+            SurfaceMaterial.EXPLOSION: 0.0,
+            SurfaceMaterial.STONE: 0.12,
+        }.get(material, 0.25)
+        offsets: list[tuple[float, float]] = []
+        golden_angle = math.pi * (3.0 - math.sqrt(5.0))
+        for index in range(count):
+            angle = material_phase * math.tau + golden_angle * index
+            radius_scale = 0.72 + 0.28 * ((index * 37) % 11) / 10.0
+            offsets.append((math.cos(angle) * radius_scale, math.sin(angle) * radius_scale))
+        return tuple(offsets)
+
     def _draw_jagged_lines(
         self,
         position: object,
@@ -446,6 +552,13 @@ class ProjectileRenderer:
         ]
         self._trail_keys = {trail.key for trail in alive_trails}
         self._trails = alive_trails
+        for shell in self._shells:
+            shell.age_seconds += frame_time
+        self._shells = [
+            shell
+            for shell in self._shells
+            if shell.age_seconds < shell.lifetime_seconds
+        ]
 
     def _add_projectile_trails(self, projectiles: tuple[ProjectileState, ...]) -> None:
         """Capture real previous-to-current projectile segments for short trails."""
@@ -559,6 +672,141 @@ class ProjectileRenderer:
                 radius + 2.0,
                 raylib.ORANGE if flash.owner == ProjectileOwner.ENEMY else raylib.GOLD,
             )
+
+    def _spawn_shell_casing(self, event: ProjectileEvent) -> None:
+        """Create one shell casing for one spawned shot event."""
+        if not self._shell_config.enabled:
+            return
+        direction_length = math.hypot(event.direction_x, event.direction_y)
+        if direction_length <= 0.0001:
+            return
+        direction_x = event.direction_x / direction_length
+        direction_y = event.direction_y / direction_length
+        right_x, right_y = self._rotated_right_normal(
+            direction_x,
+            direction_y,
+            self._shell_spread_offset_degrees(self._shell_sequence),
+        )
+        size = self._shell_size(self._shell_sequence, event.visual_profile)
+        lifetime = self._shell_lifetime(self._shell_sequence, event.visual_profile)
+        travel = (
+            self._shell_config.ejection_distance_px
+            * self._shell_config.ejection_intensity
+            * self._shell_profile_distance_scale(event.visual_profile)
+            * self._sequence_unit(self._shell_sequence, salt=17, min_value=0.72, max_value=1.15)
+        )
+        self._shells.append(
+            _ShellCasingState(
+                origin_x=event.position.x + right_x * max(2.0, size),
+                origin_y=event.position.y + right_y * max(2.0, size),
+                direction_x=right_x,
+                direction_y=right_y,
+                size_px=size,
+                travel_distance_px=travel,
+                owner=event.owner,
+                visual_profile=event.visual_profile,
+                lifetime_seconds=lifetime,
+            ),
+        )
+        self._shell_sequence += 1
+        overflow = len(self._shells) - self._shell_config.max_active_shells
+        if overflow > 0:
+            del self._shells[:overflow]
+
+    def _draw_shell_casings(self) -> None:
+        """Draw fading shell casings ejected from player and enemy weapons."""
+        if not self._shells:
+            return
+        raylib = self._raylib
+        for shell in self._shells:
+            progress = min(1.0, max(0.0, shell.age_seconds / shell.lifetime_seconds))
+            alpha = int(220 * max(0.0, 1.0 - progress))
+            if alpha <= 0:
+                continue
+            travel_curve = min(1.0, progress * 1.65)
+            settle = travel_curve * (2.0 - travel_curve)
+            x = shell.origin_x + shell.direction_x * shell.travel_distance_px * settle
+            y = shell.origin_y + shell.direction_y * shell.travel_distance_px * settle
+            size = max(1, int(round(shell.size_px)))
+            color = raylib.Color(204, 154, 62, alpha)
+            if shell.visual_profile == "minigun":
+                color = raylib.Color(222, 178, 78, alpha)
+            raylib.draw_line_ex(
+                raylib.Vector2(x - shell.direction_y * shell.size_px, y + shell.direction_x * shell.size_px),
+                raylib.Vector2(x + shell.direction_y * shell.size_px, y - shell.direction_x * shell.size_px),
+                max(1.0, float(size)),
+                color,
+            )
+
+    def _shell_size(self, sequence: int, visual_profile: str) -> float:
+        """Return deterministic shell size for one casing."""
+        size = self._sequence_unit(
+            sequence,
+            salt=3,
+            min_value=self._shell_config.shell_size_min_px,
+            max_value=self._shell_config.shell_size_max_px,
+        )
+        if visual_profile == "minigun":
+            return max(1.0, size * 0.78)
+        if visual_profile == "ak47":
+            return size * 1.08
+        return size
+
+    def _shell_lifetime(self, sequence: int, visual_profile: str) -> float:
+        """Return deterministic shell lifetime for one casing."""
+        lifetime = self._sequence_unit(
+            sequence,
+            salt=11,
+            min_value=self._shell_config.lifetime_min_seconds,
+            max_value=self._shell_config.lifetime_max_seconds,
+        )
+        if visual_profile == "minigun":
+            return max(self._shell_config.lifetime_min_seconds, lifetime * 0.82)
+        return lifetime
+
+    def _shell_spread_offset_degrees(self, sequence: int) -> float:
+        """Return deterministic ejection spread angle around the right normal."""
+        half_spread = self._shell_config.spread_degrees / 2.0
+        return self._sequence_unit(
+            sequence,
+            salt=23,
+            min_value=-half_spread,
+            max_value=half_spread,
+        )
+
+    @staticmethod
+    def _shell_profile_distance_scale(visual_profile: str) -> float:
+        """Return shell travel scale for a weapon visual profile."""
+        if visual_profile == "minigun":
+            return 0.78
+        if visual_profile == "ak47":
+            return 1.08
+        return 1.0
+
+    @staticmethod
+    def _rotated_right_normal(
+        direction_x: float,
+        direction_y: float,
+        offset_degrees: float,
+    ) -> tuple[float, float]:
+        """Return right-side ejection normal rotated by a spread offset."""
+        right_x = -direction_y
+        right_y = direction_x
+        angle = math.atan2(right_y, right_x) + math.radians(offset_degrees)
+        return math.cos(angle), math.sin(angle)
+
+    @staticmethod
+    def _sequence_unit(
+        sequence: int,
+        *,
+        salt: int,
+        min_value: float,
+        max_value: float,
+    ) -> float:
+        """Return a deterministic pseudo-random value in a closed range."""
+        hashed = (sequence * 1103515245 + 12345 + salt * 2654435761) & 0x7FFFFFFF
+        unit = float(hashed % 10000) / 9999.0
+        return min_value + (max_value - min_value) * unit
 
     def _muzzle_flash_color(self, owner: ProjectileOwner) -> object:
         """Return 2D muzzle flash fill color for a projectile owner."""

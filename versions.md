@@ -840,3 +840,10 @@
 - Добавил для врагов отдельный per-enemy ammo/reload state: магазин, резерв и reload теперь работают по параметрам выбранного оружия.
 - Заменил круглые impact-маркеры на короткую фазовую анимацию: flash, материалозависимые debris/sparks/dust и маленький lingering decal.
 - Оставил enemy aim error отдельным параметром поверх weapon spread, чтобы боты не стреляли математически в центр игрока.
+
+## v0.2.5 -> v0.2.6
+
+- Added runtime-configurable material impact particle settings: particle count, size range, spread distance, and burst intensity.
+- Added shell casing ejection visuals for every spawned shot in both 2D and experimental 3D renderers.
+- Synchronized 3D combat visuals with the 2D direction by replacing circular impact rings/spheres with flash and particle-style impact feedback.
+- Kept projectile and weapon gameplay unchanged; the new shell casings and impact particles are visual-only.
