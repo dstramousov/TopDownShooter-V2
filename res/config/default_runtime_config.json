@@ -157,14 +157,11 @@
     "draw_tactical_slots": false,
     "max_debug_tactical_slots": 8,
     "fire_enabled": true,
-    "fire_damage": 8.0,
-    "fire_rate_rpm": 90.0,
     "fire_max_distance_px": 300.0,
     "fire_muzzle_offset_px": 10.0,
-    "fire_spread_degrees": 8.0,
-    "fire_range_px": 340.0,
-    "fire_tracer_lifetime_seconds": 0.075,
-    "fire_shot_radius_px": 3.0
+    "fire_primary_weapon_id": "ak47",
+    "fire_fallback_weapon_id": "pistol",
+    "fire_aim_error_degrees": 8.0
   },
   "render3d": {
     "enabled": false,

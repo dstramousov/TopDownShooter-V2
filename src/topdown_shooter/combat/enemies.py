@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import random
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from topdown_shooter.combat.muzzle import calculate_muzzle_origin
 from topdown_shooter.combat.projectiles import (
@@ -14,6 +14,11 @@ from topdown_shooter.combat.projectiles import (
     ProjectileOwner,
     ProjectileState,
     ProjectileSystem,
+)
+from topdown_shooter.combat.weapons import (
+    WeaponAmmoState,
+    WeaponDatabase,
+    WeaponDefinition,
 )
 from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.coordinates import (
@@ -59,6 +64,9 @@ class EnemyState:
         tactical_target_position: Assigned tactical surround position.
         tactical_target_age_seconds: Seconds elapsed since the current tactical slot assignment.
         fire_cooldown_seconds: Seconds until this enemy can fire again.
+        reload_remaining_seconds: Seconds until the current enemy weapon reload completes.
+        current_weapon_id: Currently equipped enemy weapon id.
+        ammo_by_weapon_id: Runtime enemy ammo counters keyed by weapon id.
         home_facing_angle_degrees: Facing angle restored after return-home behavior.
     """
 
@@ -91,6 +99,9 @@ class EnemyState:
     tactical_target_position: WorldCoord | None = None
     tactical_target_age_seconds: float = 0.0
     fire_cooldown_seconds: float = 0.0
+    reload_remaining_seconds: float = 0.0
+    current_weapon_id: str = "ak47"
+    ammo_by_weapon_id: dict[str, WeaponAmmoState] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -2115,57 +2126,60 @@ class EnemySystem:
         player_position: WorldCoord,
         projectile_system: ProjectileSystem,
         collision_service: TileCollisionService,
-        fire_rate_rpm: float,
-        shot_range_px: float,
-        tracer_lifetime_seconds: float,
-        shot_radius_px: float,
-        damage: float,
+        weapon_database: WeaponDatabase,
+        frame_time: float,
         max_fire_distance_px: float,
         muzzle_offset_px: float,
         line_of_sight_sample_step_px: float,
-        fire_spread_degrees: float = 0.0,
+        primary_weapon_id: str = "ak47",
+        fallback_weapon_id: str = "pistol",
+        aim_error_degrees: float = 0.0,
         rng: random.Random | None = None,
-        visual_profile: str = "enemy",
     ) -> int:
-        """Spawn enemy projectiles from engaged enemies with line of sight.
+        """Spawn enemy shots using shared weapon definitions and per-enemy ammo.
 
         Args:
             player_position: Current player world position.
             projectile_system: Shot system receiving hostile shot traces.
             collision_service: Collision service used for line-of-sight checks.
-            fire_rate_rpm: Enemy fire rate in rounds per minute.
-            shot_range_px: Enemy hitscan shot maximum distance.
-            tracer_lifetime_seconds: Enemy visual tracer lifetime.
-            shot_radius_px: Enemy hitscan collision/visual radius.
-            damage: Damage dealt to the player per projectile hit.
+            weapon_database: Shared weapon database used by the player and enemies.
+            frame_time: Current frame duration used to progress enemy reloads.
             max_fire_distance_px: Maximum distance where enemies are allowed to fire.
             muzzle_offset_px: Forward spawn offset from the enemy center.
             line_of_sight_sample_step_px: Sampling step for blocked-tile checks.
-            fire_spread_degrees: Full enemy aim spread cone in degrees.
+            primary_weapon_id: Enemy primary weapon id from the shared database.
+            fallback_weapon_id: Enemy fallback weapon id from the shared database.
+            aim_error_degrees: Additional full enemy aim error cone in degrees.
             rng: Optional random source for deterministic tests.
-            visual_profile: Renderer-facing visual profile for enemy fire.
 
         Returns:
-            Number of hostile projectiles spawned this update.
+            Number of hostile fire events spawned this update.
         """
         if (
-            fire_rate_rpm <= 0.0
-            or shot_range_px <= 0.0
-            or tracer_lifetime_seconds <= 0.0
-            or shot_radius_px <= 0.0
-            or damage <= 0.0
+            frame_time < 0.0
             or max_fire_distance_px <= 0.0
+            or muzzle_offset_px < 0.0
+            or line_of_sight_sample_step_px <= 0.0
         ):
             return 0
 
         shots_fired = 0
-        fire_interval_seconds = 60.0 / fire_rate_rpm
+        random_source = rng if rng is not None else random
         for enemy in self._enemies:
-            if (
-                not enemy.alive
-                or enemy.awareness_state != "engaged"
-                or enemy.fire_cooldown_seconds > 0.0
-            ):
+            if not enemy.alive:
+                continue
+            self._ensure_enemy_weapon_state(
+                enemy=enemy,
+                weapon_database=weapon_database,
+                primary_weapon_id=primary_weapon_id,
+                fallback_weapon_id=fallback_weapon_id,
+            )
+            self._advance_enemy_reload(
+                enemy=enemy,
+                weapon_database=weapon_database,
+                frame_time=frame_time,
+            )
+            if enemy.awareness_state != "engaged" or enemy.fire_cooldown_seconds > 0.0:
                 continue
 
             direction_x = player_position.x - enemy.world_position.x
@@ -2184,32 +2198,176 @@ class EnemySystem:
             ):
                 continue
 
+            weapon = self._resolve_enemy_fire_weapon(
+                enemy=enemy,
+                weapon_database=weapon_database,
+                primary_weapon_id=primary_weapon_id,
+                fallback_weapon_id=fallback_weapon_id,
+            )
+            if weapon is None:
+                continue
+
             origin = calculate_muzzle_origin(
                 actor_position=enemy.world_position,
                 direction_x=normalized_x,
                 direction_y=normalized_y,
                 muzzle_offset_px=muzzle_offset_px,
             )
-            shot_direction_x, shot_direction_y = EnemySystem._apply_fire_spread(
-                normalized_x,
-                normalized_y,
-                fire_spread_degrees,
-                rng if rng is not None else random,
+            if not self._fire_enemy_weapon_once(
+                enemy=enemy,
+                weapon=weapon,
+                projectile_system=projectile_system,
+                origin=origin,
+                direction_x=normalized_x,
+                direction_y=normalized_y,
+                aim_error_degrees=aim_error_degrees,
+                rng=random_source,
+            ):
+                continue
+            enemy.fire_cooldown_seconds = weapon.fire_interval_seconds
+            shots_fired += 1
+        return shots_fired
+
+    @staticmethod
+    def _ensure_enemy_weapon_state(
+        *,
+        enemy: EnemyState,
+        weapon_database: WeaponDatabase,
+        primary_weapon_id: str,
+        fallback_weapon_id: str,
+    ) -> None:
+        """Initialize per-enemy ammo counters from the shared weapon database."""
+        safe_primary_weapon = weapon_database.get(primary_weapon_id)
+        safe_fallback_weapon = weapon_database.get(fallback_weapon_id)
+        weapon_ids = (safe_primary_weapon.weapon_id, safe_fallback_weapon.weapon_id)
+        for weapon_id in weapon_ids:
+            if weapon_id in enemy.ammo_by_weapon_id:
+                continue
+            weapon = weapon_database.get(weapon_id)
+            enemy.ammo_by_weapon_id[weapon_id] = WeaponAmmoState(
+                ammo_in_magazine=weapon.magazine_size,
+                reserve_ammo=weapon.initial_reserve_ammo,
             )
-            if projectile_system.spawn(
+        if enemy.current_weapon_id not in enemy.ammo_by_weapon_id:
+            enemy.current_weapon_id = safe_primary_weapon.weapon_id
+
+    @staticmethod
+    def _advance_enemy_reload(
+        *,
+        enemy: EnemyState,
+        weapon_database: WeaponDatabase,
+        frame_time: float,
+    ) -> None:
+        """Advance an enemy reload timer and load ammo when it completes."""
+        if frame_time <= 0.0 or enemy.reload_remaining_seconds <= 0.0:
+            return
+        enemy.reload_remaining_seconds = max(0.0, enemy.reload_remaining_seconds - frame_time)
+        if enemy.reload_remaining_seconds > 0.0:
+            return
+        weapon = weapon_database.get(enemy.current_weapon_id)
+        EnemySystem._finish_enemy_reload(enemy, weapon)
+
+    @staticmethod
+    def _finish_enemy_reload(enemy: EnemyState, weapon: WeaponDefinition) -> None:
+        """Finish reloading one enemy weapon from its reserve ammo."""
+        ammo = enemy.ammo_by_weapon_id[weapon.weapon_id]
+        missing_ammo = weapon.magazine_size - ammo.ammo_in_magazine
+        if missing_ammo <= 0:
+            return
+        if ammo.reserve_ammo is None:
+            ammo.ammo_in_magazine = weapon.magazine_size
+            return
+        if ammo.reserve_ammo <= 0:
+            return
+        loaded = min(missing_ammo, ammo.reserve_ammo)
+        ammo.ammo_in_magazine += loaded
+        ammo.reserve_ammo -= loaded
+
+    @staticmethod
+    def _resolve_enemy_fire_weapon(
+        *,
+        enemy: EnemyState,
+        weapon_database: WeaponDatabase,
+        primary_weapon_id: str,
+        fallback_weapon_id: str,
+    ) -> WeaponDefinition | None:
+        """Return the enemy weapon that can fire now, starting reloads when needed."""
+        primary_weapon = weapon_database.get(primary_weapon_id)
+        fallback_weapon = weapon_database.get(fallback_weapon_id)
+        current_weapon = weapon_database.get(enemy.current_weapon_id)
+        if EnemySystem._enemy_weapon_can_fire(enemy, current_weapon):
+            return current_weapon
+        if EnemySystem._enemy_weapon_can_reload(enemy, current_weapon):
+            EnemySystem._start_enemy_reload(enemy, current_weapon)
+            return None
+        if current_weapon.weapon_id == primary_weapon.weapon_id:
+            enemy.current_weapon_id = fallback_weapon.weapon_id
+            enemy.reload_remaining_seconds = 0.0
+            if EnemySystem._enemy_weapon_can_fire(enemy, fallback_weapon):
+                return fallback_weapon
+            if EnemySystem._enemy_weapon_can_reload(enemy, fallback_weapon):
+                EnemySystem._start_enemy_reload(enemy, fallback_weapon)
+        return None
+
+    @staticmethod
+    def _enemy_weapon_can_fire(enemy: EnemyState, weapon: WeaponDefinition) -> bool:
+        """Return whether an enemy weapon has magazine ammo ready now."""
+        ammo = enemy.ammo_by_weapon_id[weapon.weapon_id]
+        return enemy.reload_remaining_seconds <= 0.0 and ammo.ammo_in_magazine > 0
+
+    @staticmethod
+    def _enemy_weapon_can_reload(enemy: EnemyState, weapon: WeaponDefinition) -> bool:
+        """Return whether an enemy weapon can start a reload."""
+        ammo = enemy.ammo_by_weapon_id[weapon.weapon_id]
+        if ammo.ammo_in_magazine >= weapon.magazine_size:
+            return False
+        return ammo.reserve_ammo is None or ammo.reserve_ammo > 0
+
+    @staticmethod
+    def _start_enemy_reload(enemy: EnemyState, weapon: WeaponDefinition) -> None:
+        """Start an enemy weapon reload if no reload is already active."""
+        if enemy.reload_remaining_seconds <= 0.0:
+            enemy.reload_remaining_seconds = weapon.reload_time_seconds
+
+    @staticmethod
+    def _fire_enemy_weapon_once(
+        *,
+        enemy: EnemyState,
+        weapon: WeaponDefinition,
+        projectile_system: ProjectileSystem,
+        origin: WorldCoord,
+        direction_x: float,
+        direction_y: float,
+        aim_error_degrees: float,
+        rng: object,
+    ) -> bool:
+        """Consume one enemy magazine round and spawn weapon-defined shot traces."""
+        ammo = enemy.ammo_by_weapon_id[weapon.weapon_id]
+        if ammo.ammo_in_magazine <= 0:
+            return False
+        ammo.ammo_in_magazine -= 1
+        total_spread_degrees = max(0.0, weapon.spread_degrees) + max(0.0, aim_error_degrees)
+        spawned_any = False
+        for _shot_index in range(weapon.shots_per_fire):
+            shot_direction_x, shot_direction_y = EnemySystem._apply_fire_spread(
+                direction_x,
+                direction_y,
+                total_spread_degrees,
+                rng,
+            )
+            spawned = projectile_system.spawn(
                 origin=origin,
                 direction_x=shot_direction_x,
                 direction_y=shot_direction_y,
-                max_distance_px=shot_range_px,
-                trace_lifetime_seconds=tracer_lifetime_seconds,
-                radius_px=shot_radius_px,
-                damage=damage,
+                max_distance_px=weapon.shot_range_px,
+                trace_lifetime_seconds=weapon.tracer_lifetime_seconds,
+                radius_px=weapon.shot_radius_px,
+                damage=weapon.damage,
                 owner=ProjectileOwner.ENEMY,
-                visual_profile=visual_profile,
-            ):
-                enemy.fire_cooldown_seconds = fire_interval_seconds
-                shots_fired += 1
-        return shots_fired
+                visual_profile=weapon.visual_profile,
+            )
+            spawned_any = spawned_any or spawned
+        return spawned_any
 
     def apply_radial_damage(
         self,

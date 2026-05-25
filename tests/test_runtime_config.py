@@ -118,7 +118,9 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.enemies.tactical_player_reposition_distance_px == 56.0
     assert config.enemies.draw_tactical_slots is False
     assert config.enemies.max_debug_tactical_slots == 8
-    assert config.enemies.fire_spread_degrees == 8.0
+    assert config.enemies.fire_primary_weapon_id == "ak47"
+    assert config.enemies.fire_fallback_weapon_id == "pistol"
+    assert config.enemies.fire_aim_error_degrees == 8.0
     assert config.hud.position == "top"
     assert config.hud.margin_x == 12
     assert config.hud.margin_y == 12

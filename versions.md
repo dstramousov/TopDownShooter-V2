@@ -834,3 +834,9 @@
 - Improved material-aware projectile impact markers for stone, wood, metal, foliage, dirt and explosive surfaces.
 - Added configurable enemy aim spread so engaged enemies no longer fire perfectly at the player center every shot.
 - Moved player/enemy hit feedback positions to the actual closest point on the shot segment instead of always using actor centers.
+## v0.2.4 -> v0.2.5
+
+- Перевёл стрельбу врагов на общую базу оружия: AK-47 как основной ствол и pistol как fallback после полного исчерпания AK-боезапаса.
+- Добавил для врагов отдельный per-enemy ammo/reload state: магазин, резерв и reload теперь работают по параметрам выбранного оружия.
+- Заменил круглые impact-маркеры на короткую фазовую анимацию: flash, материалозависимые debris/sparks/dust и маленький lingering decal.
+- Оставил enemy aim error отдельным параметром поверх weapon spread, чтобы боты не стреляли математически в центр игрока.

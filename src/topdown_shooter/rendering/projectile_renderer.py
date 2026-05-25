@@ -121,175 +121,302 @@ class ProjectileRenderer:
 
 
     def _draw_impact_marker(self, impact: ImpactMarkerState) -> None:
-        """Draw one material-aware 2D impact marker."""
+        """Draw one snappy material-aware 2D impact effect."""
         raylib = self._raylib
         position = raylib.Vector2(impact.position.x, impact.position.y)
         progress = min(1.0, max(0.0, impact.age_seconds / impact.lifetime_seconds))
-        alpha = int(230 * (1.0 - progress))
-        if alpha <= 0:
-            return
-        color = self._impact_color(impact.surface_material, alpha)
-        radius = impact.radius_px * (1.0 + progress * 0.35)
         material = self._normalize_surface_material(impact.surface_material)
-        if material == SurfaceMaterial.EXPLOSION:
-            raylib.draw_circle_v(position, max(1.0, radius * 0.45), color)
-            raylib.draw_circle_lines(
-                int(round(position.x)),
-                int(round(position.y)),
-                radius,
-                color,
-            )
-            raylib.draw_circle_lines(
-                int(round(position.x)),
-                int(round(position.y)),
-                radius * 0.62,
-                raylib.Color(255, 225, 88, max(0, alpha - 35)),
-            )
-            return
-        if material in {SurfaceMaterial.METAL, SurfaceMaterial.EXPLOSIVE_METAL}:
-            self._draw_radial_sparks(position, radius, color, alpha, 6)
-            raylib.draw_circle_lines(
-                int(round(position.x)),
-                int(round(position.y)),
-                radius + 1.0,
-                color,
-            )
-            if material == SurfaceMaterial.EXPLOSIVE_METAL:
-                raylib.draw_circle_lines(
-                    int(round(position.x)),
-                    int(round(position.y)),
-                    radius + 4.0,
-                    raylib.Color(255, 80, 40, max(0, alpha - 45)),
-                )
-            return
-        if material == SurfaceMaterial.WOOD:
-            self._draw_wood_splinters(position, radius, color)
-            raylib.draw_circle_v(position, max(1.0, radius * 0.25), color)
-            return
-        if material == SurfaceMaterial.STONE:
-            raylib.draw_circle_v(
-                position,
-                max(1.0, radius * 0.7),
-                raylib.Color(128, 118, 100, max(0, alpha - 90)),
-            )
-            self._draw_radial_sparks(position, radius * 0.8, color, alpha, 4)
-            raylib.draw_circle_lines(
-                int(round(position.x)),
-                int(round(position.y)),
-                radius * 1.25,
-                raylib.Color(185, 178, 160, max(0, alpha - 45)),
-            )
-            return
-        if material == SurfaceMaterial.FOLIAGE:
-            raylib.draw_circle_v(position, max(1.0, radius * 0.45), color)
-            raylib.draw_circle_v(
-                raylib.Vector2(position.x - radius * 0.35, position.y + radius * 0.15),
-                max(1.0, radius * 0.28),
-                raylib.Color(54, 132, 52, max(0, alpha - 65)),
-            )
-            raylib.draw_circle_v(
-                raylib.Vector2(position.x + radius * 0.3, position.y - radius * 0.2),
-                max(1.0, radius * 0.22),
-                raylib.Color(126, 196, 76, max(0, alpha - 85)),
-            )
-            raylib.draw_circle_lines(
-                int(round(position.x)),
-                int(round(position.y)),
-                radius,
-                color,
-            )
-            return
-        if material == SurfaceMaterial.DIRT:
-            raylib.draw_circle_v(position, max(1.0, radius * 0.7), color)
-            raylib.draw_circle_v(
-                raylib.Vector2(position.x - radius * 0.45, position.y + radius * 0.15),
-                max(1.0, radius * 0.32),
-                raylib.Color(94, 70, 48, max(0, alpha - 70)),
-            )
-            raylib.draw_circle_v(
-                raylib.Vector2(position.x + radius * 0.4, position.y - radius * 0.22),
-                max(1.0, radius * 0.25),
-                raylib.Color(168, 124, 72, max(0, alpha - 100)),
-            )
-            raylib.draw_circle_lines(
-                int(round(position.x)),
-                int(round(position.y)),
-                radius * 1.25,
-                color,
-            )
-            return
-        raylib.draw_circle_lines(
-            int(round(position.x)),
-            int(round(position.y)),
-            radius,
-            color,
-        )
-        raylib.draw_circle_v(position, max(1.0, radius * 0.25), color)
+        flash_strength = max(0.0, 1.0 - progress / 0.28)
+        debris_strength = max(0.0, 1.0 - progress / 0.78)
+        decal_strength = min(1.0, progress / 0.32)
+        radius = max(2.0, impact.radius_px)
+        if flash_strength > 0.0:
+            self._draw_impact_flash(position, radius, material, flash_strength)
+        if debris_strength > 0.0:
+            self._draw_material_debris(position, radius, material, debris_strength, progress)
+        if decal_strength > 0.0:
+            self._draw_impact_decal(position, radius, material, decal_strength, progress)
 
-    def _draw_radial_sparks(
+    def _draw_impact_flash(
         self,
         position: object,
         radius: float,
-        color: object,
-        alpha: int,
-        count: int,
+        material: SurfaceMaterial,
+        strength: float,
     ) -> None:
-        """Draw deterministic short spark rays around an impact point."""
+        """Draw the first-frame hit registration flash without circular markers."""
         raylib = self._raylib
-        safe_count = max(1, count)
-        for index in range(safe_count):
-            angle = (math.tau / safe_count) * index + 0.35
-            start_radius = radius * 0.22
-            end_radius = radius * (0.85 + 0.25 * (index % 2))
+        alpha = int(240 * strength)
+        if alpha <= 0:
+            return
+        color = self._flash_color(material, alpha)
+        half = max(2.0, radius * (0.45 + 0.35 * strength))
+        thickness = max(1.0, 1.8 * strength)
+        raylib.draw_line_ex(
+            raylib.Vector2(position.x - half, position.y),
+            raylib.Vector2(position.x + half, position.y),
+            thickness,
+            color,
+        )
+        raylib.draw_line_ex(
+            raylib.Vector2(position.x, position.y - half),
+            raylib.Vector2(position.x, position.y + half),
+            thickness,
+            color,
+        )
+        center_size = 2 if strength > 0.45 else 1
+        self._draw_pixel_rect(
+            int(round(position.x)) - center_size // 2,
+            int(round(position.y)) - center_size // 2,
+            center_size,
+            center_size,
+            color,
+        )
+
+    def _draw_material_debris(
+        self,
+        position: object,
+        radius: float,
+        material: SurfaceMaterial,
+        strength: float,
+        progress: float,
+    ) -> None:
+        """Draw material-specific debris, sparks, splinters, dust, or leaves."""
+        if material in {SurfaceMaterial.METAL, SurfaceMaterial.EXPLOSIVE_METAL}:
+            self._draw_debris_lines(
+                position,
+                radius,
+                self._metal_spark_offsets(explosive=material == SurfaceMaterial.EXPLOSIVE_METAL),
+                self._raylib.Color(255, 218, 92, int(220 * strength)),
+                progress,
+                thickness=1.4,
+            )
+            return
+        if material == SurfaceMaterial.WOOD:
+            self._draw_debris_lines(
+                position,
+                radius,
+                ((-0.9, -0.35), (-0.35, 0.85), (0.72, 0.28), (0.18, -0.75)),
+                self._raylib.Color(160, 104, 52, int(190 * strength)),
+                progress,
+                thickness=1.2,
+            )
+            return
+        if material == SurfaceMaterial.FOLIAGE:
+            self._draw_debris_pixels(
+                position,
+                radius,
+                ((-0.6, 0.2), (0.45, -0.35), (0.2, 0.65), (-0.25, -0.55)),
+                self._raylib.Color(92, 184, 72, int(160 * strength)),
+                progress,
+                pixel_size=1,
+            )
+            return
+        if material == SurfaceMaterial.DIRT:
+            self._draw_debris_pixels(
+                position,
+                radius,
+                ((-0.65, 0.15), (0.55, 0.25), (0.2, -0.5), (-0.15, 0.62), (0.0, 0.0)),
+                self._raylib.Color(128, 94, 62, int(130 * strength)),
+                progress,
+                pixel_size=2,
+            )
+            return
+        if material == SurfaceMaterial.EXPLOSION:
+            self._draw_debris_lines(
+                position,
+                radius,
+                ((-0.9, 0.0), (-0.35, -0.75), (0.45, -0.55), (0.85, 0.1), (0.2, 0.82)),
+                self._raylib.Color(255, 128, 52, int(210 * strength)),
+                progress,
+                thickness=1.5,
+            )
+            return
+        self._draw_debris_pixels(
+            position,
+            radius,
+            ((-0.55, -0.2), (0.52, -0.1), (-0.2, 0.58), (0.18, 0.42)),
+            self._raylib.Color(154, 146, 128, int(145 * strength)),
+            progress,
+            pixel_size=1,
+        )
+
+    def _draw_impact_decal(
+        self,
+        position: object,
+        radius: float,
+        material: SurfaceMaterial,
+        strength: float,
+        progress: float,
+    ) -> None:
+        """Draw a small lingering hit decal rather than a colored circle."""
+        if material == SurfaceMaterial.FOLIAGE:
+            return
+        alpha = int((120 + 70 * strength) * max(0.35, 1.0 - progress * 0.35))
+        if alpha <= 0:
+            return
+        raylib = self._raylib
+        if material == SurfaceMaterial.WOOD:
+            color = raylib.Color(82, 48, 28, alpha)
+            self._draw_jagged_lines(
+                position,
+                radius * 0.55,
+                ((-0.55, -0.2, 0.45, 0.15), (-0.2, 0.25, 0.25, -0.32)),
+                color,
+            )
+            return
+        if material in {SurfaceMaterial.METAL, SurfaceMaterial.EXPLOSIVE_METAL}:
+            color = raylib.Color(24, 22, 20, alpha)
+            self._draw_jagged_lines(
+                position,
+                radius * 0.5,
+                ((-0.45, 0.0, 0.42, -0.08), (-0.05, -0.36, 0.12, 0.36)),
+                color,
+            )
+            if material == SurfaceMaterial.EXPLOSIVE_METAL:
+                self._draw_pixel_rect(
+                    int(round(position.x)) + 1,
+                    int(round(position.y)) - 1,
+                    2,
+                    1,
+                    raylib.Color(92, 36, 20, max(0, alpha - 45)),
+                )
+            return
+        if material == SurfaceMaterial.DIRT:
+            color = raylib.Color(78, 58, 42, max(0, alpha - 35))
+            self._draw_pixel_rect(
+                int(round(position.x)) - 1,
+                int(round(position.y)),
+                3,
+                1,
+                color,
+            )
+            self._draw_pixel_rect(
+                int(round(position.x)),
+                int(round(position.y)) - 1,
+                1,
+                3,
+                color,
+            )
+            return
+        color = raylib.Color(46, 42, 36, alpha)
+        self._draw_jagged_lines(
+            position,
+            radius * 0.6,
+            (
+                (-0.58, -0.08, 0.44, 0.08),
+                (-0.12, -0.46, 0.18, 0.38),
+                (-0.38, 0.32, 0.22, -0.18),
+            ),
+            color,
+        )
+
+    def _draw_debris_lines(
+        self,
+        position: object,
+        radius: float,
+        offsets: tuple[tuple[float, float], ...],
+        color: object,
+        progress: float,
+        *,
+        thickness: float,
+    ) -> None:
+        """Draw deterministic short debris strokes moving away from an impact."""
+        raylib = self._raylib
+        travel = radius * (0.35 + progress * 0.85)
+        for index, (offset_x, offset_y) in enumerate(offsets):
+            start_scale = max(1.0, travel - radius * (0.45 + 0.08 * index))
+            end_scale = travel + radius * (0.12 + 0.04 * index)
             start = raylib.Vector2(
-                position.x + math.cos(angle) * start_radius,
-                position.y + math.sin(angle) * start_radius,
+                position.x + offset_x * start_scale,
+                position.y + offset_y * start_scale,
             )
             end = raylib.Vector2(
-                position.x + math.cos(angle) * end_radius,
-                position.y + math.sin(angle) * end_radius,
+                position.x + offset_x * end_scale,
+                position.y + offset_y * end_scale,
             )
             raylib.draw_line_ex(
                 start,
                 end,
-                1.5 if index % 2 == 0 else 1.0,
-                color if index % 2 == 0 else raylib.Color(255, 245, 150, max(0, alpha - 45)),
-            )
-
-    def _draw_wood_splinters(self, position: object, radius: float, color: object) -> None:
-        """Draw deterministic wood splinter lines around an impact point."""
-        raylib = self._raylib
-        splinters = (
-            (-0.95, -0.35, 0.65, 0.25, 2.0),
-            (-0.35, 0.9, 0.45, -0.85, 1.5),
-            (-0.75, 0.55, 0.2, -0.25, 1.0),
-        )
-        for start_x, start_y, end_x, end_y, thickness in splinters:
-            raylib.draw_line_ex(
-                raylib.Vector2(position.x + radius * start_x, position.y + radius * start_y),
-                raylib.Vector2(position.x + radius * end_x, position.y + radius * end_y),
-                thickness,
+                max(1.0, thickness - 0.15 * (index % 2)),
                 color,
             )
 
-    def _impact_color(self, material: SurfaceMaterial | str, alpha: int) -> object:
-        """Return a material-aware 2D impact color."""
-        normalized = self._normalize_surface_material(material)
-        if normalized == SurfaceMaterial.STONE:
-            return self._raylib.Color(185, 178, 160, alpha)
-        if normalized == SurfaceMaterial.WOOD:
-            return self._raylib.Color(155, 103, 58, alpha)
-        if normalized == SurfaceMaterial.METAL:
-            return self._raylib.Color(255, 216, 96, alpha)
-        if normalized == SurfaceMaterial.EXPLOSIVE_METAL:
-            return self._raylib.Color(255, 135, 52, alpha)
-        if normalized == SurfaceMaterial.EXPLOSION:
-            return self._raylib.Color(255, 92, 38, alpha)
-        if normalized == SurfaceMaterial.FOLIAGE:
-            return self._raylib.Color(86, 185, 78, alpha)
-        if normalized == SurfaceMaterial.DIRT:
-            return self._raylib.Color(130, 92, 56, alpha)
-        return self._raylib.Color(255, 166, 58, alpha)
+    def _draw_debris_pixels(
+        self,
+        position: object,
+        radius: float,
+        offsets: tuple[tuple[float, float], ...],
+        color: object,
+        progress: float,
+        *,
+        pixel_size: int,
+    ) -> None:
+        """Draw deterministic debris pixels moving away from an impact."""
+        travel = radius * (0.3 + progress * 0.95)
+        for index, (offset_x, offset_y) in enumerate(offsets):
+            x = int(round(position.x + offset_x * (travel + index * 0.35)))
+            y = int(round(position.y + offset_y * (travel + index * 0.25)))
+            self._draw_pixel_rect(x, y, pixel_size, pixel_size, color)
+
+    def _draw_jagged_lines(
+        self,
+        position: object,
+        radius: float,
+        lines: tuple[tuple[float, float, float, float], ...],
+        color: object,
+    ) -> None:
+        """Draw small jagged decal line segments."""
+        raylib = self._raylib
+        for start_x, start_y, end_x, end_y in lines:
+            raylib.draw_line_ex(
+                raylib.Vector2(
+                    position.x + start_x * radius,
+                    position.y + start_y * radius,
+                ),
+                raylib.Vector2(
+                    position.x + end_x * radius,
+                    position.y + end_y * radius,
+                ),
+                1.0,
+                color,
+            )
+
+    def _draw_pixel_rect(self, x: int, y: int, width: int, height: int, color: object) -> None:
+        """Draw a tiny pixel-art rectangle with safe integer bounds."""
+        self._raylib.draw_rectangle(x, y, max(1, width), max(1, height), color)
+
+    def _flash_color(self, material: SurfaceMaterial, alpha: int) -> object:
+        """Return the first-frame impact flash color."""
+        if material in {SurfaceMaterial.METAL, SurfaceMaterial.EXPLOSIVE_METAL}:
+            return self._raylib.Color(255, 244, 168, alpha)
+        if material == SurfaceMaterial.FOLIAGE:
+            return self._raylib.Color(180, 255, 120, alpha)
+        if material == SurfaceMaterial.WOOD:
+            return self._raylib.Color(255, 216, 128, alpha)
+        if material == SurfaceMaterial.EXPLOSION:
+            return self._raylib.Color(255, 210, 92, alpha)
+        return self._raylib.Color(255, 250, 220, alpha)
+
+    @staticmethod
+    def _metal_spark_offsets(*, explosive: bool) -> tuple[tuple[float, float], ...]:
+        """Return deterministic spark directions for metal impacts."""
+        if explosive:
+            return (
+                (-0.95, -0.12),
+                (-0.45, -0.72),
+                (0.28, -0.82),
+                (0.88, -0.18),
+                (0.4, 0.65),
+                (-0.38, 0.62),
+            )
+        return (
+            (-0.8, -0.2),
+            (-0.35, -0.65),
+            (0.35, -0.58),
+            (0.78, 0.05),
+            (0.1, 0.72),
+        )
 
     @staticmethod
     def _normalize_surface_material(material: SurfaceMaterial | str) -> SurfaceMaterial:

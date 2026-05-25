@@ -192,14 +192,11 @@ class EnemyConfig:
         draw_tactical_slots: Whether debug tactical target slots are drawn.
         max_debug_tactical_slots: Maximum tactical slot markers drawn per frame. Zero disables them.
         fire_enabled: Whether engaged enemies can shoot at the player.
-        fire_damage: Damage dealt by one enemy projectile.
-        fire_rate_rpm: Enemy fire rate in rounds per minute.
-        fire_range_px: Enemy hitscan shot maximum distance.
-        fire_tracer_lifetime_seconds: Enemy visual tracer lifetime.
-        fire_shot_radius_px: Enemy hitscan collision/visual radius.
+        fire_primary_weapon_id: Initial enemy weapon id from the shared weapon database.
+        fire_fallback_weapon_id: Backup enemy weapon id used when primary ammo is empty.
         fire_max_distance_px: Maximum distance where enemies are allowed to shoot.
         fire_muzzle_offset_px: Forward projectile spawn offset from enemy center.
-        fire_spread_degrees: Full enemy aim spread cone in degrees.
+        fire_aim_error_degrees: Additional enemy-only aim error cone in degrees.
     """
 
     marker_radius_px: int
@@ -261,14 +258,11 @@ class EnemyConfig:
     draw_tactical_slots: bool
     max_debug_tactical_slots: int
     fire_enabled: bool
-    fire_damage: float
-    fire_rate_rpm: float
-    fire_range_px: float
-    fire_tracer_lifetime_seconds: float
-    fire_shot_radius_px: float
+    fire_primary_weapon_id: str
+    fire_fallback_weapon_id: str
     fire_max_distance_px: float
     fire_muzzle_offset_px: float
-    fire_spread_degrees: float
+    fire_aim_error_degrees: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -920,19 +914,13 @@ class RuntimeConfigLoader:
                     "max_debug_tactical_slots",
                 ),
                 fire_enabled=self._require_bool(enemies, "fire_enabled"),
-                fire_damage=self._require_positive_float(enemies, "fire_damage"),
-                fire_rate_rpm=self._require_positive_float(enemies, "fire_rate_rpm"),
-                fire_range_px=self._require_positive_float(
+                fire_primary_weapon_id=self._require_str(
                     enemies,
-                    "fire_range_px",
+                    "fire_primary_weapon_id",
                 ),
-                fire_tracer_lifetime_seconds=self._require_positive_float(
+                fire_fallback_weapon_id=self._require_str(
                     enemies,
-                    "fire_tracer_lifetime_seconds",
-                ),
-                fire_shot_radius_px=self._require_positive_float(
-                    enemies,
-                    "fire_shot_radius_px",
+                    "fire_fallback_weapon_id",
                 ),
                 fire_max_distance_px=self._require_positive_float(
                     enemies,
@@ -942,9 +930,9 @@ class RuntimeConfigLoader:
                     enemies,
                     "fire_muzzle_offset_px",
                 ),
-                fire_spread_degrees=self._require_non_negative_float(
+                fire_aim_error_degrees=self._require_non_negative_float(
                     enemies,
-                    "fire_spread_degrees",
+                    "fire_aim_error_degrees",
                 ),
             ),
             ui=UiConfig(

@@ -485,6 +485,11 @@ class WeaponController:
         self._fire_events_last_update = 0
 
     @property
+    def weapon_database(self) -> WeaponDatabase:
+        """Return the shared weapon database used by this controller."""
+        return self._state.database
+
+    @property
     def stats(self) -> WeaponStats:
         """Return current weapon diagnostics."""
         weapon = self._state.current_weapon

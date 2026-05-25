@@ -4,6 +4,7 @@ import random
 
 from topdown_shooter.combat.enemies import EnemyState, EnemySystem
 from topdown_shooter.combat.projectiles import ProjectileState
+from topdown_shooter.combat.weapons import WeaponConfigLoader
 from topdown_shooter.world.coordinates import TileCoord, WorldCoord, world_to_tile
 from topdown_shooter.world.runtime_map import RuntimeMap, TacticalRuntimeSummary
 from topdown_shooter.world.tile import RuntimeTile
@@ -1764,24 +1765,28 @@ def test_enemy_system_fires_projectile_from_engaged_enemy() -> None:
     enemy.alerted = True
     enemy.awareness_state = "engaged"
 
+    weapon_database = WeaponConfigLoader().load("res/config/weapons.json")
+
     shots_fired = system.fire_at_player(
         player_position=WorldCoord(56.0, 24.0),
         projectile_system=projectile_system,
         collision_service=collision_service,
-        fire_rate_rpm=120.0,
-        shot_range_px=160.0,
-        tracer_lifetime_seconds=0.1,
-        shot_radius_px=2.0,
-        damage=7.0,
+        weapon_database=weapon_database,
+        frame_time=0.0,
         max_fire_distance_px=128.0,
         muzzle_offset_px=4.0,
         line_of_sight_sample_step_px=4.0,
+        primary_weapon_id="ak47",
+        fallback_weapon_id="pistol",
     )
 
     assert shots_fired == 1
-    assert enemy.fire_cooldown_seconds == 0.5
+    assert enemy.fire_cooldown_seconds == weapon_database.get("ak47").fire_interval_seconds
+    assert enemy.current_weapon_id == "ak47"
+    assert enemy.ammo_by_weapon_id["ak47"].ammo_in_magazine == 29
     assert projectile_system.projectiles[0].owner == "enemy"
-    assert projectile_system.projectiles[0].damage == 7.0
+    assert projectile_system.projectiles[0].damage == weapon_database.get("ak47").damage
+    assert projectile_system.projectiles[0].visual_profile == "ak47"
 
 
 def test_enemy_system_fire_spread_offsets_enemy_aim() -> None:
@@ -1808,24 +1813,78 @@ def test_enemy_system_fire_spread_offsets_enemy_aim() -> None:
     enemy.alerted = True
     enemy.awareness_state = "engaged"
 
+    weapon_database = WeaponConfigLoader().load("res/config/weapons.json")
+
     shots_fired = system.fire_at_player(
         player_position=WorldCoord(56.0, 24.0),
         projectile_system=projectile_system,
         collision_service=collision_service,
-        fire_rate_rpm=120.0,
-        shot_range_px=160.0,
-        tracer_lifetime_seconds=0.1,
-        shot_radius_px=2.0,
-        damage=7.0,
+        weapon_database=weapon_database,
+        frame_time=0.0,
         max_fire_distance_px=128.0,
         muzzle_offset_px=4.0,
         line_of_sight_sample_step_px=4.0,
-        fire_spread_degrees=20.0,
+        primary_weapon_id="ak47",
+        fallback_weapon_id="pistol",
+        aim_error_degrees=20.0,
         rng=random.Random(1),
     )
 
     assert shots_fired == 1
     assert abs(projectile_system.projectiles[0].direction_y) > 0.01
+
+
+def test_enemy_system_switches_to_pistol_after_primary_ammo_is_empty() -> None:
+    """Enemies should fall back to the shared pistol after AK ammo is exhausted."""
+    from topdown_shooter.combat.projectiles import ProjectileSystem
+    from topdown_shooter.world.collision import TileCollisionService
+
+    tactical_map: dict[str, object] = {
+        "enemy_spawn_zones": [
+            {
+                "id": "spawn_0",
+                "zone_id": "zone_a",
+                "spawn_type": "initial_squad",
+                "position": [1, 1],
+                "preferred_roles": ["rifleman"],
+            },
+        ],
+    }
+    runtime_map = _build_runtime_map()
+    collision_service = TileCollisionService(runtime_map)
+    projectile_system = ProjectileSystem(collision_service=collision_service)
+    weapon_database = WeaponConfigLoader().load("res/config/weapons.json")
+    system = EnemySystem.from_tactical_map(tactical_map, runtime_map)
+    enemy = system.enemies[0]
+    enemy.alerted = True
+    enemy.awareness_state = "engaged"
+    EnemySystem._ensure_enemy_weapon_state(
+        enemy=enemy,
+        weapon_database=weapon_database,
+        primary_weapon_id="ak47",
+        fallback_weapon_id="pistol",
+    )
+    enemy.ammo_by_weapon_id["ak47"].ammo_in_magazine = 0
+    enemy.ammo_by_weapon_id["ak47"].reserve_ammo = 0
+
+    shots_fired = system.fire_at_player(
+        player_position=WorldCoord(56.0, 24.0),
+        projectile_system=projectile_system,
+        collision_service=collision_service,
+        weapon_database=weapon_database,
+        frame_time=0.0,
+        max_fire_distance_px=128.0,
+        muzzle_offset_px=4.0,
+        line_of_sight_sample_step_px=4.0,
+        primary_weapon_id="ak47",
+        fallback_weapon_id="pistol",
+    )
+
+    assert shots_fired == 1
+    assert enemy.current_weapon_id == "pistol"
+    assert enemy.ammo_by_weapon_id["pistol"].ammo_in_magazine == 7
+    assert projectile_system.projectiles[0].damage == weapon_database.get("pistol").damage
+    assert projectile_system.projectiles[0].visual_profile == "pistol"
 
 
 def test_enemy_projectile_hit_marker_uses_segment_impact_point() -> None:
