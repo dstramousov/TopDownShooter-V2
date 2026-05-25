@@ -86,3 +86,38 @@ def test_apply_enemy_projectile_hits_damages_player_only_from_enemy_projectiles(
     assert [event.event_type for event in projectile_system.consume_events()] == [
         ProjectileEventType.HIT_PLAYER,
     ]
+
+
+def test_apply_enemy_projectile_hits_reports_segment_impact_point() -> None:
+    """Hostile hit feedback should use the bullet impact point, not player center."""
+    position = WorldCoord(16.0, 16.0)
+    player = PlayerState(
+        tile=TileCoord(1, 1),
+        world_position=position,
+        aim=PlayerAimState.from_positions(position, WorldCoord(32.0, 16.0)),
+        health=100,
+        max_health=100,
+    )
+    hostile = ProjectileState(
+        position=WorldCoord(28.0, 12.0),
+        previous_position=WorldCoord(4.0, 12.0),
+        direction_x=1.0,
+        direction_y=0.0,
+        max_distance_px=100.0,
+        lifetime_seconds=0.1,
+        radius_px=2.0,
+        damage=15.0,
+        owner="enemy",
+    )
+    projectile_system = ProjectileSystem(TileCollisionService(_build_runtime_map()))
+
+    _apply_enemy_projectile_hits(
+        player=player,
+        projectiles=(hostile,),
+        player_collision_radius_px=6.0,
+        projectile_system=projectile_system,
+    )
+
+    events = projectile_system.consume_events()
+    assert events[0].event_type == ProjectileEventType.HIT_PLAYER
+    assert events[0].position == WorldCoord(16.0, 12.0)

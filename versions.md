@@ -827,3 +827,10 @@
 - Fixed enemy hit reactions so damaged enemies search from the incoming shot origin instead of targeting their own position.
 - Allowed returning enemies to be interrupted by new gunshot sounds or hits, resetting stale search timers and clearing return-home paths.
 - Kept squad alert broadcast range based on the alerted enemy while sending squadmates to investigate the actual stimulus position.
+
+## v0.2.3 -> v0.2.4
+
+- Reworked 2D hitscan tracers into short fading streaks instead of full-length laser-like lines with bullet dots.
+- Improved material-aware projectile impact markers for stone, wood, metal, foliage, dirt and explosive surfaces.
+- Added configurable enemy aim spread so engaged enemies no longer fire perfectly at the player center every shot.
+- Moved player/enemy hit feedback positions to the actual closest point on the shot segment instead of always using actor centers.

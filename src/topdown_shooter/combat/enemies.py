@@ -2123,6 +2123,8 @@ class EnemySystem:
         max_fire_distance_px: float,
         muzzle_offset_px: float,
         line_of_sight_sample_step_px: float,
+        fire_spread_degrees: float = 0.0,
+        rng: random.Random | None = None,
         visual_profile: str = "enemy",
     ) -> int:
         """Spawn enemy projectiles from engaged enemies with line of sight.
@@ -2139,6 +2141,8 @@ class EnemySystem:
             max_fire_distance_px: Maximum distance where enemies are allowed to fire.
             muzzle_offset_px: Forward spawn offset from the enemy center.
             line_of_sight_sample_step_px: Sampling step for blocked-tile checks.
+            fire_spread_degrees: Full enemy aim spread cone in degrees.
+            rng: Optional random source for deterministic tests.
             visual_profile: Renderer-facing visual profile for enemy fire.
 
         Returns:
@@ -2186,10 +2190,16 @@ class EnemySystem:
                 direction_y=normalized_y,
                 muzzle_offset_px=muzzle_offset_px,
             )
+            shot_direction_x, shot_direction_y = EnemySystem._apply_fire_spread(
+                normalized_x,
+                normalized_y,
+                fire_spread_degrees,
+                rng if rng is not None else random,
+            )
             if projectile_system.spawn(
                 origin=origin,
-                direction_x=normalized_x,
-                direction_y=normalized_y,
+                direction_x=shot_direction_x,
+                direction_y=shot_direction_y,
                 max_distance_px=shot_range_px,
                 trace_lifetime_seconds=tracer_lifetime_seconds,
                 radius_px=shot_radius_px,
@@ -2276,10 +2286,15 @@ class EnemySystem:
                     )
                     projectile.damage_active = False
                     if projectile_event_recorder is not None:
+                        hit_position = EnemySystem._closest_point_on_segment(
+                            point=enemy.world_position,
+                            start=projectile.previous_position,
+                            end=projectile.position,
+                        )
                         projectile_event_recorder(
                             ProjectileEvent(
                                 event_type=ProjectileEventType.HIT_ENEMY,
-                                position=enemy.world_position,
+                                position=hit_position,
                                 owner=ProjectileOwner.PLAYER,
                                 damage=projectile.damage,
                                 direction_x=projectile.direction_x,
@@ -2287,7 +2302,13 @@ class EnemySystem:
                                 visual_profile=projectile.visual_profile,
                             ),
                         )
-                    self._spawn_hit_marker(enemy.world_position)
+                    self._spawn_hit_marker(
+                        EnemySystem._closest_point_on_segment(
+                            point=enemy.world_position,
+                            start=projectile.previous_position,
+                            end=projectile.position,
+                        ),
+                    )
                     break
         self._enemies = [enemy for enemy in self._enemies if enemy.alive]
 
@@ -2774,6 +2795,60 @@ class EnemySystem:
         dx = point.x - closest_x
         dy = point.y - closest_y
         return dx * dx + dy * dy
+
+    @staticmethod
+    def _closest_point_on_segment(
+        point: WorldCoord,
+        start: WorldCoord,
+        end: WorldCoord,
+    ) -> WorldCoord:
+        """Return the closest point on a segment to a world point.
+
+        Args:
+            point: Point coordinate.
+            start: Segment start coordinate.
+            end: Segment end coordinate.
+
+        Returns:
+            Closest point on the segment in world pixels.
+        """
+        segment_x = end.x - start.x
+        segment_y = end.y - start.y
+        segment_length_squared = segment_x * segment_x + segment_y * segment_y
+        if segment_length_squared <= 0.0:
+            return end
+        point_x = point.x - start.x
+        point_y = point.y - start.y
+        t = (point_x * segment_x + point_y * segment_y) / segment_length_squared
+        t = min(1.0, max(0.0, t))
+        return WorldCoord(
+            x=start.x + segment_x * t,
+            y=start.y + segment_y * t,
+        )
+
+    @staticmethod
+    def _apply_fire_spread(
+        direction_x: float,
+        direction_y: float,
+        spread_degrees: float,
+        rng: object,
+    ) -> tuple[float, float]:
+        """Apply random angular spread to an enemy shot direction.
+
+        Args:
+            direction_x: Base normalized X direction.
+            direction_y: Base normalized Y direction.
+            spread_degrees: Full spread cone in degrees.
+            rng: Random-like object exposing ``uniform``.
+
+        Returns:
+            Spread-adjusted normalized direction.
+        """
+        if spread_degrees <= 0.0:
+            return direction_x, direction_y
+        offset_degrees = rng.uniform(-spread_degrees / 2.0, spread_degrees / 2.0)
+        angle = math.atan2(direction_y, direction_x) + math.radians(offset_degrees)
+        return math.cos(angle), math.sin(angle)
 
     @staticmethod
     def _build_spawn_seed(raw_spawn: dict[object, object], spawn_index: int) -> int:

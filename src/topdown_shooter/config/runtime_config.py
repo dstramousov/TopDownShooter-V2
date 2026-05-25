@@ -199,6 +199,7 @@ class EnemyConfig:
         fire_shot_radius_px: Enemy hitscan collision/visual radius.
         fire_max_distance_px: Maximum distance where enemies are allowed to shoot.
         fire_muzzle_offset_px: Forward projectile spawn offset from enemy center.
+        fire_spread_degrees: Full enemy aim spread cone in degrees.
     """
 
     marker_radius_px: int
@@ -267,6 +268,7 @@ class EnemyConfig:
     fire_shot_radius_px: float
     fire_max_distance_px: float
     fire_muzzle_offset_px: float
+    fire_spread_degrees: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -939,6 +941,10 @@ class RuntimeConfigLoader:
                 fire_muzzle_offset_px=self._require_non_negative_float(
                     enemies,
                     "fire_muzzle_offset_px",
+                ),
+                fire_spread_degrees=self._require_non_negative_float(
+                    enemies,
+                    "fire_spread_degrees",
                 ),
             ),
             ui=UiConfig(

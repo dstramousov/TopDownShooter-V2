@@ -1,5 +1,7 @@
 """Tests for static enemy marker spawning."""
 
+import random
+
 from topdown_shooter.combat.enemies import EnemyState, EnemySystem
 from topdown_shooter.combat.projectiles import ProjectileState
 from topdown_shooter.world.coordinates import TileCoord, WorldCoord, world_to_tile
@@ -1780,3 +1782,81 @@ def test_enemy_system_fires_projectile_from_engaged_enemy() -> None:
     assert enemy.fire_cooldown_seconds == 0.5
     assert projectile_system.projectiles[0].owner == "enemy"
     assert projectile_system.projectiles[0].damage == 7.0
+
+
+def test_enemy_system_fire_spread_offsets_enemy_aim() -> None:
+    """Enemy fire spread should avoid perfect center-mass hits every shot."""
+    from topdown_shooter.combat.projectiles import ProjectileSystem
+    from topdown_shooter.world.collision import TileCollisionService
+
+    tactical_map: dict[str, object] = {
+        "enemy_spawn_zones": [
+            {
+                "id": "spawn_0",
+                "zone_id": "zone_a",
+                "spawn_type": "initial_squad",
+                "position": [1, 1],
+                "preferred_roles": ["rifleman"],
+            },
+        ],
+    }
+    runtime_map = _build_runtime_map()
+    collision_service = TileCollisionService(runtime_map)
+    projectile_system = ProjectileSystem(collision_service=collision_service)
+    system = EnemySystem.from_tactical_map(tactical_map, runtime_map)
+    enemy = system.enemies[0]
+    enemy.alerted = True
+    enemy.awareness_state = "engaged"
+
+    shots_fired = system.fire_at_player(
+        player_position=WorldCoord(56.0, 24.0),
+        projectile_system=projectile_system,
+        collision_service=collision_service,
+        fire_rate_rpm=120.0,
+        shot_range_px=160.0,
+        tracer_lifetime_seconds=0.1,
+        shot_radius_px=2.0,
+        damage=7.0,
+        max_fire_distance_px=128.0,
+        muzzle_offset_px=4.0,
+        line_of_sight_sample_step_px=4.0,
+        fire_spread_degrees=20.0,
+        rng=random.Random(1),
+    )
+
+    assert shots_fired == 1
+    assert abs(projectile_system.projectiles[0].direction_y) > 0.01
+
+
+def test_enemy_projectile_hit_marker_uses_segment_impact_point() -> None:
+    """Enemy hit feedback should appear at the bullet impact point, not always center."""
+    tactical_map: dict[str, object] = {
+        "enemy_spawn_zones": [
+            {
+                "id": "spawn_0",
+                "zone_id": "zone_a",
+                "spawn_type": "initial_squad",
+                "position": [1, 1],
+                "preferred_roles": ["rifleman"],
+            },
+        ],
+    }
+    system = EnemySystem.from_tactical_map(tactical_map, _build_runtime_map())
+    projectile = ProjectileState(
+        position=WorldCoord(40.0, 18.0),
+        previous_position=WorldCoord(10.0, 18.0),
+        direction_x=1.0,
+        direction_y=0.0,
+        max_distance_px=100.0,
+        lifetime_seconds=0.1,
+        radius_px=2.0,
+        damage=7.0,
+        owner="player",
+    )
+
+    system.apply_projectile_hits(
+        projectiles=(projectile,),
+        enemy_collision_radius_px=8.0,
+    )
+
+    assert system.hit_markers[0].position == WorldCoord(24.0, 18.0)

@@ -12,6 +12,7 @@ from topdown_shooter.combat.projectiles import (
 from topdown_shooter.combat.weapons import WeaponController
 from topdown_shooter.config.runtime_config import RuntimeConfig
 from topdown_shooter.world.collision import TileCollisionService
+from topdown_shooter.world.coordinates import WorldCoord
 from topdown_shooter.world.pathfinding import GridPathfinder
 from topdown_shooter.world.player import PlayerState
 from topdown_shooter.world.runtime_map import RuntimeMap
@@ -102,6 +103,7 @@ def update_combat_runtime(
             max_fire_distance_px=enemy_config.fire_max_distance_px,
             muzzle_offset_px=enemy_config.fire_muzzle_offset_px,
             line_of_sight_sample_step_px=enemy_config.line_of_sight_sample_step_px,
+            fire_spread_degrees=enemy_config.fire_spread_degrees,
             visual_profile="enemy",
         )
     _apply_enemy_projectile_hits(
@@ -191,11 +193,16 @@ def _apply_enemy_projectile_hits(
             continue
         player.health = max(0, int(round(player.health - projectile.damage)))
         projectile.damage_active = False
+        hit_position = _closest_point_on_segment(
+            point=player.world_position,
+            start=projectile.previous_position,
+            end=projectile.position,
+        )
         if projectile_system is not None:
             projectile_system.record_event(
                 ProjectileEvent(
                     event_type=ProjectileEventType.HIT_PLAYER,
-                    position=player.world_position,
+                    position=hit_position,
                     owner=ProjectileOwner.ENEMY,
                     damage=projectile.damage,
                     direction_x=projectile.direction_x,
@@ -205,6 +212,37 @@ def _apply_enemy_projectile_hits(
             )
         if player.health <= 0:
             break
+
+
+def _closest_point_on_segment(
+    *,
+    point: object,
+    start: object,
+    end: object,
+) -> WorldCoord:
+    """Return the closest point on a segment-like object to a point.
+
+    Args:
+        point: Object with ``x`` and ``y`` attributes.
+        start: Segment start object with ``x`` and ``y`` attributes.
+        end: Segment end object with ``x`` and ``y`` attributes.
+
+    Returns:
+        Closest point on the segment in world pixels.
+    """
+    segment_x = end.x - start.x
+    segment_y = end.y - start.y
+    segment_length_squared = segment_x * segment_x + segment_y * segment_y
+    if segment_length_squared <= 0.0:
+        return WorldCoord(x=end.x, y=end.y)
+    point_x = point.x - start.x
+    point_y = point.y - start.y
+    t = (point_x * segment_x + point_y * segment_y) / segment_length_squared
+    t = min(1.0, max(0.0, t))
+    return WorldCoord(
+        x=start.x + segment_x * t,
+        y=start.y + segment_y * t,
+    )
 
 
 def _point_to_segment_distance_squared(
