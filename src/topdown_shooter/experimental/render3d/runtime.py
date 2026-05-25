@@ -61,7 +61,7 @@ class ExperimentalRender3DRuntime:
         projectile_system = ProjectileSystem(
             collision_service=collision_service,
             impact_markers_enabled=self._config.projectile_impacts.enabled,
-            impact_lifetime_seconds=self._config.projectile_impacts.lifetime_seconds,
+            impact_lifetime_seconds=self._config.projectile_impacts.max_lifetime_seconds,
             impact_radius_px=self._config.projectile_impacts.radius_px,
         )
         weapon_database = WeaponConfigLoader().load(self._config.weapons.database_path)

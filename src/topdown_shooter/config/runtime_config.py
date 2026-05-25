@@ -115,7 +115,7 @@ class WeaponsConfig:
 
 @dataclass(frozen=True, slots=True)
 class ImpactParticleConfig:
-    """Material impact particle settings.
+    """Material impact particle and decal settings.
 
     Attributes:
         particle_count: Number of visible particles emitted by one impact.
@@ -123,6 +123,9 @@ class ImpactParticleConfig:
         particle_size_max_px: Maximum particle size in world pixels.
         spread_distance_px: Maximum travel distance from the impact center.
         burst_intensity: Ejection strength multiplier from the impact center.
+        decal_enabled: Whether this material leaves a lingering hit mark.
+        decal_radius_px: Hit mark radius in world pixels.
+        decal_lifetime_seconds: Hit mark lifetime in seconds.
     """
 
     particle_count: int
@@ -130,6 +133,9 @@ class ImpactParticleConfig:
     particle_size_max_px: float
     spread_distance_px: float
     burst_intensity: float
+    decal_enabled: bool
+    decal_radius_px: float
+    decal_lifetime_seconds: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,15 +144,25 @@ class ProjectileImpactConfig:
 
     Attributes:
         enabled: Whether blocked projectile hits create short-lived markers.
-        lifetime_seconds: Impact marker lifetime in seconds.
-        radius_px: Impact marker radius in world pixels.
-        material_effects: Material-specific impact particle settings.
+        lifetime_seconds: Flash and particle lifetime in seconds.
+        radius_px: Flash and particle radius in world pixels.
+        material_effects: Material-specific impact particle and decal settings.
     """
 
     enabled: bool
     lifetime_seconds: float
     radius_px: float
     material_effects: dict[str, ImpactParticleConfig]
+
+    @property
+    def max_lifetime_seconds(self) -> float:
+        """Return the retention lifetime required by particles and decals."""
+        decal_lifetimes = (
+            effect.decal_lifetime_seconds
+            for effect in self.material_effects.values()
+            if effect.decal_enabled
+        )
+        return max((self.lifetime_seconds, *decal_lifetimes))
 
 
 @dataclass(frozen=True, slots=True)
@@ -1367,7 +1383,28 @@ class RuntimeConfigLoader:
                     raw_effect,
                     "burst_intensity",
                 ),
+                decal_enabled=self._require_bool(
+                    raw_effect,
+                    "decal_enabled",
+                ),
+                decal_radius_px=self._require_non_negative_float(
+                    raw_effect,
+                    "decal_radius_px",
+                ),
+                decal_lifetime_seconds=self._require_non_negative_float(
+                    raw_effect,
+                    "decal_lifetime_seconds",
+                ),
             )
+            effect = effects[material_name.strip()]
+            if effect.decal_enabled and (
+                effect.decal_radius_px <= 0.0
+                or effect.decal_lifetime_seconds <= 0.0
+            ):
+                raise RuntimeConfigError(
+                    "Runtime config enabled impact decal must have positive radius "
+                    f"and lifetime: {material_name}",
+                )
         if "default" not in effects:
             raise RuntimeConfigError(
                 "Runtime config projectile impact effects must include 'default'.",

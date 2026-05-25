@@ -96,16 +96,22 @@
           2.0
         ],
         "spread_distance_px": 12.0,
-        "burst_intensity": 1.0
+        "burst_intensity": 1.0,
+        "decal_enabled": true,
+        "decal_radius_px": 1.5,
+        "decal_lifetime_seconds": 1.2
       },
       "stone": {
         "particle_count": 7,
         "particle_size_px": [
-          1.0,
-          2.0
+          2.0,
+          4.0
         ],
         "spread_distance_px": 12.0,
-        "burst_intensity": 3.15
+        "burst_intensity": 7.15,
+        "decal_enabled": true,
+        "decal_radius_px": 4.0,
+        "decal_lifetime_seconds": 6.0
       },
       "wood": {
         "particle_count": 5,
@@ -114,7 +120,10 @@
           3.0
         ],
         "spread_distance_px": 17.0,
-        "burst_intensity": 1.1
+        "burst_intensity": 1.1,
+        "decal_enabled": true,
+        "decal_radius_px": 2.0,
+        "decal_lifetime_seconds": 1.8
       },
       "metal": {
         "particle_count": 6,
@@ -123,7 +132,10 @@
           2.0
         ],
         "spread_distance_px": 20.0,
-        "burst_intensity": 1.35
+        "burst_intensity": 1.35,
+        "decal_enabled": true,
+        "decal_radius_px": 2.0,
+        "decal_lifetime_seconds": 2.5
       },
       "foliage": {
         "particle_count": 6,
@@ -132,7 +144,10 @@
           2.0
         ],
         "spread_distance_px": 14.0,
-        "burst_intensity": 0.85
+        "burst_intensity": 0.85,
+        "decal_enabled": false,
+        "decal_radius_px": 0.0,
+        "decal_lifetime_seconds": 0.0
       },
       "dirt": {
         "particle_count": 8,
@@ -141,7 +156,10 @@
           4.0
         ],
         "spread_distance_px": 15.0,
-        "burst_intensity": 0.75
+        "burst_intensity": 0.75,
+        "decal_enabled": true,
+        "decal_radius_px": 1.5,
+        "decal_lifetime_seconds": 0.8
       },
       "explosive_metal": {
         "particle_count": 9,
@@ -150,7 +168,10 @@
           3.0
         ],
         "spread_distance_px": 26.0,
-        "burst_intensity": 1.65
+        "burst_intensity": 1.65,
+        "decal_enabled": true,
+        "decal_radius_px": 2.5,
+        "decal_lifetime_seconds": 2.5
       },
       "explosion": {
         "particle_count": 12,
@@ -159,7 +180,10 @@
           5.0
         ],
         "spread_distance_px": 34.0,
-        "burst_intensity": 1.8
+        "burst_intensity": 1.8,
+        "decal_enabled": true,
+        "decal_radius_px": 3.0,
+        "decal_lifetime_seconds": 1.2
       }
     }
   },

@@ -136,7 +136,7 @@ class RaylibWindow:
         self._projectile_system = ProjectileSystem(
             collision_service=self._collision_service,
             impact_markers_enabled=config.projectile_impacts.enabled,
-            impact_lifetime_seconds=config.projectile_impacts.lifetime_seconds,
+            impact_lifetime_seconds=config.projectile_impacts.max_lifetime_seconds,
             impact_radius_px=config.projectile_impacts.radius_px,
         )
         weapon_database = WeaponConfigLoader().load(config.weapons.database_path)

@@ -847,3 +847,11 @@
 - Added shell casing ejection visuals for every spawned shot in both 2D and experimental 3D renderers.
 - Synchronized 3D combat visuals with the 2D direction by replacing circular impact rings/spheres with flash and particle-style impact feedback.
 - Kept projectile and weapon gameplay unchanged; the new shell casings and impact particles are visual-only.
+
+
+## v0.2.6 -> v0.2.7
+
+- Added material-configurable impact decals with separate radius and lifetime settings from the short flash/particle phase.
+- Kept impact states alive long enough for lingering hit marks while fading flash and debris on their shorter configured lifetime.
+- Rendered the same small hit mark/decal concept in both 2D and experimental 3D without restoring circular debug markers.
+- Updated default runtime config, Russian configuration docs, and runtime config tests for the new decal fields.

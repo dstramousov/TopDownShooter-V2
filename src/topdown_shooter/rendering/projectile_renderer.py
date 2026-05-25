@@ -159,18 +159,42 @@ class ProjectileRenderer:
         """Draw one snappy material-aware 2D impact effect."""
         raylib = self._raylib
         position = raylib.Vector2(impact.position.x, impact.position.y)
-        progress = min(1.0, max(0.0, impact.age_seconds / impact.lifetime_seconds))
         material = self._normalize_surface_material(impact.surface_material)
-        flash_strength = max(0.0, 1.0 - progress / 0.28)
-        debris_strength = max(0.0, 1.0 - progress / 0.78)
-        decal_strength = min(1.0, progress / 0.32)
+        particle_config = self._impact_particle_config(material)
+        particle_lifetime = self._impact_particle_lifetime(impact)
+        particle_progress = min(
+            1.0,
+            max(0.0, impact.age_seconds / particle_lifetime),
+        )
+        flash_strength = max(0.0, 1.0 - particle_progress / 0.28)
+        debris_strength = max(0.0, 1.0 - particle_progress / 0.78)
         radius = max(2.0, impact.radius_px)
-        if flash_strength > 0.0:
+        if impact.age_seconds <= particle_lifetime and flash_strength > 0.0:
             self._draw_impact_flash(position, radius, material, flash_strength)
-        if debris_strength > 0.0:
-            self._draw_material_debris(position, radius, material, debris_strength, progress)
-        if decal_strength > 0.0:
-            self._draw_impact_decal(position, radius, material, decal_strength, progress)
+        if impact.age_seconds <= particle_lifetime and debris_strength > 0.0:
+            self._draw_material_debris(
+                position,
+                material,
+                particle_config,
+                debris_strength,
+                particle_progress,
+            )
+        if (
+            particle_config.decal_enabled
+            and impact.age_seconds <= particle_config.decal_lifetime_seconds
+        ):
+            decal_progress = min(
+                1.0,
+                max(0.0, impact.age_seconds / particle_config.decal_lifetime_seconds),
+            )
+            decal_strength = min(1.0, impact.age_seconds / 0.08)
+            self._draw_impact_decal(
+                position,
+                particle_config.decal_radius_px,
+                material,
+                decal_strength,
+                decal_progress,
+            )
 
     def _draw_impact_flash(
         self,
@@ -211,13 +235,12 @@ class ProjectileRenderer:
     def _draw_material_debris(
         self,
         position: object,
-        radius: float,
         material: SurfaceMaterial,
+        particle_config: ImpactParticleConfig,
         strength: float,
         progress: float,
     ) -> None:
         """Draw material-specific debris, sparks, splinters, dust, or leaves."""
-        particle_config = self._impact_particle_config(material)
         offsets = self._particle_offsets(material, particle_config.particle_count)
         travel_radius = particle_config.spread_distance_px * particle_config.burst_intensity
         particle_size = self._particle_size(particle_config, progress)
@@ -291,7 +314,7 @@ class ProjectileRenderer:
         """Draw a small lingering hit decal rather than a colored circle."""
         if material == SurfaceMaterial.FOLIAGE:
             return
-        alpha = int((120 + 70 * strength) * max(0.35, 1.0 - progress * 0.35))
+        alpha = int((135 + 65 * strength) * max(0.25, 1.0 - progress * 0.65))
         if alpha <= 0:
             return
         raylib = self._raylib
@@ -427,11 +450,21 @@ class ProjectileRenderer:
                 particle_size_max_px=2.0,
                 spread_distance_px=12.0,
                 burst_intensity=1.0,
+                decal_enabled=True,
+                decal_radius_px=1.5,
+                decal_lifetime_seconds=1.2,
             )
         return self._impact_config.material_effects.get(
             material.value,
             self._impact_config.material_effects["default"],
         )
+
+
+    def _impact_particle_lifetime(self, impact: ImpactMarkerState) -> float:
+        """Return configured flash and particle lifetime for an impact."""
+        if self._impact_config is None:
+            return max(0.0001, impact.lifetime_seconds)
+        return max(0.0001, self._impact_config.lifetime_seconds)
 
     @staticmethod
     def _particle_size(config: ImpactParticleConfig, progress: float) -> float:

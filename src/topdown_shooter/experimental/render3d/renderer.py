@@ -1989,11 +1989,12 @@ class Render3DRenderer:
                 impact_y,
                 impact.position.y / tile_size_px * tile_size,
             )
-            progress = self._age_progress(impact.age_seconds, impact.lifetime_seconds)
             material = self._normalize_surface_material(impact.surface_material)
             particle_config = self._impact_particle_config(material)
-            flash_alpha = int(230 * max(0.0, 1.0 - progress / 0.28))
-            if flash_alpha > 0:
+            particle_lifetime = max(0.0001, self._config.projectile_impacts.lifetime_seconds)
+            particle_progress = self._age_progress(impact.age_seconds, particle_lifetime)
+            flash_alpha = int(230 * max(0.0, 1.0 - particle_progress / 0.28))
+            if impact.age_seconds <= particle_lifetime and flash_alpha > 0:
                 flash_radius = max(0.05 * tile_size, impact.radius_px / tile_size_px * tile_size)
                 raylib.draw_line_3d(
                     raylib.Vector3(center.x - flash_radius, center.y, center.z),
@@ -2005,16 +2006,92 @@ class Render3DRenderer:
                     raylib.Vector3(center.x, center.y, center.z + flash_radius),
                     self._impact_color(material, flash_alpha),
                 )
-            debris_alpha = int(210 * max(0.0, 1.0 - progress / 0.78))
-            if debris_alpha > 0:
+            debris_alpha = int(210 * max(0.0, 1.0 - particle_progress / 0.78))
+            if impact.age_seconds <= particle_lifetime and debris_alpha > 0:
                 self._draw_impact_particles_3d(
                     center=center,
                     material=material,
                     particle_config=particle_config,
-                    progress=progress,
+                    progress=particle_progress,
                     alpha=debris_alpha,
                 )
+            if (
+                particle_config.decal_enabled
+                and impact.age_seconds <= particle_config.decal_lifetime_seconds
+            ):
+                decal_progress = self._age_progress(
+                    impact.age_seconds,
+                    particle_config.decal_lifetime_seconds,
+                )
+                decal_alpha = int(170 * max(0.25, 1.0 - decal_progress * 0.65))
+                self._draw_impact_decal_3d(
+                    center=center,
+                    material=material,
+                    particle_config=particle_config,
+                    progress=decal_progress,
+                    alpha=decal_alpha,
+                )
 
+
+    def _draw_impact_decal_3d(
+        self,
+        *,
+        center: object,
+        material: SurfaceMaterial,
+        particle_config: object,
+        progress: float,
+        alpha: int,
+    ) -> None:
+        """Draw a small lingering hit mark on the impact plane."""
+        if material == SurfaceMaterial.FOLIAGE or alpha <= 0:
+            return
+        raylib = self._raylib
+        tile_size = self._config.render3d.tile_size
+        tile_size_px = self._runtime_map.tile_size_px
+        radius = max(
+            0.025 * tile_size,
+            particle_config.decal_radius_px / tile_size_px * tile_size,
+        )
+        y = center.y + 0.002 * tile_size
+        color = self._impact_decal_color(material, alpha)
+        if material == SurfaceMaterial.DIRT:
+            fade_radius = radius * (1.0 + 0.25 * progress)
+            raylib.draw_cube(
+                raylib.Vector3(center.x, y, center.z),
+                fade_radius * 1.7,
+                0.004 * tile_size,
+                fade_radius * 0.55,
+                color,
+            )
+            return
+        if material == SurfaceMaterial.WOOD:
+            raylib.draw_line_3d(
+                raylib.Vector3(center.x - radius * 0.8, y, center.z - radius * 0.2),
+                raylib.Vector3(center.x + radius * 0.7, y, center.z + radius * 0.25),
+                color,
+            )
+            raylib.draw_line_3d(
+                raylib.Vector3(center.x - radius * 0.2, y, center.z + radius * 0.55),
+                raylib.Vector3(center.x + radius * 0.25, y, center.z - radius * 0.5),
+                color,
+            )
+            return
+        raylib.draw_line_3d(
+            raylib.Vector3(center.x - radius, y, center.z),
+            raylib.Vector3(center.x + radius * 0.85, y, center.z),
+            color,
+        )
+        raylib.draw_line_3d(
+            raylib.Vector3(center.x, y, center.z - radius * 0.8),
+            raylib.Vector3(center.x, y, center.z + radius * 0.9),
+            color,
+        )
+        if material in {SurfaceMaterial.STONE, SurfaceMaterial.EXPLOSIVE_METAL}:
+            raylib.draw_line_3d(
+                raylib.Vector3(center.x - radius * 0.55, y, center.z + radius * 0.45),
+                raylib.Vector3(center.x + radius * 0.35, y, center.z - radius * 0.3),
+                color,
+            )
 
     def _draw_impact_particles_3d(
         self,
@@ -2081,6 +2158,20 @@ class Render3DRenderer:
         if normalized == SurfaceMaterial.DIRT:
             return self._raylib.Color(128, 94, 62, alpha)
         return self._raylib.Color(255, 220, 160, alpha)
+
+
+    def _impact_decal_color(self, material: SurfaceMaterial | str, alpha: int = 255) -> object:
+        """Return a dark material-aware impact decal color."""
+        normalized = self._normalize_surface_material(material)
+        if normalized == SurfaceMaterial.WOOD:
+            return self._raylib.Color(82, 48, 28, alpha)
+        if normalized == SurfaceMaterial.DIRT:
+            return self._raylib.Color(78, 58, 42, max(0, alpha - 35))
+        if normalized in {SurfaceMaterial.METAL, SurfaceMaterial.EXPLOSIVE_METAL}:
+            return self._raylib.Color(24, 22, 20, alpha)
+        if normalized == SurfaceMaterial.EXPLOSION:
+            return self._raylib.Color(92, 36, 20, alpha)
+        return self._raylib.Color(46, 42, 36, alpha)
 
     def _impact_particle_config(self, material: SurfaceMaterial) -> object:
         """Return configured impact particles for one material."""
