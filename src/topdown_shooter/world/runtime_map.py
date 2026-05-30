@@ -4,10 +4,123 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Mapping
+from typing import Any, Mapping
 
 from topdown_shooter.world.coordinates import TileCoord
 from topdown_shooter.world.tile import RuntimeTile
+
+
+GridValue = bool | int | float | str | None
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeGridLayer:
+    """Rectangular runtime grid layer exported by ``map_package``.
+
+    Attributes:
+        name: Grid layer name.
+        rows: Grid values indexed as ``rows[y][x]``.
+    """
+
+    name: str
+    rows: tuple[tuple[GridValue, ...], ...] = ()
+
+    @property
+    def height(self) -> int:
+        """Return grid height in tiles."""
+        return len(self.rows)
+
+    @property
+    def width(self) -> int:
+        """Return grid width in tiles."""
+        if not self.rows:
+            return 0
+        return len(self.rows[0])
+
+    def value_at(self, tile: TileCoord) -> GridValue:
+        """Return the grid value at a tile coordinate.
+
+        Args:
+            tile: Tile coordinate to query.
+
+        Returns:
+            Grid value, or ``None`` when the coordinate is outside the grid.
+        """
+        if tile.y < 0 or tile.x < 0 or tile.y >= self.height or tile.x >= self.width:
+            return None
+        return self.rows[tile.y][tile.x]
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeGridSet:
+    """Runtime grids exported by the structured map package.
+
+    Attributes:
+        layers: Grid layers keyed by generator grid name.
+    """
+
+    layers: Mapping[str, RuntimeGridLayer] = field(default_factory=dict)
+
+    @property
+    def grid_names(self) -> tuple[str, ...]:
+        """Return available grid layer names."""
+        return tuple(self.layers.keys())
+
+    def get(self, name: str) -> RuntimeGridLayer | None:
+        """Return a runtime grid layer by name.
+
+        Args:
+            name: Grid layer name.
+
+        Returns:
+            Runtime grid layer, or ``None`` when absent.
+        """
+        return self.layers.get(name)
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeGameplayZone:
+    """Gameplay zone exported by the structured map package.
+
+    Attributes:
+        zone_id: Stable zone id.
+        zone_type: Gameplay zone type.
+        raw: Original zone dictionary.
+    """
+
+    zone_id: str
+    zone_type: str
+    raw: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeElevationFeature:
+    """Elevation feature exported by the structured map package.
+
+    Attributes:
+        feature_id: Stable feature id.
+        feature_type: Elevation feature type.
+        raw: Original feature dictionary.
+    """
+
+    feature_id: str
+    feature_type: str
+    raw: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeElevationTransition:
+    """Elevation transition exported by the structured map package.
+
+    Attributes:
+        transition_id: Stable transition id.
+        transition_type: Elevation transition type.
+        raw: Original transition dictionary.
+    """
+
+    transition_id: str
+    transition_type: str
+    raw: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +179,17 @@ class RuntimeMapObject:
         combat_properties: Combat-facing tuning values.
         shape: Optional generator shape.
         stance_hints: Optional stance-specific cover hints.
+        orientation: Optional visual/gameplay orientation.
+        collision_footprint: Collision-specific tile footprint.
+        visual_bounds: Visual bounds metadata from the generator.
+        pivot: Visual pivot metadata from the generator.
+        interaction_shape: Interaction shape metadata from the generator.
+        sort_anchor: Draw sorting anchor metadata from the generator.
+        draw_layer: Suggested draw layer.
+        occlusion_hint: Visual occlusion metadata.
+        surface_elevation: Optional surface elevation level.
+        interior_elevation: Optional interior elevation level.
+        firing_ports: Optional firing port metadata for bunkers.
     """
 
     object_id: str
@@ -89,6 +213,17 @@ class RuntimeMapObject:
     )
     shape: str = ""
     stance_hints: Mapping[str, str] = field(default_factory=dict)
+    orientation: str = ""
+    collision_footprint: tuple[TileCoord, ...] = ()
+    visual_bounds: Mapping[str, Any] = field(default_factory=dict)
+    pivot: Mapping[str, Any] = field(default_factory=dict)
+    interaction_shape: Mapping[str, Any] = field(default_factory=dict)
+    sort_anchor: Mapping[str, Any] = field(default_factory=dict)
+    draw_layer: str = ""
+    occlusion_hint: Mapping[str, Any] = field(default_factory=dict)
+    surface_elevation: int | None = None
+    interior_elevation: int | None = None
+    firing_ports: tuple[Mapping[str, Any], ...] = ()
 
     @property
     def is_footprint_object(self) -> bool:
@@ -183,6 +318,10 @@ class RuntimeMap:
         runtime_objects: Runtime gameplay objects placed over the tile map.
         runtime_objects_summary: Runtime object counters.
         elevation: Sparse map elevation layer.
+        runtime_grids: Runtime grids loaded from the structured map package.
+        gameplay_zones: Gameplay zones loaded from the structured map package.
+        elevation_features: Elevation features loaded from the structured map package.
+        elevation_transitions: Elevation transitions loaded from the structured map package.
         movement_blocked_tiles: Tiles blocked by runtime objects.
         projectile_blocked_tiles: Tiles blocking shots because of runtime objects.
         runtime_objects_by_tile: Runtime objects indexed by occupied tile.
@@ -200,6 +339,10 @@ class RuntimeMap:
         default_factory=RuntimeObjectsSummary,
     )
     elevation: RuntimeElevationMap = field(default_factory=RuntimeElevationMap)
+    runtime_grids: RuntimeGridSet = field(default_factory=RuntimeGridSet)
+    gameplay_zones: tuple[RuntimeGameplayZone, ...] = ()
+    elevation_features: tuple[RuntimeElevationFeature, ...] = ()
+    elevation_transitions: tuple[RuntimeElevationTransition, ...] = ()
     movement_blocked_tiles: frozenset[TileCoord] = frozenset()
     projectile_blocked_tiles: frozenset[TileCoord] = frozenset()
     runtime_objects_by_tile: Mapping[TileCoord, tuple[RuntimeMapObject, ...]] = field(
@@ -246,7 +389,11 @@ class RuntimeMap:
         Returns:
             Interactive runtime objects occupying the tile, or an empty tuple.
         """
-        return tuple(map_object for map_object in self.runtime_objects_at(tile) if map_object.interactive)
+        return tuple(
+            map_object
+            for map_object in self.runtime_objects_at(tile)
+            if map_object.interactive
+        )
 
     def nearest_interactive_object(
         self,

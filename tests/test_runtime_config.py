@@ -64,17 +64,17 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.projectile_impacts.enabled is True
     assert config.projectile_impacts.lifetime_seconds == 0.56
     assert config.projectile_impacts.radius_px == 15.0
-    assert config.projectile_impacts.max_lifetime_seconds == 2.5
+    assert config.projectile_impacts.max_lifetime_seconds == 6.0
     assert config.projectile_impacts.material_effects["stone"].particle_count == 7
-    assert config.projectile_impacts.material_effects["stone"].particle_size_min_px == 1.0
-    assert config.projectile_impacts.material_effects["stone"].particle_size_max_px == 2.0
+    assert config.projectile_impacts.material_effects["stone"].particle_size_min_px == 2.0
+    assert config.projectile_impacts.material_effects["stone"].particle_size_max_px == 4.0
     assert config.projectile_impacts.material_effects["stone"].spread_distance_px == 12.0
-    assert config.projectile_impacts.material_effects["stone"].burst_intensity == 3.15
+    assert config.projectile_impacts.material_effects["stone"].burst_intensity == 7.15
     assert config.projectile_impacts.material_effects["stone"].decal_enabled is True
-    assert config.projectile_impacts.material_effects["stone"].decal_radius_px == 2.0
+    assert config.projectile_impacts.material_effects["stone"].decal_radius_px == 4.0
     assert (
         config.projectile_impacts.material_effects["stone"].decal_lifetime_seconds
-        == 2.0
+        == 6.0
     )
     assert config.projectile_impacts.material_effects["foliage"].decal_enabled is False
     assert config.shell_ejection.enabled is True

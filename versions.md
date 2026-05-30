@@ -855,3 +855,10 @@
 - Kept impact states alive long enough for lingering hit marks while fading flash and debris on their shorter configured lifetime.
 - Rendered the same small hit mark/decal concept in both 2D and experimental 3D without restoring circular debug markers.
 - Updated default runtime config, Russian configuration docs, and runtime config tests for the new decal fields.
+
+## v0.2.7 -> v0.2.8
+
+- Added structured `map_package/map.json` loading with referenced layer, gameplay, runtime object, runtime grid, gameplay zone, and elevation files while preserving legacy `tactical_map.json` fallback.
+- Extended runtime map/object models to retain new map-package metadata: runtime grids, gameplay zones, elevation features/transitions, collision footprints, visual bounds, draw sorting hints, occlusion hints, interior elevation, and bunker firing ports.
+- Updated map inspection output and tests so the runtime can verify structured map-package data without changing current gameplay behavior.
+- Synchronized stale projectile impact config test expectations with the existing v0.2.7 default runtime config values so the full test suite is green again.
