@@ -273,6 +273,142 @@ class RuntimeMapObject:
         """Return whether the object occupies more than its origin tile."""
         return len(self.footprint) > 1
 
+    @property
+    def is_collision_footprint_object(self) -> bool:
+        """Return whether the object has an explicit collision footprint."""
+        return bool(self.collision_footprint)
+
+    @property
+    def collision_tiles(self) -> tuple[TileCoord, ...]:
+        """Return tiles used for gameplay collision checks.
+
+        Explicit ``collision_footprint`` data has priority over the visual
+        footprint. Legacy objects without that field keep using ``footprint``.
+        """
+        if self.collision_footprint:
+            return self.collision_footprint
+        return self.footprint
+
+    @property
+    def movement_blocking_tiles(self) -> tuple[TileCoord, ...]:
+        """Return tiles where this object blocks actor movement."""
+        if not self.blocks_movement:
+            return ()
+        return self.collision_tiles
+
+    @property
+    def projectile_blocking_tiles(self) -> tuple[TileCoord, ...]:
+        """Return tiles where this object blocks projectile traces."""
+        if not self.blocks_projectiles:
+            return ()
+        return self.collision_tiles
+
+    @property
+    def vision_blocking_tiles(self) -> tuple[TileCoord, ...]:
+        """Return tiles where this object blocks line-of-sight queries."""
+        if not self.blocks_vision:
+            return ()
+        return self.collision_tiles
+
+    @property
+    def visual_bounds_width_tiles(self) -> int:
+        """Return visual bounds width in tiles when provided."""
+        return self._mapping_int(self.visual_bounds, "width", default=1)
+
+    @property
+    def visual_bounds_height_tiles(self) -> int:
+        """Return visual bounds height in tiles when provided."""
+        return self._mapping_int(self.visual_bounds, "height", default=1)
+
+    @property
+    def is_large_runtime_object(self) -> bool:
+        """Return whether the object is visually or logically larger than one tile."""
+        return (
+            self.is_footprint_object
+            or self.visual_bounds_width_tiles > 1
+            or self.visual_bounds_height_tiles > 1
+        )
+
+    @property
+    def visual_sort_key(self) -> tuple[int, int, int]:
+        """Return a stable visual sort key from ``sort_anchor`` metadata.
+
+        The key follows the generator rule: sort by bottom-ish Y, then
+        elevation, then X. Missing metadata falls back to object origin.
+        """
+        sort_x = self._mapping_int(self.sort_anchor, "x", default=self.origin.x)
+        sort_y = self._mapping_int(self.sort_anchor, "y", default=self.origin.y)
+        default_elevation = (
+            self.surface_elevation
+            if self.surface_elevation is not None
+            else self.elevation
+        )
+        sort_elevation = self._mapping_int(
+            self.sort_anchor,
+            "elevation",
+            default=default_elevation,
+        )
+        return (sort_y, sort_elevation, sort_x)
+
+    @property
+    def is_bunker(self) -> bool:
+        """Return whether this object is a buried bunker structure."""
+        return self.object_type.startswith("buried_bunker") or "bunker" in self.tags
+
+    @property
+    def has_firing_ports(self) -> bool:
+        """Return whether the object exposes bunker firing port metadata."""
+        return bool(self.firing_ports)
+
+    @property
+    def is_bridge(self) -> bool:
+        """Return whether this object is a bridge-like traversal object."""
+        return self.object_type == "wooden_bridge" or "bridge" in self.tags
+
+    @property
+    def is_ramp(self) -> bool:
+        """Return whether this object is a ramp-like elevation connector."""
+        return self.object_type == "stone_ramp" or "ramp" in self.tags
+
+    @property
+    def is_stairs(self) -> bool:
+        """Return whether this object is a stairs-like elevation connector."""
+        return self.object_type == "stone_stairs" or "stairs" in self.tags
+
+    @property
+    def is_platform(self) -> bool:
+        """Return whether this object represents a raised platform."""
+        return self.object_type == "ruin_platform" or "platform" in self.tags
+
+    @property
+    def is_watchtower(self) -> bool:
+        """Return whether this object is a watchtower/high tower."""
+        return self.object_type == "watchtower" or "tower" in self.tags
+
+    @property
+    def is_tall_object(self) -> bool:
+        """Return whether this object needs tall-object rendering/occlusion treatment."""
+        return self.draw_layer == "tall_object" or self.visual_bounds_height_tiles > 1
+
+    @property
+    def is_elevation_connector(self) -> bool:
+        """Return whether this object should later connect elevation levels."""
+        return (
+            self.is_bridge
+            or self.is_ramp
+            or self.is_stairs
+            or "transition" in self.tags
+            or "traversal" in self.tags
+        )
+
+    @staticmethod
+    def _mapping_int(mapping: Mapping[str, Any], key: str, *, default: int) -> int:
+        """Return an integer mapping value or a default."""
+        try:
+            return int(mapping.get(key, default))
+        except (TypeError, ValueError):
+            return default
+
 
 @dataclass(frozen=True, slots=True)
 class RuntimeElevationMap:
@@ -309,6 +445,11 @@ class RuntimeObjectsSummary:
         projectile_blockers: Objects that block projectiles/hitscan rays.
         vision_blockers: Objects that block or soften vision.
         footprint_objects: Objects represented by multi-tile footprints.
+        collision_footprint_objects: Objects with explicit collision footprints.
+        large_objects: Objects that are visually or logically larger than one tile.
+        bunker_objects: Buried bunker structures.
+        elevation_connectors: Bridges, ramps, stairs, or traversal connectors.
+        tall_objects: Objects that need tall rendering/occlusion treatment.
         interactive_objects: Objects that can later become player interactions.
         loot_objects: Objects carrying loot metadata.
         explosive_objects: Objects carrying explosive metadata.
@@ -320,6 +461,11 @@ class RuntimeObjectsSummary:
     projectile_blockers: int = 0
     vision_blockers: int = 0
     footprint_objects: int = 0
+    collision_footprint_objects: int = 0
+    large_objects: int = 0
+    bunker_objects: int = 0
+    elevation_connectors: int = 0
+    tall_objects: int = 0
     interactive_objects: int = 0
     loot_objects: int = 0
     explosive_objects: int = 0
@@ -367,7 +513,11 @@ class RuntimeMap:
         elevation_transitions: Elevation transitions loaded from the structured map package.
         movement_blocked_tiles: Tiles blocked by runtime objects.
         projectile_blocked_tiles: Tiles blocking shots because of runtime objects.
-        runtime_objects_by_tile: Runtime objects indexed by occupied tile.
+        vision_blocked_tiles: Tiles blocking vision because of runtime objects.
+        runtime_objects_by_tile: Runtime objects indexed by visual/logic footprint.
+        movement_blocking_objects_by_tile: Movement blockers indexed by collision tiles.
+        projectile_blocking_objects_by_tile: Projectile blockers indexed by collision tiles.
+        vision_blocking_objects_by_tile: Vision blockers indexed by collision tiles.
     """
 
     width_tiles: int
@@ -388,7 +538,17 @@ class RuntimeMap:
     elevation_transitions: tuple[RuntimeElevationTransition, ...] = ()
     movement_blocked_tiles: frozenset[TileCoord] = frozenset()
     projectile_blocked_tiles: frozenset[TileCoord] = frozenset()
+    vision_blocked_tiles: frozenset[TileCoord] = frozenset()
     runtime_objects_by_tile: Mapping[TileCoord, tuple[RuntimeMapObject, ...]] = field(
+        default_factory=dict,
+    )
+    movement_blocking_objects_by_tile: Mapping[TileCoord, tuple[RuntimeMapObject, ...]] = field(
+        default_factory=dict,
+    )
+    projectile_blocking_objects_by_tile: Mapping[TileCoord, tuple[RuntimeMapObject, ...]] = field(
+        default_factory=dict,
+    )
+    vision_blocking_objects_by_tile: Mapping[TileCoord, tuple[RuntimeMapObject, ...]] = field(
         default_factory=dict,
     )
 
@@ -513,6 +673,39 @@ class RuntimeMap:
         """
         return self.runtime_objects_by_tile.get(tile, ())
 
+    def movement_blocking_objects_at(self, tile: TileCoord) -> tuple[RuntimeMapObject, ...]:
+        """Return movement-blocking objects for a collision tile.
+
+        Args:
+            tile: Tile coordinate to query.
+
+        Returns:
+            Blocking runtime objects, or an empty tuple.
+        """
+        return self.movement_blocking_objects_by_tile.get(tile, ())
+
+    def projectile_blocking_objects_at(self, tile: TileCoord) -> tuple[RuntimeMapObject, ...]:
+        """Return projectile-blocking objects for a collision tile.
+
+        Args:
+            tile: Tile coordinate to query.
+
+        Returns:
+            Blocking runtime objects, or an empty tuple.
+        """
+        return self.projectile_blocking_objects_by_tile.get(tile, ())
+
+    def vision_blocking_objects_at(self, tile: TileCoord) -> tuple[RuntimeMapObject, ...]:
+        """Return vision-blocking objects for a collision tile.
+
+        Args:
+            tile: Tile coordinate to query.
+
+        Returns:
+            Blocking runtime objects, or an empty tuple.
+        """
+        return self.vision_blocking_objects_by_tile.get(tile, ())
+
     def movement_blocker_at(self, tile: TileCoord) -> RuntimeMapObject | None:
         """Return the first movement-blocking runtime object on a tile.
 
@@ -522,6 +715,11 @@ class RuntimeMap:
         Returns:
             Blocking runtime object, or ``None``.
         """
+        blockers = self.movement_blocking_objects_at(tile)
+        if blockers:
+            return blockers[0]
+        if self.movement_blocking_objects_by_tile:
+            return None
         for map_object in self.runtime_objects_at(tile):
             if map_object.blocks_movement:
                 return map_object
@@ -536,8 +734,32 @@ class RuntimeMap:
         Returns:
             Blocking runtime object, or ``None``.
         """
+        blockers = self.projectile_blocking_objects_at(tile)
+        if blockers:
+            return blockers[0]
+        if self.projectile_blocking_objects_by_tile:
+            return None
         for map_object in self.runtime_objects_at(tile):
             if map_object.blocks_projectiles:
+                return map_object
+        return None
+
+    def vision_blocker_at(self, tile: TileCoord) -> RuntimeMapObject | None:
+        """Return the first vision-blocking runtime object on a tile.
+
+        Args:
+            tile: Tile coordinate to query.
+
+        Returns:
+            Blocking runtime object, or ``None``.
+        """
+        blockers = self.vision_blocking_objects_at(tile)
+        if blockers:
+            return blockers[0]
+        if self.vision_blocking_objects_by_tile:
+            return None
+        for map_object in self.runtime_objects_at(tile):
+            if map_object.blocks_vision:
                 return map_object
         return None
 
@@ -616,9 +838,8 @@ class RuntimeMap:
         """Return whether a tile blocks line-of-sight queries."""
         if not self.is_inside_tile_bounds(tile):
             return True
-        for map_object in self.runtime_objects_at(tile):
-            if map_object.blocks_vision:
-                return True
+        if tile in self.vision_blocked_tiles:
+            return True
         vision_blocked = self._boolean_grid_value(self.vision_block_grid, tile)
         if vision_blocked is not None:
             return vision_blocked

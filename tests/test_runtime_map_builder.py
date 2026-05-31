@@ -487,3 +487,185 @@ def test_runtime_map_builder_loads_structured_map_package_without_legacy_tactica
     assert runtime_map.elevation_features[0].feature_type == "bridge"
     assert len(runtime_map.elevation_transitions) == 1
     assert runtime_map.elevation_transitions[0].transition_type == "connector_edge"
+
+
+def test_runtime_map_builder_uses_collision_footprints_for_large_objects(
+    tmp_path: Path,
+) -> None:
+    """Large visual objects should use collision footprints for gameplay blocking."""
+    package_dir = tmp_path / "large_objects_package"
+    package_dir.mkdir()
+    _write_json(
+        package_dir / "_manifest.json",
+        {
+            "schema_version": "generation-manifest-v3",
+            "versions": {
+                "generator": "0.0.76",
+                "pipeline": "pipeline-v1",
+                "schemas": {"tactical_map": "tactical-map-v0.31"},
+            },
+            "profile": "clear_map",
+            "seed": "large-objects",
+            "resolved_seed": 987,
+            "dimensions": {"width_tiles": 6, "height_tiles": 5, "tile_size_px": 16},
+        },
+    )
+    _write_json(
+        package_dir / "validation_report.json",
+        {"status": "passed", "errors": [], "warnings": []},
+    )
+    _write_json(
+        package_dir / "tactical_map.json",
+        {
+            "map": {
+                "tile_grid_format": "ascii_rows",
+                "tile_grid": ["S++++G", "++++++", "++++++", "++++++", "++++++"],
+            },
+            "movement_costs": {"S": 1, "G": 1, "+": 1},
+            "combat_zones": [],
+            "cover_points": [],
+            "choke_points": [],
+            "flank_routes": [],
+            "enemy_spawn_zones": [],
+            "fallback_positions": [],
+            "runtime_objects": [
+                {
+                    "id": "watchtower_000",
+                    "type": "watchtower",
+                    "role": "high_landmark",
+                    "x": 3,
+                    "y": 1,
+                    "orientation": "east_west",
+                    "shape": "rect_2x2",
+                    "footprint": [[3, 1], [4, 1], [3, 2], [4, 2]],
+                    "collision_footprint": [[3, 1]],
+                    "visual_bounds": {"x": 3, "y": 1, "width": 2, "height": 4},
+                    "sort_anchor": {"x": 4, "y": 4, "elevation": 3},
+                    "draw_layer": "tall_object",
+                    "tags": ["elevation", "tower", "high_platform", "landmark"],
+                    "collision_profile": {
+                        "movement": "blocked",
+                        "projectiles": "passable",
+                        "vision": "passable",
+                    },
+                    "combat_properties": {"cover_value": 0.65, "concealment_value": 0.0},
+                    "surface_elevation": 3,
+                },
+                {
+                    "id": "bunker_000",
+                    "type": "buried_bunker_2x2",
+                    "role": "defensive_position",
+                    "x": 1,
+                    "y": 2,
+                    "orientation": "east_west",
+                    "shape": "rect_2x2",
+                    "footprint": [[1, 2], [2, 2], [1, 3], [2, 3]],
+                    "collision_footprint": [[1, 2], [2, 2], [1, 3], [2, 3]],
+                    "visual_bounds": {"x": 1, "y": 2, "width": 2, "height": 2},
+                    "sort_anchor": {"x": 2, "y": 3, "elevation": 0},
+                    "draw_layer": "structure",
+                    "tags": ["bunker", "cover", "defensive", "below_floor", "firing_ports"],
+                    "collision_profile": {
+                        "movement": "blocked",
+                        "projectiles": "blocked",
+                        "vision": "blocked",
+                    },
+                    "combat_properties": {
+                        "cover_value": 0.95,
+                        "concealment_value": 0.35,
+                        "firing_ports": True,
+                    },
+                    "surface_elevation": 0,
+                    "interior_elevation": -1,
+                    "firing_ports": [
+                        {
+                            "side": "north",
+                            "positions": [[1, 2], [2, 2]],
+                            "elevation": -1,
+                        }
+                    ],
+                },
+                {
+                    "id": "bridge_000",
+                    "type": "wooden_bridge",
+                    "role": "traversal_structure",
+                    "x": 0,
+                    "y": 4,
+                    "orientation": "east_west",
+                    "shape": "rect_3x1",
+                    "footprint": [[0, 4], [1, 4], [2, 4]],
+                    "collision_footprint": [],
+                    "visual_bounds": {"x": 0, "y": 4, "width": 3, "height": 1},
+                    "sort_anchor": {"x": 1, "y": 4, "elevation": 2},
+                    "draw_layer": "terrain_overlay",
+                    "tags": ["elevation", "bridge", "platform", "traversal"],
+                    "collision_profile": {
+                        "movement": "passable",
+                        "projectiles": "passable",
+                        "vision": "passable",
+                    },
+                    "surface_elevation": 2,
+                },
+                {
+                    "id": "stairs_000",
+                    "type": "stone_stairs",
+                    "role": "elevation_transition",
+                    "x": 4,
+                    "y": 3,
+                    "orientation": "north_south",
+                    "shape": "rect_1x2",
+                    "footprint": [[4, 3], [4, 4]],
+                    "collision_footprint": [],
+                    "tags": ["elevation", "stairs", "transition", "traversal"],
+                    "collision_profile": {
+                        "movement": "passable",
+                        "projectiles": "passable",
+                        "vision": "passable",
+                    },
+                    "surface_elevation": 1,
+                },
+            ],
+        },
+    )
+
+    package = MapPackageLoader().load(package_dir)
+    runtime_map = RuntimeMapBuilder().build(package)
+    watchtower = runtime_map.runtime_objects[0]
+    bunker = runtime_map.runtime_objects[1]
+    bridge = runtime_map.runtime_objects[2]
+    stairs = runtime_map.runtime_objects[3]
+
+    assert watchtower.is_large_runtime_object is True
+    assert watchtower.is_watchtower is True
+    assert watchtower.is_tall_object is True
+    assert watchtower.visual_sort_key == (4, 3, 4)
+    assert runtime_map.runtime_objects_at(TileCoord(4, 2)) == (watchtower,)
+    assert runtime_map.movement_blocker_at(TileCoord(3, 1)) is watchtower
+    assert runtime_map.movement_blocker_at(TileCoord(4, 2)) is None
+    assert TileCoord(3, 1) in runtime_map.movement_blocked_tiles
+    assert TileCoord(4, 2) not in runtime_map.movement_blocked_tiles
+    assert runtime_map.is_tile_walkable(TileCoord(4, 2)) is True
+
+    assert bunker.is_bunker is True
+    assert bunker.has_firing_ports is True
+    assert bunker.interior_elevation == -1
+    assert runtime_map.projectile_blocker_at(TileCoord(2, 3)) is bunker
+    assert runtime_map.vision_blocker_at(TileCoord(2, 3)) is bunker
+    assert runtime_map.is_tile_projectile_blocked(TileCoord(2, 3)) is True
+    assert runtime_map.is_tile_vision_blocked(TileCoord(2, 3)) is True
+
+    assert bridge.is_bridge is True
+    assert bridge.is_elevation_connector is True
+    assert runtime_map.runtime_objects_at(TileCoord(1, 4)) == (bridge,)
+    assert runtime_map.movement_blocker_at(TileCoord(1, 4)) is None
+    assert runtime_map.is_tile_walkable(TileCoord(1, 4)) is True
+
+    assert stairs.is_stairs is True
+    assert stairs.is_elevation_connector is True
+    assert runtime_map.runtime_objects_summary.total_objects == 4
+    assert runtime_map.runtime_objects_summary.footprint_objects == 4
+    assert runtime_map.runtime_objects_summary.collision_footprint_objects == 2
+    assert runtime_map.runtime_objects_summary.large_objects == 4
+    assert runtime_map.runtime_objects_summary.bunker_objects == 1
+    assert runtime_map.runtime_objects_summary.elevation_connectors == 2
+    assert runtime_map.runtime_objects_summary.tall_objects == 2

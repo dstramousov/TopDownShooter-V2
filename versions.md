@@ -868,3 +868,8 @@
 - Added typed runtime-grid accessors for movement, collision, projectile blocking, vision blocking, cover, concealment, and height layers loaded from structured `map_package/` exports.
 - Made runtime movement, projectile blocking, vision blocking, cover, concealment, and height queries prefer runtime-grid data while preserving legacy tile-based fallback behavior.
 - Updated collision speed queries and structured map-package tests so new maps can drive gameplay decisions without changing AI, rendering, or elevation movement rules yet.
+## v0.2.9 -> v0.2.10
+
+- Made large runtime objects use explicit `collision_footprint` data for movement, projectile, and vision blocking while keeping visual `footprint` indexing separate.
+- Added runtime object classification helpers for bunkers, firing ports, bridges, ramps, stairs, platforms, watchtowers, tall objects, and elevation connectors.
+- Added collision-mode object indexes and tests so visually large objects can occupy many tiles without falsely blocking their whole visual footprint.

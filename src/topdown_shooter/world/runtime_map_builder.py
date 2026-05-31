@@ -182,16 +182,31 @@ class RuntimeMapBuilder:
         movement_blocked_tiles = frozenset(
             tile
             for map_object in runtime_objects
-            if map_object.blocks_movement
-            for tile in map_object.footprint
+            for tile in map_object.movement_blocking_tiles
         )
         projectile_blocked_tiles = frozenset(
             tile
             for map_object in runtime_objects
-            if map_object.blocks_projectiles
-            for tile in map_object.footprint
+            for tile in map_object.projectile_blocking_tiles
+        )
+        vision_blocked_tiles = frozenset(
+            tile
+            for map_object in runtime_objects
+            for tile in map_object.vision_blocking_tiles
         )
         runtime_objects_by_tile = self._index_runtime_objects_by_tile(runtime_objects)
+        movement_blocking_objects_by_tile = self._index_runtime_objects_by_blocking_tiles(
+            runtime_objects,
+            blocking_attribute="movement_blocking_tiles",
+        )
+        projectile_blocking_objects_by_tile = self._index_runtime_objects_by_blocking_tiles(
+            runtime_objects,
+            blocking_attribute="projectile_blocking_tiles",
+        )
+        vision_blocking_objects_by_tile = self._index_runtime_objects_by_blocking_tiles(
+            runtime_objects,
+            blocking_attribute="vision_blocking_tiles",
+        )
 
         return RuntimeMap(
             width_tiles=build_input.width,
@@ -214,7 +229,11 @@ class RuntimeMapBuilder:
             elevation_transitions=build_input.elevation_transitions,
             movement_blocked_tiles=movement_blocked_tiles,
             projectile_blocked_tiles=projectile_blocked_tiles,
+            vision_blocked_tiles=vision_blocked_tiles,
             runtime_objects_by_tile=runtime_objects_by_tile,
+            movement_blocking_objects_by_tile=movement_blocking_objects_by_tile,
+            projectile_blocking_objects_by_tile=projectile_blocking_objects_by_tile,
+            vision_blocking_objects_by_tile=vision_blocking_objects_by_tile,
         )
 
     def _require_structured_tile_grid(self, tile_grid_layer: dict[str, Any]) -> list[str]:
@@ -751,6 +770,42 @@ class RuntimeMapBuilder:
         for map_object in runtime_objects:
             for tile in map_object.footprint:
                 objects_by_tile.setdefault(tile, []).append(map_object)
+        return self._freeze_object_tile_index(objects_by_tile)
+
+    def _index_runtime_objects_by_blocking_tiles(
+        self,
+        runtime_objects: tuple[RuntimeMapObject, ...],
+        *,
+        blocking_attribute: str,
+    ) -> Mapping[TileCoord, tuple[RuntimeMapObject, ...]]:
+        """Index runtime objects by collision tiles used by one blocking mode.
+
+        Args:
+            runtime_objects: Parsed runtime objects.
+            blocking_attribute: Runtime object property returning blocking tiles.
+
+        Returns:
+            Immutable mapping from tile coordinates to blocking objects.
+        """
+        objects_by_tile: dict[TileCoord, list[RuntimeMapObject]] = {}
+        for map_object in runtime_objects:
+            blocking_tiles = getattr(map_object, blocking_attribute)
+            for tile in blocking_tiles:
+                objects_by_tile.setdefault(tile, []).append(map_object)
+        return self._freeze_object_tile_index(objects_by_tile)
+
+    def _freeze_object_tile_index(
+        self,
+        objects_by_tile: dict[TileCoord, list[RuntimeMapObject]],
+    ) -> Mapping[TileCoord, tuple[RuntimeMapObject, ...]]:
+        """Freeze an object tile index.
+
+        Args:
+            objects_by_tile: Mutable tile-to-objects index.
+
+        Returns:
+            Read-only tile index.
+        """
         return MappingProxyType(
             {
                 tile: tuple(objects)
@@ -915,6 +970,17 @@ class RuntimeMapBuilder:
             footprint_objects=sum(
                 1 for map_object in runtime_objects if map_object.is_footprint_object
             ),
+            collision_footprint_objects=sum(
+                1 for map_object in runtime_objects if map_object.is_collision_footprint_object
+            ),
+            large_objects=sum(
+                1 for map_object in runtime_objects if map_object.is_large_runtime_object
+            ),
+            bunker_objects=sum(1 for map_object in runtime_objects if map_object.is_bunker),
+            elevation_connectors=sum(
+                1 for map_object in runtime_objects if map_object.is_elevation_connector
+            ),
+            tall_objects=sum(1 for map_object in runtime_objects if map_object.is_tall_object),
             interactive_objects=sum(1 for map_object in runtime_objects if map_object.interactive),
             loot_objects=sum(
                 1 for map_object in runtime_objects if map_object.combat_properties.loot
