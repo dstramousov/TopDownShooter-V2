@@ -862,3 +862,9 @@
 - Extended runtime map/object models to retain new map-package metadata: runtime grids, gameplay zones, elevation features/transitions, collision footprints, visual bounds, draw sorting hints, occlusion hints, interior elevation, and bunker firing ports.
 - Updated map inspection output and tests so the runtime can verify structured map-package data without changing current gameplay behavior.
 - Synchronized stale projectile impact config test expectations with the existing v0.2.7 default runtime config values so the full test suite is green again.
+
+## v0.2.8 -> v0.2.9
+
+- Added typed runtime-grid accessors for movement, collision, projectile blocking, vision blocking, cover, concealment, and height layers loaded from structured `map_package/` exports.
+- Made runtime movement, projectile blocking, vision blocking, cover, concealment, and height queries prefer runtime-grid data while preserving legacy tile-based fallback behavior.
+- Updated collision speed queries and structured map-package tests so new maps can drive gameplay decisions without changing AI, rendering, or elevation movement rules yet.

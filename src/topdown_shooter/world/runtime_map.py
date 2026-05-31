@@ -12,6 +12,14 @@ from topdown_shooter.world.tile import RuntimeTile
 
 GridValue = bool | int | float | str | None
 
+_MOVEMENT_GRID = "movement_grid"
+_COLLISION_GRID = "collision_grid"
+_PROJECTILE_BLOCK_GRID = "projectile_block_grid"
+_VISION_BLOCK_GRID = "vision_block_grid"
+_COVER_GRID = "cover_grid"
+_CONCEALMENT_GRID = "concealment_grid"
+_HEIGHT_GRID = "height_grid"
+
 
 @dataclass(frozen=True, slots=True)
 class RuntimeGridLayer:
@@ -76,6 +84,41 @@ class RuntimeGridSet:
             Runtime grid layer, or ``None`` when absent.
         """
         return self.layers.get(name)
+
+    @property
+    def movement_grid(self) -> RuntimeGridLayer | None:
+        """Return the movement-cost grid layer when available."""
+        return self.get(_MOVEMENT_GRID)
+
+    @property
+    def collision_grid(self) -> RuntimeGridLayer | None:
+        """Return the movement-collision grid layer when available."""
+        return self.get(_COLLISION_GRID)
+
+    @property
+    def projectile_block_grid(self) -> RuntimeGridLayer | None:
+        """Return the projectile-blocking grid layer when available."""
+        return self.get(_PROJECTILE_BLOCK_GRID)
+
+    @property
+    def vision_block_grid(self) -> RuntimeGridLayer | None:
+        """Return the vision-blocking grid layer when available."""
+        return self.get(_VISION_BLOCK_GRID)
+
+    @property
+    def cover_grid(self) -> RuntimeGridLayer | None:
+        """Return the tactical cover-value grid layer when available."""
+        return self.get(_COVER_GRID)
+
+    @property
+    def concealment_grid(self) -> RuntimeGridLayer | None:
+        """Return the tactical concealment-value grid layer when available."""
+        return self.get(_CONCEALMENT_GRID)
+
+    @property
+    def height_grid(self) -> RuntimeGridLayer | None:
+        """Return the integer height grid layer when available."""
+        return self.get(_HEIGHT_GRID)
 
 
 @dataclass(frozen=True, slots=True)
@@ -355,8 +398,8 @@ class RuntimeMap:
         return sum(
             1
             for y, row in enumerate(self.tiles)
-            for x, tile in enumerate(row)
-            if tile.walkable and TileCoord(x=x, y=y) not in self.movement_blocked_tiles
+            for x, _tile in enumerate(row)
+            if self.is_tile_walkable(TileCoord(x=x, y=y))
         )
 
     @property
@@ -373,7 +416,40 @@ class RuntimeMap:
             and tile.y < self.height_tiles
         )
 
+    @property
+    def movement_grid(self) -> RuntimeGridLayer | None:
+        """Return the movement-cost grid layer when available."""
+        return self.runtime_grids.movement_grid
 
+    @property
+    def collision_grid(self) -> RuntimeGridLayer | None:
+        """Return the movement-collision grid layer when available."""
+        return self.runtime_grids.collision_grid
+
+    @property
+    def projectile_block_grid(self) -> RuntimeGridLayer | None:
+        """Return the projectile-blocking grid layer when available."""
+        return self.runtime_grids.projectile_block_grid
+
+    @property
+    def vision_block_grid(self) -> RuntimeGridLayer | None:
+        """Return the vision-blocking grid layer when available."""
+        return self.runtime_grids.vision_block_grid
+
+    @property
+    def cover_grid(self) -> RuntimeGridLayer | None:
+        """Return the tactical cover-value grid layer when available."""
+        return self.runtime_grids.cover_grid
+
+    @property
+    def concealment_grid(self) -> RuntimeGridLayer | None:
+        """Return the tactical concealment-value grid layer when available."""
+        return self.runtime_grids.concealment_grid
+
+    @property
+    def height_grid(self) -> RuntimeGridLayer | None:
+        """Return the integer height grid layer when available."""
+        return self.runtime_grids.height_grid
 
     @property
     def interactive_runtime_objects(self) -> tuple[RuntimeMapObject, ...]:
@@ -471,7 +547,59 @@ class RuntimeMap:
             return False
         if tile in self.movement_blocked_tiles:
             return False
+        collision_blocked = self._boolean_grid_value(self.collision_grid, tile)
+        if collision_blocked is True:
+            return False
+
+        movement_cost = self.movement_cost_at(tile)
+        if movement_cost is not None:
+            return movement_cost > 0.0
+        if self.movement_grid is not None:
+            return False
+        if collision_blocked is False:
+            return True
         return self.tiles[tile.y][tile.x].walkable
+
+    def movement_cost_at(self, tile: TileCoord) -> float | None:
+        """Return the movement cost for a tile.
+
+        Args:
+            tile: Tile coordinate to query.
+
+        Returns:
+            Movement cost from ``movement_grid`` when present, legacy tile cost
+            otherwise, or ``None`` for blocked/unusable tiles.
+        """
+        if not self.is_inside_tile_bounds(tile):
+            return None
+        if tile in self.movement_blocked_tiles:
+            return None
+
+        grid = self.movement_grid
+        if grid is not None:
+            value = grid.value_at(tile)
+            if self._is_number(value) and float(value) > 0.0:
+                return float(value)
+            return None
+
+        tile_data = self.tiles[tile.y][tile.x]
+        if not tile_data.walkable or tile_data.movement_cost is None:
+            return None
+        return float(tile_data.movement_cost)
+
+    def movement_speed_multiplier_at(self, tile: TileCoord) -> float:
+        """Return the movement speed multiplier for a tile.
+
+        Args:
+            tile: Tile coordinate to query.
+
+        Returns:
+            Movement speed multiplier, or ``0.0`` for blocked/outside tiles.
+        """
+        movement_cost = self.movement_cost_at(tile)
+        if movement_cost is None:
+            return 0.0
+        return 1.0 / max(1.0, movement_cost)
 
     def is_tile_projectile_blocked(self, tile: TileCoord) -> bool:
         """Return whether a tile blocks hitscan/projectile rays."""
@@ -479,7 +607,93 @@ class RuntimeMap:
             return True
         if tile in self.projectile_blocked_tiles:
             return True
+        projectile_blocked = self._boolean_grid_value(self.projectile_block_grid, tile)
+        if projectile_blocked is not None:
+            return projectile_blocked
         return not self.tiles[tile.y][tile.x].walkable
+
+    def is_tile_vision_blocked(self, tile: TileCoord) -> bool:
+        """Return whether a tile blocks line-of-sight queries."""
+        if not self.is_inside_tile_bounds(tile):
+            return True
+        for map_object in self.runtime_objects_at(tile):
+            if map_object.blocks_vision:
+                return True
+        vision_blocked = self._boolean_grid_value(self.vision_block_grid, tile)
+        if vision_blocked is not None:
+            return vision_blocked
+        return not self.tiles[tile.y][tile.x].walkable
+
+    def cover_value_at(self, tile: TileCoord) -> float:
+        """Return normalized tactical cover value at a tile."""
+        if not self.is_inside_tile_bounds(tile):
+            return 0.0
+        grid_value = self._float_grid_value(self.cover_grid, tile)
+        object_value = max(
+            (
+                map_object.combat_properties.cover_value
+                for map_object in self.runtime_objects_at(tile)
+            ),
+            default=0.0,
+        )
+        if grid_value is None:
+            return self._clamp_unit_interval(object_value)
+        return self._clamp_unit_interval(max(grid_value, object_value))
+
+    def concealment_value_at(self, tile: TileCoord) -> float:
+        """Return normalized tactical concealment value at a tile."""
+        if not self.is_inside_tile_bounds(tile):
+            return 0.0
+        grid_value = self._float_grid_value(self.concealment_grid, tile)
+        object_value = max(
+            (
+                map_object.combat_properties.concealment_value
+                for map_object in self.runtime_objects_at(tile)
+            ),
+            default=0.0,
+        )
+        if grid_value is None:
+            return self._clamp_unit_interval(object_value)
+        return self._clamp_unit_interval(max(grid_value, object_value))
+
+    def height_level_at(self, tile: TileCoord) -> int:
+        """Return integer height level at a tile."""
+        if not self.is_inside_tile_bounds(tile):
+            return self.elevation.default_level
+        grid_value = self._float_grid_value(self.height_grid, tile)
+        if grid_value is not None:
+            return int(grid_value)
+        return self.elevation.level_at(tile)
+
+    @staticmethod
+    def _boolean_grid_value(grid: RuntimeGridLayer | None, tile: TileCoord) -> bool | None:
+        """Return a boolean runtime grid value when present and valid."""
+        if grid is None:
+            return None
+        value = grid.value_at(tile)
+        if isinstance(value, bool):
+            return value
+        return None
+
+    @staticmethod
+    def _float_grid_value(grid: RuntimeGridLayer | None, tile: TileCoord) -> float | None:
+        """Return a numeric runtime grid value when present and valid."""
+        if grid is None:
+            return None
+        value = grid.value_at(tile)
+        if RuntimeMap._is_number(value):
+            return float(value)
+        return None
+
+    @staticmethod
+    def _is_number(value: GridValue) -> bool:
+        """Return whether a grid scalar is a non-boolean number."""
+        return isinstance(value, int | float) and not isinstance(value, bool)
+
+    @staticmethod
+    def _clamp_unit_interval(value: float) -> float:
+        """Clamp a value to the inclusive ``0.0..1.0`` interval."""
+        return max(0.0, min(1.0, value))
 
 
 def frozen_mapping(source: Mapping[str, int]) -> Mapping[str, int]:

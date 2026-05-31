@@ -316,10 +316,40 @@ def test_runtime_map_builder_loads_structured_map_package_without_legacy_tactica
             "width": 4,
             "height": 3,
             "grids": {
+                "movement_grid": {
+                    "format": "numeric_rows",
+                    "rows": [[1, 1, 1, 1], [1, None, 1, 1], [2, 1, 1, 1]],
+                },
                 "collision_grid": {
                     "format": "boolean_rows",
                     "legend": {"0": "passable", "1": "blocked"},
                     "rows": ["0000", "0100", "0000"],
+                },
+                "projectile_block_grid": {
+                    "format": "boolean_rows",
+                    "legend": {"0": "passable", "1": "blocked"},
+                    "rows": ["0000", "0010", "0000"],
+                },
+                "vision_block_grid": {
+                    "format": "boolean_rows",
+                    "legend": {"0": "passable", "1": "blocked"},
+                    "rows": ["0000", "0001", "0000"],
+                },
+                "cover_grid": {
+                    "format": "numeric_rows",
+                    "rows": [
+                        [0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.95, 0.45, 0.0],
+                        [0.45, 0.0, 0.0, 0.0],
+                    ],
+                },
+                "concealment_grid": {
+                    "format": "numeric_rows",
+                    "rows": [
+                        [0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.35, 0.25, 0.0],
+                        [0.25, 0.0, 0.0, 0.0],
+                    ],
                 },
                 "height_grid": {
                     "format": "integer_rows",
@@ -431,9 +461,26 @@ def test_runtime_map_builder_loads_structured_map_package_without_legacy_tactica
     assert runtime_map.runtime_objects[0].draw_layer == "structure"
     assert runtime_map.runtime_objects[0].sort_anchor["x"] == 2
     assert runtime_map.elevation.level_at(TileCoord(1, 1)) == 2
-    assert runtime_map.runtime_grids.grid_names == ("collision_grid", "height_grid")
-    assert runtime_map.runtime_grids.get("collision_grid") is not None
-    assert runtime_map.runtime_grids.get("collision_grid").value_at(TileCoord(1, 1)) is True
+    assert runtime_map.height_level_at(TileCoord(1, 1)) == 2
+    assert runtime_map.runtime_grids.grid_names == (
+        "movement_grid",
+        "collision_grid",
+        "projectile_block_grid",
+        "vision_block_grid",
+        "cover_grid",
+        "concealment_grid",
+        "height_grid",
+    )
+    assert runtime_map.runtime_grids.get("collision_grid") is runtime_map.collision_grid
+    assert runtime_map.collision_grid is not None
+    assert runtime_map.collision_grid.value_at(TileCoord(1, 1)) is True
+    assert runtime_map.is_tile_walkable(TileCoord(1, 1)) is False
+    assert runtime_map.movement_cost_at(TileCoord(0, 2)) == 2.0
+    assert runtime_map.movement_speed_multiplier_at(TileCoord(0, 2)) == 0.5
+    assert runtime_map.is_tile_projectile_blocked(TileCoord(2, 1)) is True
+    assert runtime_map.is_tile_vision_blocked(TileCoord(3, 1)) is True
+    assert runtime_map.cover_value_at(TileCoord(0, 2)) == 0.45
+    assert runtime_map.concealment_value_at(TileCoord(0, 2)) == 0.25
     assert len(runtime_map.gameplay_zones) == 1
     assert runtime_map.gameplay_zones[0].zone_type == "safe_area"
     assert len(runtime_map.elevation_features) == 1

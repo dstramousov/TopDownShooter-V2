@@ -53,9 +53,7 @@ class TileCollisionService:
             return 0.0
         if tile.y >= self._runtime_map.height_tiles:
             return 0.0
-        if tile in self._runtime_map.movement_blocked_tiles:
-            return 0.0
-        return self._runtime_map.tiles[tile.y][tile.x].movement_speed_multiplier
+        return self._runtime_map.movement_speed_multiplier_at(tile)
 
     def is_circle_walkable(self, center: WorldCoord, radius_px: float) -> bool:
         """Return whether a circle can stand at the world position.

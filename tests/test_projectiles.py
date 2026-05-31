@@ -8,7 +8,12 @@ from topdown_shooter.combat.projectiles import (
 )
 from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.coordinates import TileCoord, WorldCoord
-from topdown_shooter.world.runtime_map import RuntimeMap, TacticalRuntimeSummary
+from topdown_shooter.world.runtime_map import (
+    RuntimeGridLayer,
+    RuntimeGridSet,
+    RuntimeMap,
+    TacticalRuntimeSummary,
+)
 from topdown_shooter.world.tile import RuntimeTile
 
 
@@ -104,6 +109,47 @@ def test_projectile_system_stops_trace_on_blocked_tile() -> None:
     assert system.stats.active_projectiles == 1
     assert system.projectiles[0].position == WorldCoord(16.0, 24.0)
     assert system.stats.active_impacts == 0
+
+
+def test_projectile_system_uses_projectile_block_grid() -> None:
+    """Projectile system should stop traces using structured projectile grids."""
+    runtime_map = RuntimeMap(
+        width_tiles=5,
+        height_tiles=3,
+        tile_size_px=16,
+        tiles=tuple(
+            tuple(RuntimeTile(symbol="+", walkable=True, movement_cost=1) for _x in range(5))
+            for _y in range(3)
+        ),
+        start_tile=TileCoord(0, 1),
+        goal_tile=TileCoord(4, 1),
+        tactical_summary=TacticalRuntimeSummary(
+            combat_zones=0,
+            cover_points=0,
+            choke_points=0,
+            flank_routes=0,
+            enemy_spawn_zones=0,
+            fallback_positions=0,
+        ),
+        runtime_grids=RuntimeGridSet(
+            layers={
+                "projectile_block_grid": RuntimeGridLayer(
+                    name="projectile_block_grid",
+                    rows=(
+                        (False, False, False, False, False),
+                        (False, True, False, False, False),
+                        (False, False, False, False, False),
+                    ),
+                ),
+            },
+        ),
+    )
+    system = ProjectileSystem(TileCollisionService(runtime_map))
+
+    _spawn_default(system, WorldCoord(8.0, 24.0), direction_x=1.0, direction_y=0.0)
+    system.finalize_hitscan_resolution()
+
+    assert system.projectiles[0].position == WorldCoord(16.0, 24.0)
 
 
 def test_projectile_system_spawns_impact_on_blocked_tile_when_enabled() -> None:
