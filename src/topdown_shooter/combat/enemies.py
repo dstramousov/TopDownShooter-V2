@@ -4,9 +4,22 @@ from __future__ import annotations
 
 import math
 import random
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 
-from topdown_shooter.combat.projectiles import ProjectileState
+from topdown_shooter.combat.muzzle import calculate_muzzle_origin
+from topdown_shooter.combat.projectiles import (
+    ProjectileEvent,
+    ProjectileEventType,
+    ProjectileOwner,
+    ProjectileState,
+    ProjectileSystem,
+)
+from topdown_shooter.combat.weapons import (
+    WeaponAmmoState,
+    WeaponDatabase,
+    WeaponDefinition,
+)
 from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.coordinates import (
     TileCoord,
@@ -50,6 +63,10 @@ class EnemyState:
         last_path_target_position: Last world-space path target position.
         tactical_target_position: Assigned tactical surround position.
         tactical_target_age_seconds: Seconds elapsed since the current tactical slot assignment.
+        fire_cooldown_seconds: Seconds until this enemy can fire again.
+        reload_remaining_seconds: Seconds until the current enemy weapon reload completes.
+        current_weapon_id: Currently equipped enemy weapon id.
+        ammo_by_weapon_id: Runtime enemy ammo counters keyed by weapon id.
         home_facing_angle_degrees: Facing angle restored after return-home behavior.
     """
 
@@ -81,6 +98,10 @@ class EnemyState:
     last_path_target_position: WorldCoord | None = None
     tactical_target_position: WorldCoord | None = None
     tactical_target_age_seconds: float = 0.0
+    fire_cooldown_seconds: float = 0.0
+    reload_remaining_seconds: float = 0.0
+    current_weapon_id: str = "ak47"
+    ammo_by_weapon_id: dict[str, WeaponAmmoState] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -100,6 +121,30 @@ class EnemyHitMarkerState:
     lifetime_seconds: float
     age_seconds: float = 0.0
     alive: bool = True
+
+
+@dataclass(slots=True)
+class _PathRebuildBudget:
+    """Mutable per-frame budget for enemy A* path rebuilds."""
+
+    remaining: int
+
+    def try_consume(self) -> bool:
+        """Return whether one path rebuild is allowed and reserve it."""
+        if self.remaining <= 0:
+            return False
+        self.remaining -= 1
+        return True
+
+
+@dataclass(frozen=True, slots=True)
+class _PendingSquadAlert:
+    """Delayed squad alert with separate broadcast and search positions."""
+
+    timer_seconds: float
+    broadcast_origin_position: WorldCoord
+    search_target_position: WorldCoord
+    radius_px: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,7 +254,7 @@ class EnemySystem:
         self._tactical_positioning_enemies = 0
         self._tactical_slots_assigned = 0
         self._returned_home_enemies = 0
-        self._pending_squad_alerts: dict[str, tuple[float, WorldCoord, float]] = {}
+        self._pending_squad_alerts: dict[str, _PendingSquadAlert] = {}
         self._squad_alerts_triggered = 0
         self._sound_alerts_triggered = 0
         self._returned_home_enemies = 0
@@ -423,8 +468,15 @@ class EnemySystem:
             squad_alert_broadcast_radius_px=squad_alert_broadcast_radius_px,
         )
         for enemy in self._enemies:
-            if enemy.alive and enemy.last_hit_age_seconds is not None:
+            if not enemy.alive:
+                continue
+            if enemy.last_hit_age_seconds is not None:
                 enemy.last_hit_age_seconds += frame_time
+            if enemy.fire_cooldown_seconds > 0.0:
+                enemy.fire_cooldown_seconds = max(
+                    0.0,
+                    enemy.fire_cooldown_seconds - frame_time,
+                )
         for marker in self._hit_markers:
             marker.age_seconds += frame_time
             if marker.age_seconds >= marker.lifetime_seconds:
@@ -454,6 +506,7 @@ class EnemySystem:
         path_rebuild_interval_seconds: float = 0.35,
         path_target_rebuild_distance_px: float = 48.0,
         path_max_iterations: int = 2048,
+        path_max_rebuilds_per_frame: int = 4,
         path_waypoint_reach_distance_px: float = 8.0,
         player_speed_px_per_second: float = 0.0,
         tactical_positioning_enabled: bool = False,
@@ -494,6 +547,7 @@ class EnemySystem:
             path_rebuild_interval_seconds: Minimum delay between path rebuilds.
             path_target_rebuild_distance_px: Player movement distance that forces path rebuild.
             path_max_iterations: Maximum A* iterations per path rebuild.
+            path_max_rebuilds_per_frame: Maximum A* path rebuilds allowed per update.
             path_waypoint_reach_distance_px: Distance used to advance path waypoints.
             player_speed_px_per_second: Current player movement speed.
             tactical_positioning_enabled: Whether stationary-player surround slots are used.
@@ -522,6 +576,8 @@ class EnemySystem:
         self._tactical_slots_assigned = 0
         if frame_time <= 0.0 or chase_speed_px_per_second <= 0.0:
             return
+
+        path_rebuild_budget = _PathRebuildBudget(max(0, path_max_rebuilds_per_frame))
 
         self._update_player_stationary_state(
             frame_time=frame_time,
@@ -605,6 +661,7 @@ class EnemySystem:
                         path_rebuild_interval_seconds=path_rebuild_interval_seconds,
                         path_target_rebuild_distance_px=path_target_rebuild_distance_px,
                         path_max_iterations=path_max_iterations,
+                        path_rebuild_budget=path_rebuild_budget,
                         path_waypoint_reach_distance_px=path_waypoint_reach_distance_px,
                         movement_direction_smoothing=movement_direction_smoothing,
                     )
@@ -633,6 +690,7 @@ class EnemySystem:
                         path_rebuild_interval_seconds=path_rebuild_interval_seconds,
                         path_target_rebuild_distance_px=path_target_rebuild_distance_px,
                         path_max_iterations=path_max_iterations,
+                        path_rebuild_budget=path_rebuild_budget,
                         path_waypoint_reach_distance_px=path_waypoint_reach_distance_px,
                         tactical_slot_reached_distance_px=tactical_slot_reached_distance_px,
                         tactical_pressure_active=(
@@ -1174,6 +1232,7 @@ class EnemySystem:
         path_rebuild_interval_seconds: float,
         path_target_rebuild_distance_px: float,
         path_max_iterations: int,
+        path_rebuild_budget: _PathRebuildBudget,
         path_waypoint_reach_distance_px: float,
         tactical_slot_reached_distance_px: float = 18.0,
         tactical_pressure_active: bool = False,
@@ -1202,6 +1261,7 @@ class EnemySystem:
             path_rebuild_interval_seconds: Minimum delay between path rebuilds.
             path_target_rebuild_distance_px: Player movement distance that forces path rebuild.
             path_max_iterations: Maximum A* iterations per path rebuild.
+            path_rebuild_budget: Per-frame budget used to avoid A* spikes.
             path_waypoint_reach_distance_px: Distance used to advance path waypoints.
 
         Returns:
@@ -1243,6 +1303,7 @@ class EnemySystem:
                 path_rebuild_interval_seconds=path_rebuild_interval_seconds,
                 path_target_rebuild_distance_px=path_target_rebuild_distance_px,
                 path_max_iterations=path_max_iterations,
+                path_rebuild_budget=path_rebuild_budget,
                 path_waypoint_reach_distance_px=path_waypoint_reach_distance_px,
                 movement_direction_smoothing=movement_direction_smoothing,
             )
@@ -1290,6 +1351,7 @@ class EnemySystem:
                 path_rebuild_interval_seconds=path_rebuild_interval_seconds,
                 path_target_rebuild_distance_px=path_target_rebuild_distance_px,
                 path_max_iterations=path_max_iterations,
+                path_rebuild_budget=path_rebuild_budget,
                 path_waypoint_reach_distance_px=path_waypoint_reach_distance_px,
                 movement_direction_smoothing=movement_direction_smoothing,
             )
@@ -1363,6 +1425,7 @@ class EnemySystem:
         path_rebuild_interval_seconds: float,
         path_target_rebuild_distance_px: float,
         path_max_iterations: int,
+        path_rebuild_budget: _PathRebuildBudget,
         path_waypoint_reach_distance_px: float,
         movement_direction_smoothing: float,
     ) -> tuple[bool, bool, bool, bool, bool, bool, bool, bool]:
@@ -1379,6 +1442,7 @@ class EnemySystem:
             path_rebuild_interval_seconds: Minimum delay between path rebuilds.
             path_target_rebuild_distance_px: Home movement distance that forces path rebuild.
             path_max_iterations: Maximum A* iterations for route-home queries.
+            path_rebuild_budget: Per-frame budget used to avoid A* spikes.
             path_waypoint_reach_distance_px: Distance used to advance path waypoints.
             movement_direction_smoothing: Blend factor for movement direction.
 
@@ -1407,6 +1471,7 @@ class EnemySystem:
                 path_rebuild_interval_seconds=path_rebuild_interval_seconds,
                 path_target_rebuild_distance_px=path_target_rebuild_distance_px,
                 path_max_iterations=path_max_iterations,
+                path_rebuild_budget=path_rebuild_budget,
                 path_waypoint_reach_distance_px=path_waypoint_reach_distance_px,
                 movement_direction_smoothing=movement_direction_smoothing,
             )
@@ -1492,6 +1557,7 @@ class EnemySystem:
         path_rebuild_interval_seconds: float,
         path_target_rebuild_distance_px: float,
         path_max_iterations: int,
+        path_rebuild_budget: _PathRebuildBudget,
         path_waypoint_reach_distance_px: float,
         movement_direction_smoothing: float,
     ) -> tuple[bool, bool, bool, bool, bool, bool, bool, bool]:
@@ -1509,6 +1575,7 @@ class EnemySystem:
             path_rebuild_interval_seconds: Minimum delay between path rebuilds.
             path_target_rebuild_distance_px: Player movement distance that forces path rebuild.
             path_max_iterations: Maximum A* iterations per path rebuild.
+            path_rebuild_budget: Per-frame budget used to avoid A* spikes.
             path_waypoint_reach_distance_px: Distance used to advance path waypoints.
             movement_direction_smoothing: Blend factor for path movement direction.
 
@@ -1518,11 +1585,15 @@ class EnemySystem:
         enemy.path_rebuild_timer_seconds -= frame_time
         rebuilt = False
         failed_path = False
-        if EnemySystem._should_rebuild_enemy_path(
-            enemy=enemy,
-            player_position=player_position,
-            path_target_rebuild_distance_px=path_target_rebuild_distance_px,
-        ) or enemy.path_rebuild_timer_seconds <= 0.0:
+        needs_rebuild = (
+            EnemySystem._should_rebuild_enemy_path(
+                enemy=enemy,
+                player_position=player_position,
+                path_target_rebuild_distance_px=path_target_rebuild_distance_px,
+            )
+            or enemy.path_rebuild_timer_seconds <= 0.0
+        )
+        if needs_rebuild and path_rebuild_budget.try_consume():
             rebuilt, failed_path = EnemySystem._rebuild_enemy_path(
                 enemy=enemy,
                 player_position=player_position,
@@ -1616,7 +1687,10 @@ class EnemySystem:
         start_tile = world_to_tile(enemy.world_position, tile_size_px)
         goal_tile = world_to_tile(player_position, tile_size_px)
         result = pathfinder.find_path(start_tile, goal_tile, max_iterations=path_max_iterations)
-        enemy.path_rebuild_timer_seconds = max(0.0, path_rebuild_interval_seconds)
+        enemy.path_rebuild_timer_seconds = EnemySystem._path_rebuild_delay_for_enemy(
+            enemy=enemy,
+            path_rebuild_interval_seconds=path_rebuild_interval_seconds,
+        )
         enemy.last_path_target_position = player_position
         if not result.tiles:
             EnemySystem._clear_enemy_path(enemy)
@@ -1624,6 +1698,20 @@ class EnemySystem:
         enemy.path_tiles = result.tiles
         enemy.path_waypoint_index = 1 if len(result.tiles) > 1 else 0
         return True, False
+
+    @staticmethod
+    def _path_rebuild_delay_for_enemy(
+        enemy: EnemyState,
+        path_rebuild_interval_seconds: float,
+    ) -> float:
+        """Return a deterministic staggered delay before the next path rebuild."""
+        safe_interval = max(0.0, path_rebuild_interval_seconds)
+        if safe_interval <= 0.0:
+            return 0.0
+        stable_hash = sum(ord(character) for character in enemy.enemy_id)
+        jitter_fraction = (stable_hash % 7) / 20.0
+        return safe_interval * (1.0 + jitter_fraction)
+
 
     @staticmethod
     def _current_path_waypoint(
@@ -1998,18 +2086,23 @@ class EnemySystem:
             squad_alert_broadcast_radius_px: Radius for nearby squad alert fallback.
 
         Returns:
-            Number of enemies newly alerted by sound.
+            Number of enemies newly alerted or re-tasked by sound.
         """
         if noise_radius_px <= 0.0:
             return 0
         alerted_count = 0
         for enemy in self._enemies:
-            if not enemy.alive or enemy.alerted:
+            if not enemy.alive:
+                continue
+            if enemy.alerted and enemy.awareness_state == "engaged":
                 continue
             dx = enemy.world_position.x - origin.x
             dy = enemy.world_position.y - origin.y
             if math.hypot(dx, dy) > noise_radius_px:
                 continue
+            was_alerted = enemy.alerted
+            was_search_target = enemy.last_seen_player_position
+            was_state = enemy.awareness_state
             self._alert_enemy(
                 enemy,
                 squad_alert_broadcast_delay_seconds=squad_alert_broadcast_delay_seconds,
@@ -2017,9 +2110,304 @@ class EnemySystem:
                 awareness_state="searching",
                 last_seen_player_position=origin,
             )
-            alerted_count += 1
+            if (
+                not was_alerted
+                or was_state != enemy.awareness_state
+                or was_search_target != enemy.last_seen_player_position
+            ):
+                alerted_count += 1
         self._sound_alerts_triggered += alerted_count
         return alerted_count
+
+
+    def fire_at_player(
+        self,
+        *,
+        player_position: WorldCoord,
+        projectile_system: ProjectileSystem,
+        collision_service: TileCollisionService,
+        weapon_database: WeaponDatabase,
+        frame_time: float,
+        max_fire_distance_px: float,
+        muzzle_offset_px: float,
+        line_of_sight_sample_step_px: float,
+        primary_weapon_id: str = "ak47",
+        fallback_weapon_id: str = "pistol",
+        aim_error_degrees: float = 0.0,
+        rng: random.Random | None = None,
+    ) -> int:
+        """Spawn enemy shots using shared weapon definitions and per-enemy ammo.
+
+        Args:
+            player_position: Current player world position.
+            projectile_system: Shot system receiving hostile shot traces.
+            collision_service: Collision service used for line-of-sight checks.
+            weapon_database: Shared weapon database used by the player and enemies.
+            frame_time: Current frame duration used to progress enemy reloads.
+            max_fire_distance_px: Maximum distance where enemies are allowed to fire.
+            muzzle_offset_px: Forward spawn offset from the enemy center.
+            line_of_sight_sample_step_px: Sampling step for blocked-tile checks.
+            primary_weapon_id: Enemy primary weapon id from the shared database.
+            fallback_weapon_id: Enemy fallback weapon id from the shared database.
+            aim_error_degrees: Additional full enemy aim error cone in degrees.
+            rng: Optional random source for deterministic tests.
+
+        Returns:
+            Number of hostile fire events spawned this update.
+        """
+        if (
+            frame_time < 0.0
+            or max_fire_distance_px <= 0.0
+            or muzzle_offset_px < 0.0
+            or line_of_sight_sample_step_px <= 0.0
+        ):
+            return 0
+
+        shots_fired = 0
+        random_source = rng if rng is not None else random
+        for enemy in self._enemies:
+            if not enemy.alive:
+                continue
+            self._ensure_enemy_weapon_state(
+                enemy=enemy,
+                weapon_database=weapon_database,
+                primary_weapon_id=primary_weapon_id,
+                fallback_weapon_id=fallback_weapon_id,
+            )
+            self._advance_enemy_reload(
+                enemy=enemy,
+                weapon_database=weapon_database,
+                frame_time=frame_time,
+            )
+            if enemy.awareness_state != "engaged" or enemy.fire_cooldown_seconds > 0.0:
+                continue
+
+            direction_x = player_position.x - enemy.world_position.x
+            direction_y = player_position.y - enemy.world_position.y
+            distance = math.hypot(direction_x, direction_y)
+            if distance <= 0.0001 or distance > max_fire_distance_px:
+                continue
+
+            normalized_x = direction_x / distance
+            normalized_y = direction_y / distance
+            if not EnemySystem._has_line_of_sight(
+                start=enemy.world_position,
+                end=player_position,
+                collision_service=collision_service,
+                sample_step_px=line_of_sight_sample_step_px,
+            ):
+                continue
+
+            weapon = self._resolve_enemy_fire_weapon(
+                enemy=enemy,
+                weapon_database=weapon_database,
+                primary_weapon_id=primary_weapon_id,
+                fallback_weapon_id=fallback_weapon_id,
+            )
+            if weapon is None:
+                continue
+
+            origin = calculate_muzzle_origin(
+                actor_position=enemy.world_position,
+                direction_x=normalized_x,
+                direction_y=normalized_y,
+                muzzle_offset_px=muzzle_offset_px,
+            )
+            if not self._fire_enemy_weapon_once(
+                enemy=enemy,
+                weapon=weapon,
+                projectile_system=projectile_system,
+                origin=origin,
+                direction_x=normalized_x,
+                direction_y=normalized_y,
+                aim_error_degrees=aim_error_degrees,
+                rng=random_source,
+            ):
+                continue
+            enemy.fire_cooldown_seconds = weapon.fire_interval_seconds
+            shots_fired += 1
+        return shots_fired
+
+    @staticmethod
+    def _ensure_enemy_weapon_state(
+        *,
+        enemy: EnemyState,
+        weapon_database: WeaponDatabase,
+        primary_weapon_id: str,
+        fallback_weapon_id: str,
+    ) -> None:
+        """Initialize per-enemy ammo counters from the shared weapon database."""
+        safe_primary_weapon = weapon_database.get(primary_weapon_id)
+        safe_fallback_weapon = weapon_database.get(fallback_weapon_id)
+        weapon_ids = (safe_primary_weapon.weapon_id, safe_fallback_weapon.weapon_id)
+        for weapon_id in weapon_ids:
+            if weapon_id in enemy.ammo_by_weapon_id:
+                continue
+            weapon = weapon_database.get(weapon_id)
+            enemy.ammo_by_weapon_id[weapon_id] = WeaponAmmoState(
+                ammo_in_magazine=weapon.magazine_size,
+                reserve_ammo=weapon.initial_reserve_ammo,
+            )
+        if enemy.current_weapon_id not in enemy.ammo_by_weapon_id:
+            enemy.current_weapon_id = safe_primary_weapon.weapon_id
+
+    @staticmethod
+    def _advance_enemy_reload(
+        *,
+        enemy: EnemyState,
+        weapon_database: WeaponDatabase,
+        frame_time: float,
+    ) -> None:
+        """Advance an enemy reload timer and load ammo when it completes."""
+        if frame_time <= 0.0 or enemy.reload_remaining_seconds <= 0.0:
+            return
+        enemy.reload_remaining_seconds = max(0.0, enemy.reload_remaining_seconds - frame_time)
+        if enemy.reload_remaining_seconds > 0.0:
+            return
+        weapon = weapon_database.get(enemy.current_weapon_id)
+        EnemySystem._finish_enemy_reload(enemy, weapon)
+
+    @staticmethod
+    def _finish_enemy_reload(enemy: EnemyState, weapon: WeaponDefinition) -> None:
+        """Finish reloading one enemy weapon from its reserve ammo."""
+        ammo = enemy.ammo_by_weapon_id[weapon.weapon_id]
+        missing_ammo = weapon.magazine_size - ammo.ammo_in_magazine
+        if missing_ammo <= 0:
+            return
+        if ammo.reserve_ammo is None:
+            ammo.ammo_in_magazine = weapon.magazine_size
+            return
+        if ammo.reserve_ammo <= 0:
+            return
+        loaded = min(missing_ammo, ammo.reserve_ammo)
+        ammo.ammo_in_magazine += loaded
+        ammo.reserve_ammo -= loaded
+
+    @staticmethod
+    def _resolve_enemy_fire_weapon(
+        *,
+        enemy: EnemyState,
+        weapon_database: WeaponDatabase,
+        primary_weapon_id: str,
+        fallback_weapon_id: str,
+    ) -> WeaponDefinition | None:
+        """Return the enemy weapon that can fire now, starting reloads when needed."""
+        primary_weapon = weapon_database.get(primary_weapon_id)
+        fallback_weapon = weapon_database.get(fallback_weapon_id)
+        current_weapon = weapon_database.get(enemy.current_weapon_id)
+        if EnemySystem._enemy_weapon_can_fire(enemy, current_weapon):
+            return current_weapon
+        if EnemySystem._enemy_weapon_can_reload(enemy, current_weapon):
+            EnemySystem._start_enemy_reload(enemy, current_weapon)
+            return None
+        if current_weapon.weapon_id == primary_weapon.weapon_id:
+            enemy.current_weapon_id = fallback_weapon.weapon_id
+            enemy.reload_remaining_seconds = 0.0
+            if EnemySystem._enemy_weapon_can_fire(enemy, fallback_weapon):
+                return fallback_weapon
+            if EnemySystem._enemy_weapon_can_reload(enemy, fallback_weapon):
+                EnemySystem._start_enemy_reload(enemy, fallback_weapon)
+        return None
+
+    @staticmethod
+    def _enemy_weapon_can_fire(enemy: EnemyState, weapon: WeaponDefinition) -> bool:
+        """Return whether an enemy weapon has magazine ammo ready now."""
+        ammo = enemy.ammo_by_weapon_id[weapon.weapon_id]
+        return enemy.reload_remaining_seconds <= 0.0 and ammo.ammo_in_magazine > 0
+
+    @staticmethod
+    def _enemy_weapon_can_reload(enemy: EnemyState, weapon: WeaponDefinition) -> bool:
+        """Return whether an enemy weapon can start a reload."""
+        ammo = enemy.ammo_by_weapon_id[weapon.weapon_id]
+        if ammo.ammo_in_magazine >= weapon.magazine_size:
+            return False
+        return ammo.reserve_ammo is None or ammo.reserve_ammo > 0
+
+    @staticmethod
+    def _start_enemy_reload(enemy: EnemyState, weapon: WeaponDefinition) -> None:
+        """Start an enemy weapon reload if no reload is already active."""
+        if enemy.reload_remaining_seconds <= 0.0:
+            enemy.reload_remaining_seconds = weapon.reload_time_seconds
+
+    @staticmethod
+    def _fire_enemy_weapon_once(
+        *,
+        enemy: EnemyState,
+        weapon: WeaponDefinition,
+        projectile_system: ProjectileSystem,
+        origin: WorldCoord,
+        direction_x: float,
+        direction_y: float,
+        aim_error_degrees: float,
+        rng: object,
+    ) -> bool:
+        """Consume one enemy magazine round and spawn weapon-defined shot traces."""
+        ammo = enemy.ammo_by_weapon_id[weapon.weapon_id]
+        if ammo.ammo_in_magazine <= 0:
+            return False
+        ammo.ammo_in_magazine -= 1
+        total_spread_degrees = max(0.0, weapon.spread_degrees) + max(0.0, aim_error_degrees)
+        spawned_any = False
+        for _shot_index in range(weapon.shots_per_fire):
+            shot_direction_x, shot_direction_y = EnemySystem._apply_fire_spread(
+                direction_x,
+                direction_y,
+                total_spread_degrees,
+                rng,
+            )
+            spawned = projectile_system.spawn(
+                origin=origin,
+                direction_x=shot_direction_x,
+                direction_y=shot_direction_y,
+                max_distance_px=weapon.shot_range_px,
+                trace_lifetime_seconds=weapon.tracer_lifetime_seconds,
+                radius_px=weapon.shot_radius_px,
+                damage=weapon.damage,
+                owner=ProjectileOwner.ENEMY,
+                visual_profile=weapon.visual_profile,
+            )
+            spawned_any = spawned_any or spawned
+        return spawned_any
+
+    def apply_radial_damage(
+        self,
+        *,
+        center: WorldCoord,
+        radius_px: float,
+        center_damage: float,
+        edge_damage: float,
+    ) -> int:
+        """Apply linear radial damage to active enemies.
+
+        Args:
+            center: Explosion center in world pixels.
+            radius_px: Maximum damage radius in world pixels.
+            center_damage: Damage at the exact explosion center.
+            edge_damage: Damage at the outer radius edge.
+
+        Returns:
+            Number of enemies damaged by the explosion.
+        """
+        if radius_px <= 0.0 or center_damage <= 0.0 or edge_damage < 0.0:
+            return 0
+        damaged = 0
+        damage_span = max(0.0, center_damage - edge_damage)
+        for enemy in self._enemies:
+            if not enemy.alive:
+                continue
+            distance = math.hypot(
+                enemy.world_position.x - center.x,
+                enemy.world_position.y - center.y,
+            )
+            if distance > radius_px:
+                continue
+            falloff = max(0.0, min(1.0, 1.0 - distance / radius_px))
+            damage = edge_damage + damage_span * falloff
+            self._damage_enemy(enemy, damage)
+            self._spawn_hit_marker(enemy.world_position)
+            damaged += 1
+        self._enemies = [enemy for enemy in self._enemies if enemy.alive]
+        return damaged
 
     def apply_projectile_hits(
         self,
@@ -2027,19 +2415,21 @@ class EnemySystem:
         enemy_collision_radius_px: float,
         squad_alert_broadcast_delay_seconds: float = 0.0,
         squad_alert_broadcast_radius_px: float = 0.0,
+        projectile_event_recorder: Callable[[ProjectileEvent], None] | None = None,
     ) -> None:
-        """Apply projectile damage to enemies and kill consumed projectiles.
+        """Apply hitscan shot damage to enemies and consume damaging traces.
 
         Args:
-            projectiles: Active projectile states to test against enemies.
+            projectiles: Active shot traces to test against enemies.
             enemy_collision_radius_px: Enemy collision radius in world pixels.
             squad_alert_broadcast_delay_seconds: Delay before squadmates are alerted.
             squad_alert_broadcast_radius_px: Radius for nearby squad alert fallback.
+            projectile_event_recorder: Optional callback for projectile hit events.
         """
         if enemy_collision_radius_px <= 0.0:
             return
         for projectile in projectiles:
-            if not projectile.alive:
+            if not projectile.damage_active or projectile.owner != ProjectileOwner.PLAYER:
                 continue
             for enemy in self._enemies:
                 if not enemy.alive:
@@ -2048,11 +2438,35 @@ class EnemySystem:
                     self._damage_enemy(
                         enemy,
                         projectile.damage,
+                        last_seen_player_position=projectile.previous_position,
                         squad_alert_broadcast_delay_seconds=squad_alert_broadcast_delay_seconds,
                         squad_alert_broadcast_radius_px=squad_alert_broadcast_radius_px,
                     )
-                    projectile.alive = False
-                    self._spawn_hit_marker(enemy.world_position)
+                    projectile.damage_active = False
+                    if projectile_event_recorder is not None:
+                        hit_position = EnemySystem._closest_point_on_segment(
+                            point=enemy.world_position,
+                            start=projectile.previous_position,
+                            end=projectile.position,
+                        )
+                        projectile_event_recorder(
+                            ProjectileEvent(
+                                event_type=ProjectileEventType.HIT_ENEMY,
+                                position=hit_position,
+                                owner=ProjectileOwner.PLAYER,
+                                damage=projectile.damage,
+                                direction_x=projectile.direction_x,
+                                direction_y=projectile.direction_y,
+                                visual_profile=projectile.visual_profile,
+                            ),
+                        )
+                    self._spawn_hit_marker(
+                        EnemySystem._closest_point_on_segment(
+                            point=enemy.world_position,
+                            start=projectile.previous_position,
+                            end=projectile.position,
+                        ),
+                    )
                     break
         self._enemies = [enemy for enemy in self._enemies if enemy.alive]
 
@@ -2060,6 +2474,7 @@ class EnemySystem:
         self,
         enemy: EnemyState,
         damage: float,
+        last_seen_player_position: WorldCoord | None = None,
         squad_alert_broadcast_delay_seconds: float = 0.0,
         squad_alert_broadcast_radius_px: float = 0.0,
     ) -> None:
@@ -2068,6 +2483,7 @@ class EnemySystem:
         Args:
             enemy: Enemy receiving damage.
             damage: Damage amount.
+            last_seen_player_position: Threat source position used for search behavior.
             squad_alert_broadcast_delay_seconds: Delay before squadmates are alerted.
             squad_alert_broadcast_radius_px: Radius for nearby squad alert fallback.
         """
@@ -2078,7 +2494,7 @@ class EnemySystem:
             squad_alert_broadcast_delay_seconds=squad_alert_broadcast_delay_seconds,
             squad_alert_broadcast_radius_px=squad_alert_broadcast_radius_px,
             awareness_state="searching",
-            last_seen_player_position=enemy.world_position,
+            last_seen_player_position=last_seen_player_position or enemy.world_position,
         )
         enemy.health = max(0.0, enemy.health - damage)
         enemy.last_hit_age_seconds = 0.0
@@ -2107,17 +2523,19 @@ class EnemySystem:
         if not enemy.alive:
             return
         was_alerted = enemy.alerted
+        previous_state = enemy.awareness_state
         enemy.alerted = True
         EnemySystem._set_enemy_awareness(
             enemy,
             awareness_state,
             last_seen_player_position,
         )
-        if was_alerted:
+        if was_alerted and previous_state != "returning":
             return
         self._schedule_squad_alert(
             spawn_id=enemy.spawn_id,
-            origin_position=enemy.world_position,
+            broadcast_origin_position=enemy.world_position,
+            search_target_position=last_seen_player_position or enemy.world_position,
             delay_seconds=squad_alert_broadcast_delay_seconds,
             radius_px=squad_alert_broadcast_radius_px,
         )
@@ -2125,7 +2543,8 @@ class EnemySystem:
     def _schedule_squad_alert(
         self,
         spawn_id: str,
-        origin_position: WorldCoord,
+        broadcast_origin_position: WorldCoord,
+        search_target_position: WorldCoord,
         delay_seconds: float,
         radius_px: float,
     ) -> None:
@@ -2133,27 +2552,30 @@ class EnemySystem:
 
         Args:
             spawn_id: Source spawn id shared by squad members.
-            origin_position: Position of the enemy that raised the alert.
+            broadcast_origin_position: Position of the enemy that raised the alert.
+            search_target_position: Stimulus position squadmates should investigate.
             delay_seconds: Broadcast delay in seconds.
             radius_px: Nearby-enemy fallback radius in world pixels.
         """
-        if not self._has_unalerted_squadmates(spawn_id, origin_position, radius_px):
+        if not self._has_unalerted_squadmates(spawn_id, broadcast_origin_position, radius_px):
             return
         safe_delay = max(0.0, delay_seconds)
         safe_radius = max(0.0, radius_px)
         if safe_delay <= 0.0:
             self._squad_alerts_triggered += self._alert_squad(
                 spawn_id,
-                origin_position,
+                broadcast_origin_position,
+                search_target_position,
                 safe_radius,
             )
             return
         previous_alert = self._pending_squad_alerts.get(spawn_id)
-        if previous_alert is None or safe_delay < previous_alert[0]:
-            self._pending_squad_alerts[spawn_id] = (
-                safe_delay,
-                origin_position,
-                safe_radius,
+        if previous_alert is None or safe_delay < previous_alert.timer_seconds:
+            self._pending_squad_alerts[spawn_id] = _PendingSquadAlert(
+                timer_seconds=safe_delay,
+                broadcast_origin_position=broadcast_origin_position,
+                search_target_position=search_target_position,
+                radius_px=safe_radius,
             )
 
     def _update_pending_squad_alerts(
@@ -2173,39 +2595,50 @@ class EnemySystem:
             return
         max_delay = max(0.0, squad_alert_broadcast_delay_seconds)
         max_radius = max(0.0, squad_alert_broadcast_radius_px)
-        ready_alerts: list[tuple[str, WorldCoord, float]] = []
-        for spawn_id, (timer_seconds, origin_position, radius_px) in tuple(
-            self._pending_squad_alerts.items(),
-        ):
-            next_timer = min(timer_seconds, max_delay) - frame_time if max_delay > 0.0 else 0.0
-            next_radius = max(radius_px, max_radius)
-            if next_timer <= 0.0:
-                ready_alerts.append((spawn_id, origin_position, next_radius))
-                continue
-            self._pending_squad_alerts[spawn_id] = (
-                next_timer,
-                origin_position,
-                next_radius,
+        ready_alerts: list[tuple[str, WorldCoord, WorldCoord, float]] = []
+        for spawn_id, pending_alert in tuple(self._pending_squad_alerts.items()):
+            next_timer = (
+                min(pending_alert.timer_seconds, max_delay) - frame_time
+                if max_delay > 0.0
+                else 0.0
             )
-        for spawn_id, origin_position, radius_px in ready_alerts:
+            next_radius = max(pending_alert.radius_px, max_radius)
+            if next_timer <= 0.0:
+                ready_alerts.append((
+                    spawn_id,
+                    pending_alert.broadcast_origin_position,
+                    pending_alert.search_target_position,
+                    next_radius,
+                ))
+                continue
+            self._pending_squad_alerts[spawn_id] = _PendingSquadAlert(
+                timer_seconds=next_timer,
+                broadcast_origin_position=pending_alert.broadcast_origin_position,
+                search_target_position=pending_alert.search_target_position,
+                radius_px=next_radius,
+            )
+        for spawn_id, broadcast_origin_position, search_target_position, radius_px in ready_alerts:
             self._pending_squad_alerts.pop(spawn_id, None)
             self._squad_alerts_triggered += self._alert_squad(
                 spawn_id,
-                origin_position,
+                broadcast_origin_position,
+                search_target_position,
                 radius_px,
             )
 
     def _alert_squad(
         self,
         spawn_id: str,
-        origin_position: WorldCoord,
+        broadcast_origin_position: WorldCoord,
+        search_target_position: WorldCoord,
         radius_px: float,
     ) -> int:
         """Alert every alive squadmate or nearby enemy in broadcast range.
 
         Args:
             spawn_id: Source spawn id shared by squad members.
-            origin_position: Position of the enemy that raised the alert.
+            broadcast_origin_position: Position of the enemy that raised the alert.
+            search_target_position: Stimulus position squadmates should investigate.
             radius_px: Nearby-enemy fallback radius in world pixels.
 
         Returns:
@@ -2215,10 +2648,15 @@ class EnemySystem:
         for squadmate in self._enemies:
             if not squadmate.alive or squadmate.alerted:
                 continue
-            if not self._is_squad_alert_target(squadmate, spawn_id, origin_position, radius_px):
+            if not self._is_squad_alert_target(
+                squadmate,
+                spawn_id,
+                broadcast_origin_position,
+                radius_px,
+            ):
                 continue
             squadmate.alerted = True
-            EnemySystem._set_enemy_searching(squadmate, origin_position)
+            EnemySystem._set_enemy_searching(squadmate, search_target_position)
             alerted_count += 1
         return alerted_count
 
@@ -2310,9 +2748,10 @@ class EnemySystem:
         enemy.awareness_state = "searching"
         if last_seen_player_position is not None:
             enemy.last_seen_player_position = last_seen_player_position
-        enemy.time_since_player_seen_seconds = max(0.0, enemy.time_since_player_seen_seconds)
+        enemy.time_since_player_seen_seconds = 0.0
         enemy.tactical_target_position = None
         enemy.tactical_target_age_seconds = 0.0
+        EnemySystem._clear_enemy_path(enemy)
 
     @staticmethod
     def _set_enemy_returning(enemy: EnemyState) -> None:
@@ -2514,6 +2953,60 @@ class EnemySystem:
         dx = point.x - closest_x
         dy = point.y - closest_y
         return dx * dx + dy * dy
+
+    @staticmethod
+    def _closest_point_on_segment(
+        point: WorldCoord,
+        start: WorldCoord,
+        end: WorldCoord,
+    ) -> WorldCoord:
+        """Return the closest point on a segment to a world point.
+
+        Args:
+            point: Point coordinate.
+            start: Segment start coordinate.
+            end: Segment end coordinate.
+
+        Returns:
+            Closest point on the segment in world pixels.
+        """
+        segment_x = end.x - start.x
+        segment_y = end.y - start.y
+        segment_length_squared = segment_x * segment_x + segment_y * segment_y
+        if segment_length_squared <= 0.0:
+            return end
+        point_x = point.x - start.x
+        point_y = point.y - start.y
+        t = (point_x * segment_x + point_y * segment_y) / segment_length_squared
+        t = min(1.0, max(0.0, t))
+        return WorldCoord(
+            x=start.x + segment_x * t,
+            y=start.y + segment_y * t,
+        )
+
+    @staticmethod
+    def _apply_fire_spread(
+        direction_x: float,
+        direction_y: float,
+        spread_degrees: float,
+        rng: object,
+    ) -> tuple[float, float]:
+        """Apply random angular spread to an enemy shot direction.
+
+        Args:
+            direction_x: Base normalized X direction.
+            direction_y: Base normalized Y direction.
+            spread_degrees: Full spread cone in degrees.
+            rng: Random-like object exposing ``uniform``.
+
+        Returns:
+            Spread-adjusted normalized direction.
+        """
+        if spread_degrees <= 0.0:
+            return direction_x, direction_y
+        offset_degrees = rng.uniform(-spread_degrees / 2.0, spread_degrees / 2.0)
+        angle = math.atan2(direction_y, direction_x) + math.radians(offset_degrees)
+        return math.cos(angle), math.sin(angle)
 
     @staticmethod
     def _build_spawn_seed(raw_spawn: dict[object, object], spawn_index: int) -> int:

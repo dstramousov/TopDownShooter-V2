@@ -4,13 +4,10 @@
   "weapons": [
     {
       "id": "pistol",
+      "visual_profile": "pistol",
       "display_name": "Pistol",
       "slot": 1,
       "fire_rate_rpm": 300.0,
-      "projectile_speed_px_per_second": 1520.0,
-      "projectile_range_px": 720.0,
-      "projectile_lifetime_seconds": 1.5,
-      "projectile_radius_px": 3.0,
       "spread_degrees": 0.0,
       "shots_per_fire": 1,
       "magazine_size": 8,
@@ -18,17 +15,17 @@
       "reload_time_seconds": 0.9,
       "active_movement_speed_multiplier": 1.0,
       "damage": 35.0,
-      "noise_radius_px": 260.0
+      "noise_radius_px": 260.0,
+      "shot_range_px": 720.0,
+      "tracer_lifetime_seconds": 0.075,
+      "shot_radius_px": 3.0
     },
     {
       "id": "ak47",
+      "visual_profile": "ak47",
       "display_name": "AK-47",
       "slot": 2,
       "fire_rate_rpm": 600.0,
-      "projectile_speed_px_per_second": 1840.0,
-      "projectile_range_px": 960.0,
-      "projectile_lifetime_seconds": 1.5,
-      "projectile_radius_px": 3.0,
       "spread_degrees": 4.0,
       "shots_per_fire": 1,
       "magazine_size": 30,
@@ -36,17 +33,17 @@
       "reload_time_seconds": 1.7,
       "active_movement_speed_multiplier": 0.96,
       "damage": 24.0,
-      "noise_radius_px": 420.0
+      "noise_radius_px": 420.0,
+      "shot_range_px": 960.0,
+      "tracer_lifetime_seconds": 0.075,
+      "shot_radius_px": 3.0
     },
     {
       "id": "minigun_m134",
+      "visual_profile": "minigun",
       "display_name": "M134 Minigun",
       "slot": 3,
       "fire_rate_rpm": 3000.0,
-      "projectile_speed_px_per_second": 2200.0,
-      "projectile_range_px": 1040.0,
-      "projectile_lifetime_seconds": 1.5,
-      "projectile_radius_px": 3.0,
       "spread_degrees": 6.0,
       "shots_per_fire": 1,
       "magazine_size": 1000,
@@ -54,7 +51,10 @@
       "reload_time_seconds": 4.5,
       "active_movement_speed_multiplier": 0.75,
       "damage": 12.0,
-      "noise_radius_px": 620.0
+      "noise_radius_px": 620.0,
+      "shot_range_px": 1040.0,
+      "tracer_lifetime_seconds": 0.075,
+      "shot_radius_px": 3.0
     }
   ]
 }

@@ -17,7 +17,14 @@ def build_inspection_summary(package: GeneratedMapPackage, runtime_map: RuntimeM
     manifest = package.manifest
     report = package.validation_report
     tactical = runtime_map.tactical_summary
+    objects = runtime_map.runtime_objects_summary
+    structured_map = package.structured_map
     warning_codes = ", ".join(issue.code for issue in report.warnings) or "none"
+    source_format = "map_package" if structured_map is not None else "legacy tactical_map"
+    map_schema = structured_map.index_schema_version if structured_map is not None else "not loaded"
+    package_schema = (
+        structured_map.package_schema_version if structured_map is not None else "not loaded"
+    )
 
     return "\n".join(
         [
@@ -27,6 +34,9 @@ def build_inspection_summary(package: GeneratedMapPackage, runtime_map: RuntimeM
             f"- generator: {manifest.versions.generator}",
             f"- manifest schema: {manifest.schema_version}",
             f"- tactical schema: {manifest.versions.schemas.get('tactical_map', 'unknown')}",
+            f"- source format: {source_format}",
+            f"- map package schema: {package_schema}",
+            f"- map index schema: {map_schema}",
             f"- profile: {manifest.profile}",
             f"- resolved seed: {manifest.resolved_seed}",
             "",
@@ -45,6 +55,23 @@ def build_inspection_summary(package: GeneratedMapPackage, runtime_map: RuntimeM
             f"- flank routes: {tactical.flank_routes}",
             f"- enemy spawns: {tactical.enemy_spawn_zones}",
             f"- fallback positions: {tactical.fallback_positions}",
+            "",
+            "Runtime objects:",
+            f"- total: {objects.total_objects}",
+            f"- types: {dict(objects.counts_by_type)}",
+            f"- movement blockers: {objects.movement_blockers}",
+            f"- projectile blockers: {objects.projectile_blockers}",
+            f"- footprint objects: {objects.footprint_objects}",
+            f"- interactive objects: {objects.interactive_objects}",
+            f"- loot objects: {objects.loot_objects}",
+            f"- explosive objects: {objects.explosive_objects}",
+            f"- elevation cells: {len(runtime_map.elevation.cells)}",
+            "",
+            "Structured data:",
+            f"- runtime grids: {runtime_map.runtime_grids.grid_names}",
+            f"- gameplay zones: {len(runtime_map.gameplay_zones)}",
+            f"- elevation features: {len(runtime_map.elevation_features)}",
+            f"- elevation transitions: {len(runtime_map.elevation_transitions)}",
             "",
             "Validation:",
             f"- status: {report.status}",

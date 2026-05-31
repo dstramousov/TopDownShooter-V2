@@ -4,15 +4,16 @@ from topdown_shooter.config.runtime_config import RuntimeConfigLoader
 
 
 def test_default_runtime_config_loads_window_and_controls() -> None:
-    """Default runtime config should expose window size and controls."""
+    """Default runtime config should expose window margin and controls."""
     config = RuntimeConfigLoader().load_default()
 
-    assert config.window.width == 1280
-    assert config.window.height == 720
+    assert config.window.width == 0
+    assert config.window.height == 0
+    assert config.window.screen_margin_px == 300
     assert config.window.target_fps == 60
     assert config.controls.quit == "KEY_ESCAPE"
-    assert config.controls.debug_overlay.key == "KEY_D"
-    assert config.controls.debug_overlay.modifiers == ("KEY_LEFT_CONTROL", "KEY_RIGHT_CONTROL")
+    assert config.controls.help == "KEY_F1"
+    assert config.controls.mouse_capture_toggle == "KEY_F10"
     assert config.controls.camera_up == ("KEY_UP",)
     assert config.controls.camera_down == ("KEY_DOWN",)
     assert config.controls.camera_left == ("KEY_LEFT",)
@@ -53,22 +54,38 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.controls.weapon_slot_2 == "KEY_TWO"
     assert config.controls.weapon_slot_3 == "KEY_THREE"
     assert config.weapons.database_path == "res/config/weapons.json"
-    assert config.debug_overlay.enabled_by_default is True
-    assert config.debug_overlay.layout == "right_panel"
-    assert config.debug_overlay.panel_width == 1200
-    assert config.debug_overlay.side_panel_width == 420
-    assert config.debug_overlay.scroll_step_px == 36
-    assert config.debug_overlay.font_path == "res/fonts/PressStart2P-Regular.ttf"
-    assert config.debug_overlay.font_size == 8
-    assert config.debug_overlay.font_spacing == 0.0
-    assert config.debug_overlay.line_spacing == 6
-    assert config.debug_overlay.section_spacing == 12
-    assert config.debug_overlay.column_gap == 32
-    assert config.debug_overlay.label_width == 128
-    assert config.debug_overlay.background_alpha == 120
+    assert config.ui.font_path == "res/fonts/PressStart2P-Regular.ttf"
+    assert config.ui.font_spacing == 0.0
+    assert config.ui.modal_padding == 18
+    assert config.ui.modal_font_size == 8
+    assert config.ui.modal_line_spacing == 6
+    assert config.ui.modal_section_spacing == 12
+    assert config.ui.modal_background_alpha == 120
     assert config.projectile_impacts.enabled is True
-    assert config.projectile_impacts.lifetime_seconds == 0.16
-    assert config.projectile_impacts.radius_px == 5.0
+    assert config.projectile_impacts.lifetime_seconds == 0.56
+    assert config.projectile_impacts.radius_px == 15.0
+    assert config.projectile_impacts.max_lifetime_seconds == 6.0
+    assert config.projectile_impacts.material_effects["stone"].particle_count == 7
+    assert config.projectile_impacts.material_effects["stone"].particle_size_min_px == 2.0
+    assert config.projectile_impacts.material_effects["stone"].particle_size_max_px == 4.0
+    assert config.projectile_impacts.material_effects["stone"].spread_distance_px == 12.0
+    assert config.projectile_impacts.material_effects["stone"].burst_intensity == 7.15
+    assert config.projectile_impacts.material_effects["stone"].decal_enabled is True
+    assert config.projectile_impacts.material_effects["stone"].decal_radius_px == 4.0
+    assert (
+        config.projectile_impacts.material_effects["stone"].decal_lifetime_seconds
+        == 6.0
+    )
+    assert config.projectile_impacts.material_effects["foliage"].decal_enabled is False
+    assert config.shell_ejection.enabled is True
+    assert config.shell_ejection.shell_size_min_px == 1.0
+    assert config.shell_ejection.shell_size_max_px == 4.0
+    assert config.shell_ejection.lifetime_min_seconds == 1.0
+    assert config.shell_ejection.lifetime_max_seconds == 2.0
+    assert config.shell_ejection.ejection_distance_px == 18.0
+    assert config.shell_ejection.ejection_intensity == 1.0
+    assert config.shell_ejection.spread_degrees == 36.0
+    assert config.shell_ejection.max_active_shells == 2048
     assert config.enemies.marker_radius_px == 6
     assert config.enemies.max_health == 100.0
     assert config.enemies.hit_marker_lifetime_seconds == 0.14
@@ -105,11 +122,12 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.enemies.path_rebuild_interval_seconds == 0.35
     assert config.enemies.path_target_rebuild_distance_px == 48.0
     assert config.enemies.path_max_iterations == 2048
+    assert config.enemies.path_max_rebuilds_per_frame == 4
     assert config.enemies.path_waypoint_reach_distance_px == 12.0
     assert config.enemies.draw_enemy_paths is False
     assert config.enemies.max_debug_enemy_paths == 6
     assert config.enemies.debug_enemy_render_distance_px == 900.0
-    assert config.enemies.tactical_positioning_enabled is True
+    assert config.enemies.tactical_positioning_enabled is False
     assert config.enemies.player_stationary_speed_threshold_px_per_second == 12.0
     assert config.enemies.player_stationary_time_seconds == 0.7
     assert config.enemies.tactical_slot_count == 12
@@ -122,15 +140,52 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.enemies.tactical_player_reposition_distance_px == 56.0
     assert config.enemies.draw_tactical_slots is False
     assert config.enemies.max_debug_tactical_slots == 8
-    assert config.fps_counter.enabled is True
-    assert config.fps_counter.position == "top_right"
-    assert config.fps_counter.margin_x == 12
-    assert config.fps_counter.margin_y == 12
-    assert config.fps_counter.font_size == 14
-    assert config.hud.enabled is True
+    assert config.enemies.fire_primary_weapon_id == "ak47"
+    assert config.enemies.fire_fallback_weapon_id == "pistol"
+    assert config.enemies.fire_aim_error_degrees == 8.0
     assert config.hud.position == "top"
     assert config.hud.margin_x == 12
     assert config.hud.margin_y == 12
     assert config.hud.padding == 8
     assert config.hud.font_size == 16
     assert config.hud.background_alpha == 150
+    assert config.render3d.enabled is False
+    assert config.render3d.view_radius_tiles == 35
+    assert config.render3d.tile_size == 1.0
+    assert config.render3d.height_scale == 1.0
+    assert config.render3d.render_mode == "optimized"
+    assert config.render3d.view_mode == "gameplay"
+    assert config.render3d.max_visible_primitives == 1400
+    assert config.render3d.camera.height == 13.0
+    assert config.render3d.camera.distance == 12.0
+    assert config.render3d.camera.top_down_height == 70.0
+    assert config.render3d.camera.top_down_back_offset_tiles == 0.25
+    assert config.render3d.camera.look_ahead_tiles == 5.0
+    assert config.render3d.camera.follow_smoothing == 0.14
+    assert config.render3d.camera.top_down_height == 70.0
+    assert config.render3d.camera.top_down_back_offset_tiles == 0.25
+    assert config.render3d.player_movement.movement_speed_tiles_per_second == 6.0
+    assert config.render3d.player_movement.acceleration_tiles_per_second_squared == 28.0
+    assert config.render3d.player_movement.deceleration_tiles_per_second_squared == 34.0
+    assert config.render3d.projectiles.draw_aim_line is True
+    assert config.render3d.projectiles.aim_line_length_tiles == 8.0
+    assert config.render3d.projectiles.draw_projectiles is True
+    assert config.render3d.projectiles.max_visible_projectiles == 256
+    assert config.render3d.projectiles.projectile_radius_tiles == 0.08
+    assert config.render3d.combat_visuals.draw_projectile_tracers is True
+    assert config.render3d.combat_visuals.projectile_tracer_length_tiles == 2.8
+    assert config.render3d.combat_visuals.draw_impact_rings is False
+    assert config.render3d.combat_visuals.enemy_hit_flash_seconds == 0.12
+    assert config.render3d.combat_visuals.draw_enemy_hit_markers is True
+    assert config.render3d.controls.enemy_vision_toggle == "KEY_O"
+    assert config.render3d.enemy_vision.enabled is False
+    assert config.render3d.enemy_vision.max_visible_cones == 24
+    assert config.render3d.enemy_vision.cone_segments == 8
+    assert config.render3d.enemy_vision.height_tiles == 0.08
+    assert config.render3d.enemy_vision.range_scale == 1.0
+    assert config.render3d.enemy_vision.idle_alpha == 70
+    assert config.render3d.enemy_vision.alert_alpha == 105
+    assert config.render3d.enemy_vision.combat_alpha == 145
+    assert config.render3d.projectiles.projectile_height_tiles == 0.72
+    assert config.render3d.projectiles.draw_impacts is True
+    assert config.render3d.projectiles.impact_height_tiles == 0.55

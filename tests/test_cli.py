@@ -108,3 +108,21 @@ def test_cli_file_path_prints_directory_hint(
     assert exit_code == 1
     assert "The --map path must be a directory, not a file." in captured.err
     assert "--map does not point to a single JSON file" in captured.err
+
+
+def test_cli_run_passes_renderer_to_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CLI should pass the selected renderer backend to run_game."""
+    calls: list[tuple[Path, str]] = []
+
+    def fake_run_game(package_dir: Path, renderer: str = "2d") -> None:
+        calls.append((package_dir, renderer))
+
+    monkeypatch.setattr("topdown_shooter.app.cli.run_game", fake_run_game)
+
+    exit_code = main(["--map", str(tmp_path), "--run", "--renderer", "3d"])
+
+    assert exit_code == 0
+    assert calls == [(tmp_path, "3d")]

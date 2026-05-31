@@ -1,59 +1,84 @@
-"""Standalone FPS counter rendering."""
+"""Small standalone FPS counter rendering."""
 
 from __future__ import annotations
 
-from topdown_shooter.config.runtime_config import FpsCounterConfig, WindowConfig
+from dataclasses import dataclass
+
+from topdown_shooter.config.runtime_config import UiConfig, WindowConfig
+from topdown_shooter.rendering.text import RaylibTextRenderer
+
+_DEFAULT_FONT_SIZE = 12
+_DEFAULT_PADDING = 6
+_DEFAULT_MARGIN_X = 12
+_DEFAULT_MARGIN_Y = 12
+
+
+@dataclass(frozen=True, slots=True)
+class FpsCounterLayout:
+    """Calculated FPS counter layout."""
+
+    x: int
+    y: int
+    width: int
+    height: int
 
 
 class FpsCounter:
-    """Draw a small FPS counter independently from the debug overlay."""
+    """Draw a compact FPS counter in the top-right window corner."""
 
-    def __init__(self, raylib: object, config: FpsCounterConfig, window: WindowConfig) -> None:
-        """Initialize the counter.
+    def __init__(self, raylib: object, window: WindowConfig, ui: UiConfig) -> None:
+        """Initialize the FPS counter renderer.
 
         Args:
             raylib: Imported pyray module.
-            config: FPS counter configuration.
             window: Runtime window configuration.
+            ui: Shared UI display configuration.
         """
         self._raylib = raylib
-        self._config = config
         self._window = window
+        self._font_size = min(max(_DEFAULT_FONT_SIZE, 8), 18)
+        self._text = RaylibTextRenderer(
+            raylib=raylib,
+            font_path=ui.font_path,
+            font_spacing=ui.font_spacing,
+        )
+
+    def unload(self) -> None:
+        """Unload optional raylib resources owned by the counter."""
+        self._text.unload()
 
     def draw(self) -> None:
-        """Draw current FPS when the counter is enabled."""
-        if not self._config.enabled:
-            return
-        text = f"FPS: {self._raylib.get_fps()}"
-        x, y = self._calculate_position(text)
-        self._raylib.draw_text(text, x, y, self._config.font_size, self._raylib.RAYWHITE)
+        """Draw the current FPS value."""
+        text = f"FPS: {int(self._raylib.get_fps())}"
+        layout = self._calculate_layout(text)
+        background = self._raylib.Color(0, 0, 0, 120)
+        self._raylib.draw_rectangle(
+            layout.x,
+            layout.y,
+            layout.width,
+            layout.height,
+            background,
+        )
+        self._text.draw_text(
+            text,
+            layout.x + _DEFAULT_PADDING,
+            layout.y + _DEFAULT_PADDING,
+            self._font_size,
+            self._raylib.RAYWHITE,
+        )
 
-    def _calculate_position(self, text: str) -> tuple[int, int]:
-        """Calculate screen position for the configured counter anchor.
+    def _calculate_layout(self, text: str) -> FpsCounterLayout:
+        """Calculate top-right counter layout.
 
         Args:
-            text: Counter text to measure.
+            text: Text that will be drawn.
 
         Returns:
-            Screen-space ``(x, y)`` position.
+            Calculated counter layout.
         """
-        text_width = self._raylib.measure_text(text, self._config.font_size)
-        text_height = self._config.font_size
-        match self._config.position:
-            case "top_left":
-                return self._config.margin_x, self._config.margin_y
-            case "bottom_left":
-                return (
-                    self._config.margin_x,
-                    self._window.height - self._config.margin_y - text_height,
-                )
-            case "bottom_right":
-                return (
-                    self._window.width - self._config.margin_x - text_width,
-                    self._window.height - self._config.margin_y - text_height,
-                )
-            case _:
-                return (
-                    self._window.width - self._config.margin_x - text_width,
-                    self._config.margin_y,
-                )
+        text_width = self._text.measure_text(text, self._font_size)
+        width = text_width + _DEFAULT_PADDING * 2
+        height = self._font_size + _DEFAULT_PADDING * 2
+        x = max(_DEFAULT_MARGIN_X, self._window.width - _DEFAULT_MARGIN_X - width)
+        y = _DEFAULT_MARGIN_Y
+        return FpsCounterLayout(x=x, y=y, width=width, height=height)

@@ -1,5 +1,6 @@
 # Versions
 
+
 ## v0.0.0 -> v0.0.1
 
 - Added initial project skeleton for TopDownShooter V.2.
@@ -441,3 +442,429 @@
 - Kept optimized render mode as the default viewer mode.
 - Added `T` hotkey and HUD/config support for `optimized` / `per_tile` render modes.
 - Limited per-tile rendering to the camera render radius to avoid full-map draw call spikes.
+
+## v0.0.58 -> v0.0.59
+
+- Added the experimental `render3d` runtime config section for the 3D system branch.
+- Added `--renderer 2d|3d` to select the runtime renderer backend while keeping 2D as the default.
+- Added an isolated `topdown_shooter.experimental.render3d` scaffold with follow camera, scene culling, and a minimal 3D preview renderer.
+- Kept the existing 2D runtime path unchanged unless `--renderer 3d` is explicitly requested.
+
+## v0.0.59 -> v0.0.60
+
+- Reworked the experimental 3D runtime from a static preview into an interactive player-follow preview.
+- Added smoothed 3D camera modes: `1` for top-down view, `2` for low follow view, and `R` to reset smoothing.
+- Added player movement in the 3D experiment with WASD and arrow-key aliases while preserving the 2D runtime path.
+- Improved the 3D player marker with a facing line and added `H` to toggle the 3D debug HUD.
+- Extended the `render3d.camera` config section with top-down camera settings and tuned the default low-follow camera closer to the player.
+
+## v0.0.60 -> v0.0.61
+
+- Changed experimental 3D scene culling to prioritize tiles nearest to the player before applying the visible primitive cap.
+- Limited the 3D ground plane to the current player-centered view bounds instead of drawing one full-map ground slab.
+- Drew the 3D player marker from the continuous world position rather than the integer tile center for smooth movement.
+- Updated the 3D HUD with the player-centered radius tile coordinate.
+
+## v0.0.61 -> v0.0.62
+
+- Added camera-relative movement for the experimental 3D runtime.
+- Added smooth acceleration, deceleration, and visual facing turns for the 3D player marker.
+- Added render3d player movement tuning to the runtime config.
+- Updated the 3D debug HUD to show the new movement mode.
+
+## v0.0.62 -> v0.0.63
+
+- Added smoothed 3D camera look-ahead for the experimental follow view.
+- Shifted the 3D camera anchor toward the player movement direction so the player is not locked to the exact screen center.
+- Added render3d camera tuning for movement look-ahead distance and smoothing.
+- Updated the experimental 3D debug HUD to show the configured camera look-ahead.
+
+## v0.0.63 -> v0.0.64
+
+- Stabilized experimental 3D backpedal handling so backward input keeps the current visual facing instead of forcing a 180-degree turn.
+- Added configurable backpedal-facing settings to the `render3d.player_movement` section.
+- Updated the 3D debug HUD to show stable backpedal behavior.
+
+## v0.0.64 -> v0.0.65
+
+- Добавлен mouse yaw для направления взгляда в экспериментальном 3D-режиме.
+- WASD/стрелки теперь двигают игрока относительно направления взгляда: W/S вперед/назад, A/D strafe.
+- Настройки mouse aim и movement basis вынесены в секцию render3d.player_movement.
+
+## v0.0.65 -> v0.0.66
+
+- Добавлены 3D-маркеры врагов в экспериментальный `--renderer 3d` режим.
+- Враги отрисовываются только внутри player-centered view radius и ограничены отдельным safety cap.
+- Настройки enemy-маркеров вынесены в секцию `render3d.enemies`.
+- HUD экспериментального 3D-режима показывает количество видимых врагов.
+
+## v0.0.66 -> v0.0.67
+
+- Добавлена визуализация aim line в экспериментальном `--renderer 3d` режиме.
+- Добавлены 3D-маркеры projectiles и projectile impact markers внутри player-centered view radius.
+- Подключены существующие `ProjectileSystem` и `WeaponController` к изолированному 3D experiment runtime без изменения 2D-runtime.
+- Настройки projectile/aim-маркеров вынесены в секцию `render3d.projectiles`.
+- HUD экспериментального 3D-режима показывает видимые projectiles, impacts и текущий weapon/ammo.
+
+## v0.0.67 -> v0.0.68
+
+- Улучшена читаемость боя в экспериментальном `--renderer 3d` режиме.
+- Добавлены настраиваемые 3D projectile tracers, impact rings и enemy hit markers.
+- Враги получают короткий hit flash при попадании без изменения AI, урона и 2D-runtime.
+- Настройки вынесены в секцию `render3d.combat_visuals`.
+
+## v0.0.68 -> v0.0.69
+
+- Перенесён reset camera в экспериментальном 3D-режиме с `R` на `C`.
+- `R` оставлена только для reload в экспериментальном 3D renderer-е.
+- Добавлена настройка `render3d.controls.camera_reset` и обновлена подсказка в 3D HUD.
+
+## v0.0.69 -> v0.0.70
+
+- Добавлены режимы отображения экспериментального 3D renderer-а: clean, gameplay и debug.
+- Клавиша `V` переключает view mode без перезапуска 3D-режима.
+- Clean скрывает боевые маркеры и оставляет карту с игроком, Gameplay показывает боевые объекты с компактным HUD, Debug оставляет полный технический HUD.
+- Добавлены настройки `render3d.view_mode` и `render3d.controls.view_mode_toggle`.
+
+## v0.0.70 -> v0.0.71
+
+- Добавлен fake distance fade / псевдоосвещение в экспериментальный 3D-режим.
+- Добавлено переключение distance fade по клавише L.
+- Настройки distance fade вынесены в секцию render3d.distance_fade.
+- HUD показывает состояние distance fade.
+
+
+## v0.0.71 -> v0.0.72
+
+- Добавлена настройка `render3d.distance_fade.fog_density` для управления густотой distance fog в экспериментальном 3D-режиме.
+- Distance fade сделан мягче по умолчанию: дальние тайлы меньше проваливаются в темноту.
+- Формула затемнения теперь использует density-curve, чтобы менять характер нарастания тумана из конфига.
+- HUD экспериментального 3D-режима показывает состояние fog и текущую density.
+
+## v0.0.72 -> v0.0.73
+
+- Добавлен общий combat runtime update pipeline для 2D runtime и экспериментального 3D renderer-а.
+- Экспериментальный `--renderer 3d` теперь использует существующие enemy perception, sound alert, chase movement, pathfinding и tactical positioning update-шаги.
+- Удалено дублирование урезанного projectile/enemy update loop в 3D-режиме без добавления нового AI.
+- 2D runtime переведён на тот же общий helper без изменения поведения рендера.
+
+## v0.0.73 -> v0.0.74
+
+- Добавлены углы обзора противников в экспериментальный 3D renderer.
+- Добавлено переключение enemy vision cones по клавише O.
+- Настройки визуализации вынесены в секцию `render3d.enemy_vision`.
+- Конусы используют существующие параметры enemy perception range/angle и не меняют AI, агр или баланс.
+
+## v0.0.74 -> v0.0.75
+
+- Улучшена читаемость врагов в экспериментальном 3D renderer-е: состояние врага теперь видно по body color, ground-ring, status marker и facing tip.
+- Разделены визуальные состояния idle, alerted/searching, returning и engaged без изменения AI, pathfinding, агра или баланса.
+- 2D runtime и существующая gameplay-логика не изменялись.
+
+## v0.0.75 -> v0.0.76
+
+- Улучшена читаемость окружения в экспериментальном 3D renderer-е: стены, деревья, укрытия и особые walkable-тайлы получили более различимые 3D-силуэты.
+- 3D gameplay HUD переведён на общий 2D-style `PlayerHud`, включая отображение HP, оружия, боезапаса и reload state.
+- HUD/overlay текст в 3D renderer-е теперь использует `res/fonts/PressStart2P-Regular.ttf` через общий `RaylibTextRenderer` с безопасным fallback-ом.
+- AI, pathfinding, collision, генератор карты, combat balance и 2D runtime не изменялись.
+
+## v0.0.76 -> v0.0.77
+
+- Добавлена общая enemy fire интеграция: engaged-враги теперь стреляют hostile projectiles через существующий combat runtime pipeline.
+- ProjectileState получил owner-tag, чтобы player/enemy projectiles корректно маршрутизировались и не наносили friendly fire по врагам.
+- Вражеские projectiles наносят урон игроку через общий runtime helper и визуально отличаются в 3D renderer-е красно-оранжевыми трассерами.
+- AI, pathfinding, tactical positioning, collision и генератор карты не изменялись.
+
+## v0.0.77 -> v0.0.78
+
+- Стартовый размер 2D и экспериментального 3D окна теперь вычисляется по текущему монитору: по 100 px свободного поля с каждой стороны.
+- Окно автоматически центрируется после создания, а runtime `WindowConfig` обновляется до фактического размера, чтобы HUD, FPS, камера и debug overlay считали координаты от нового окна.
+- Добавлен безопасный fallback на старый config-размер, если raylib не отдаёт корректные параметры монитора.
+
+## v0.0.78 -> v0.0.79
+
+- Исправлен сломанный импорт `topdown_shooter.rendering.window_layout` после изменения логики стартового окна.
+- Настройка рамки окна перенесена в `window.screen_margin_px`; старые config-поля `window.width` и `window.height` удалены из runtime config.
+- 2D runtime и экспериментальный 3D renderer используют общий расчёт окна от текущего монитора с одинаковым отступом со всех сторон и без fallback-а на старый config-размер.
+
+## v0.0.79 -> v0.0.80
+
+- Исправлена регрессия auto-sized window layout: 2D HUD, FPS, camera и debug overlay теперь создаются с resolved runtime `WindowConfig`, а не с пустым размером из config.
+- Расчёт размера экрана больше не вызывает `get_current_monitor()` до создания окна, чтобы избежать GLFW selected-monitor warnings и аварийного маленького fallback-окна.
+- Добавлен fallback через tkinter для окружений, где raylib не отдаёт размер монитора до `init_window`.
+- Gameplay, AI, projectiles, HUD-логика и баланс не изменялись.
+
+## v0.0.80 -> v0.0.81
+
+- Исправлено позиционирование auto-sized окна: стартовая позиция теперь повторно применяется в первые кадры после `init_window`, чтобы оконный менеджер Linux не оставлял окно в левом верхнем углу.
+- Расчёт геометрии экрана стал надёжнее: для X11 используется `xrandr --current` с учётом primary-монитора и его origin, затем fallback-и без возврата старых `window.width/window.height` в конфиг.
+- Добавлены тесты для `screen_margin_px`, multi-monitor origin, parsing `xrandr` и применения resolved window position.
+- Gameplay, AI, projectiles, HUD-логика и баланс не изменялись.
+
+## v0.0.81 -> v0.0.82
+
+- Оптимизирована подготовка 3D-сцены: `Render3DSceneBuilder` кэширует snapshot для текущего player tile и не пересобирает видимые тайлы каждый кадр, пока центр culling-а не изменился.
+- Ограничена стоимость 3D-сцены по умолчанию: `view_radius_tiles` снижен до 35, `max_visible_primitives` — до 1400.
+- Enemy vision cones оставлены доступными через `O`, но выключены по умолчанию; дефолтные лимиты снижены до 24 cones и 8 segments.
+- Дальние тайлы больше не рисуют дополнительные outline/detail draw calls, а distance fade для тайлов использует уже посчитанную дистанцию snapshot-а.
+- Gameplay, AI, projectiles, damage, HUD-логика и 2D runtime не изменялись.
+
+
+## v0.0.82 -> v0.0.83
+
+- HUD закреплён как always-on верхняя игровая статусная панель: клавиша `H` больше не управляет HUD, а 2D и 3D используют общий `PlayerHud` с одинаковым layout/config.
+- Debug overlay переведён на единый right-side panel для 2D и 3D, выключен по умолчанию и переключается общей клавишей `F12`.
+- 3D renderer больше не рисует отдельный debug HUD текстом слева; вместо этого он использует общий `DebugOverlay` и добавляет только renderer-specific 3D sections.
+- Настройки HUD/debug overlay оставлены в общих config-блоках, а устаревшие `hud.enabled` и `render3d.show_debug_hud` удалены из runtime config.
+- Standalone FPS counter выключен по умолчанию, чтобы техническая информация жила в debug overlay, а не поверх игрового HUD.
+
+
+## v0.0.83 -> v0.0.84
+
+- Добавлен общий modal UI layer для 2D и 3D: F1 открывает центрированный help overlay и ставит gameplay на паузу.
+- Esc больше не закрывает игру сразу: открывается общее окно подтверждения выхода, повторный Esc или No возвращают в игру, Yes/Enter закрывает приложение.
+- В 3D добавлен F10 для capture/release мыши; F1/Esc автоматически освобождают мышь на время модального overlay и возвращают capture после закрытия.
+- Общие UI-клавиши вынесены в runtime config: `controls.help` и `controls.mouse_capture_toggle`; gameplay, AI, projectiles и баланс не изменялись.
+
+## v0.0.84 -> v0.0.85
+
+- Добавлен отсутствующий общий пакет `src/topdown_shooter/ui`, из-за которого `v0.0.84` падал на импорте `topdown_shooter.ui.runtime_ui`.
+- Восстановлены shared modal UI-компоненты для F1 help overlay, Esc exit confirmation и F12 debug overlay toggle без изменения gameplay-логики.
+- Gameplay, AI, projectiles, HUD-layout и баланс не изменялись.
+
+## v0.0.85 -> v0.0.86
+
+- Отключено стандартное закрытие окна через `Esc` в raylib для 2D и 3D runtime.
+- `Esc` теперь проходит в общий `RuntimeUi` и открывает окно подтверждения выхода вместо мгновенного завершения приложения.
+- Gameplay, AI, projectiles, HUD-layout и баланс не изменялись.
+
+## v0.0.86 -> v0.0.87
+
+- Удалены runtime/cache-файлы из архива проекта: `__pycache__`, `.pyc` и `.pytest_cache`.
+- Удалён устаревший standalone FPS counter и связанный config-блок `fps_counter`; FPS остаётся в общем debug overlay по `F12`.
+- Общая логика разрешения raylib-клавиш/кнопок вынесена в `src/topdown_shooter/rendering/raylib_input.py` и используется 2D, 3D и shared UI.
+- Убран конфликт 3D hotkeys: клавиши `1/2/3` остаются только выбором оружия, старое переключение 3D camera modes через `1/2` удалено.
+- Удалены мёртвые методы и config-поля старой 3D movement-схемы, а также устаревший `run_static_preview()`.
+- Gameplay, AI, projectiles, HUD-layout, баллистика и баланс не изменялись.
+
+## v0.0.87 -> v0.0.88
+
+- Добавлен общий config-блок `ui` для shared UI-шрифта и glyph spacing.
+- `PlayerHud`, `DebugOverlay`, `RuntimeUi`, 2D runtime и 3D renderer больше не берут общий UI-шрифт из `debug_overlay`.
+- Из `debug_overlay` удалены поля `font_path` и `font_spacing`; блок теперь отвечает только за layout/debug-panel параметры.
+- Внешний вид HUD/debug/help/exit overlays и gameplay-логика не изменялись.
+
+
+## v0.0.88 -> v0.0.89
+
+- Правый debug overlay получил фиксированный header с текущей клавишей toggle и положением scroll offset.
+- Скроллируемая область debug overlay теперь начинается ниже header-а, имеет явную высоту viewport-а и не рисует строки поверх заголовка.
+- Добавлен компактный scrollbar для длинного debug overlay; поведение едино для 2D и 3D, настройки продолжают жить в общем `debug_overlay` config-блоке.
+- Убрана дублирующаяся строка `Camera/Target` в debug overlay и исправлено отображение всех трёх weapon slots.
+- Gameplay, AI, projectiles, HUD-layout, баллистика и баланс не изменялись.
+
+
+## v0.0.89 -> v0.0.90
+
+- Добавлены `ProjectileOwner`, `ProjectileEventType` и `ProjectileEvent` как общий фундамент для feedback-событий выстрелов.
+- `ProjectileSystem` теперь накапливает события `SPAWNED`, `HIT_WALL`, `HIT_PLAYER`, `HIT_ENEMY` и `EXPIRED`; события можно забирать через `consume_events()`.
+- Попадания enemy projectile по игроку и player projectile по врагам теперь записываются как projectile feedback events без изменения урона, скорости, cooldown, spread или баланса.
+- 2D renderer теперь визуально различает projectiles игрока и врагов по owner; 3D renderer переведён на общий `ProjectileOwner`.
+- Баллистика, полёт пуль, AI, HUD-layout и gameplay-баланс не изменялись.
+
+## v0.0.90 -> v0.0.91
+
+- Добавлен общий helper расчёта muzzle origin для выстрелов игрока и врагов.
+- Выстрел игрока теперь создаёт projectile из точки перед персонажем через `player.fire_muzzle_offset_px`, а не из центра тела; enemy fire использует тот же helper с существующим `enemies.fire_muzzle_offset_px`.
+- Projectile feedback events дополнены направлением projectile для будущих эффектов выстрелов/попаданий.
+- 2D и 3D renderer теперь используют событие `SPAWNED` для коротких muzzle flash эффектов player/enemy projectiles.
+- Урон, скорость, дальность, spread, fire rate, cooldown, AI, баллистика и баланс не изменялись.
+
+## v0.0.91 -> v0.0.92
+
+- Added shared incoming-hit combat feedback for 2D and 3D.
+- Added player damage screen flash and directional hit indicators from projectile HIT_PLAYER events.
+- Added HUD HP damage pulse without changing weapon or damage balance.
+
+## v0.0.92 -> v0.0.93
+
+- Improved projectile flight visuals without changing projectile mechanics or balance.
+- 2D projectiles now draw owner-colored previous-to-current tracers, fading trail afterimages, and core outlines.
+- 3D projectiles now draw real previous-to-current tracer segments instead of fixed fake tails, plus short fading trail afterimages.
+- Player/enemy projectile colors stay visually distinct in both renderers.
+
+
+## v0.0.93 -> v0.0.94
+
+- Replaced moving bullet projectiles with immediate hitscan shot traces for player and enemy fire.
+- `ProjectileSystem` now resolves rays instantly, keeps short-lived visual traces, and finalizes deferred wall/range events after hit tests.
+- Removed old projectile speed/lifetime config fields from weapon and enemy fire configs; weapons now use `shot_range_px`, `tracer_lifetime_seconds`, and `shot_radius_px`.
+- Existing muzzle flash, hit feedback, impact markers, and 2D/3D tracer rendering now use hitscan traces without changing damage, fire rate, spread, reload, AI, or balance.
+
+
+## v0.0.94 -> v0.0.95
+
+- Added renderer-facing weapon visual profiles for hitscan shot traces.
+- Pistol, AK-47, minigun, and enemy fire now use distinct tracer, trail, and muzzle-flash profiles in 2D and 3D.
+- Added visual profile tags to shot events/traces without changing damage, fire rate, spread, reload, AI, pathfinding, or hit detection.
+
+
+## v0.0.95 -> v0.0.96
+
+- Added runtime map object models for generator-provided gameplay objects and sparse elevation data.
+- RuntimeMapBuilder now parses `runtime_objects`, `runtime_objects_summary`-style counters, and `elevation` from tactical maps without requiring debug PNG layers.
+- Movement collision, pathfinding, and hitscan wall resolution now respect runtime object movement/projectile blockers where the generator marks them as blocking.
+- Added simple 2D and 3D gameplay placeholders for runtime objects without adding AI cover logic, loot pickups, trench stance mechanics, explosions, or balance changes.
+
+
+## v0.0.96 -> v0.0.97
+
+- Runtime object collision now treats generator `collision_profile` as the primary movement/projectile/vision rule source, with legacy boolean fields used as fallback.
+- Runtime maps now index objects by occupied tile and expose movement/projectile blocker queries for gameplay systems.
+- Hitscan wall events now distinguish runtime object blockers via stable `object:<type>:<id>` reasons while keeping the existing HIT_WALL event type.
+- 2D runtime object placeholders now draw more type-specific shapes/colors for caches, trenches, cover props, barrels, and landmarks without adding loot, explosions, crouching, or AI cover logic.
+
+## v0.0.97 -> v0.0.98
+
+- Improved runtime object presence in 2D and 3D with more distinct gameplay placeholders for caches, trenches, logs, barrels, landmarks, stone and scrap cover.
+- Added runtime object interaction baseline queries for nearby interactive objects without enabling loot pickup yet.
+- Extended runtime object diagnostics with interactive, loot and explosive object counters plus nearest interactive object debug info.
+- Kept AI cover logic, crouching, loot pickups, explosions and balance changes out of this patch.
+## v0.0.98 -> v0.0.99
+
+- Added runtime object pickup MVP for `ammo_cache` and `medkit_cache` using the existing interactive object lookup.
+- Added a shared interaction system that consumes used caches, heals the player, and adds reserve ammo to finite-reserve weapons.
+- Added `KEY_SPACE` interaction binding in 2D and 3D plus HUD feedback messages and dimmed consumed cache placeholders.
+- Kept inventory, loot tables, barrel explosions, AI cover logic, crouching, trench protection, and balance changes out of this patch.
+
+
+
+## v0.0.99 -> v0.1.0
+
+- Added a clearer runtime object icon style pass for 2D map rendering: medkit crosses, ammo ticks, barrel warning marks, hatched trenches, bush blobs, log rings and scrap fragments.
+- Improved 3D runtime object readability with semantic markers for medkit caches, ammo caches and risky barrels while keeping cover objects readable through primitive silhouettes.
+- Kept the pass visual-only: no loot value changes, barrel explosions, crouching, trench protection, AI cover logic or balance changes.
+
+## v0.1.0 -> v0.1.1
+
+- Added material-aware projectile impact metadata for hitscan blockers, including runtime object surface material inference.
+- 2D and 3D impact markers now use distinct feedback for stone, wood, metal, foliage, dirt and risky barrel hits.
+- Runtime object blocker hit events keep their stable reason tags while also exposing impact material for renderers and diagnostics.
+- Kept the pass feedback-only: no barrel explosions, damage changes, penetration changes, AI cover logic, crouching or loot value changes.
+
+## v0.1.1 -> v0.1.2
+
+- Added MVP explosions for `rusted_barrel` runtime objects hit by hitscan shots.
+- Added radial explosion damage for player and enemies with one-shot destroyed barrel state.
+- Added material-aware explosion impact markers in 2D and 3D without chain reactions or object destruction propagation.
+
+## v0.1.2 -> v0.1.3
+
+- Added a shared camera feedback system for deterministic shot recoil, nearby impacts, player hits and barrel explosions.
+- Applied camera feedback to both 2D and 3D renderers through renderer-specific camera offsets without changing weapon balance or movement controls.
+- Explosion feedback now produces a stronger distance-based screen punch, while weapon profiles use small clamped recoil impulses for readability.
+- Kept the pass visual-only: no hit-stop, blood/gore, sound ducking, AI cover logic, damage changes or physics recoil.
+
+## v0.1.3 -> v0.1.4
+
+- Added real 3D vegetation model scatter config and renderer integration for tree and low-vegetation tiles.
+- Loaded GLB vegetation models from `res/models` with deterministic per-tile model, rotation, scale and offset selection.
+- Added primitive fallbacks and F12 diagnostics for loaded models, failed paths, visible vegetation tiles, model draws and fallback draws.
+- Kept 2D rendering, gameplay collision, AI, loot, explosions and weapon balance unchanged.
+
+
+## v0.1.4 -> v0.1.5
+
+- Added shared vegetation colormap loading for 3D GLB vegetation models with support for `res/colormap.png`, `res/models/colormap.png`, and the original `Textures/colormap.png` layout.
+- Bound the loaded colormap to vegetation model materials when raylib exposes material texture APIs, avoiding white fallback models when GLB external textures are not resolved automatically.
+- Extended F12 vegetation diagnostics with texture source, texture lookup failures, and textured/untextured draw counters without changing scatter, gameplay collision, AI, loot, explosions, or weapon balance.
+
+## v0.1.5 -> v0.1.6
+
+- Reworked 3D walkable vegetation rendering so model-drawn bushes, flowers and mushrooms skip the full square tile fill.
+- Added small deterministic organic ground patches under rendered vegetation models, including trees, to soften tile-shaped bases.
+- Preserved primitive fallback tiles when vegetation models are unavailable and kept gameplay, 2D rendering, scatter density, AI and weapon balance unchanged.
+
+## v0.1.6 -> v0.1.7
+
+- Removed the runtime debug overlay module and all 2D/3D render-loop calls that built or drew diagnostic overlay rows.
+- Removed `debug_overlay` and `controls.debug_overlay` from the default runtime config and moved modal UI styling to `ui` settings.
+- Updated runtime config loading, controls help, documentation, and tests for the debug-overlay-free runtime.
+
+## v0.1.7 -> v0.1.8
+
+- Removed experimental 3D vegetation GLB scatter rendering from the runtime renderer to eliminate the large vegetation model draw-call budget.
+- Removed vegetation scatter configuration parsing and the `render3d.vegetation` section from the default runtime config.
+- Kept map gameplay, 2D rendering, collision, AI, weapons, and existing model asset files unchanged.
+
+## v0.1.8 -> v0.1.9
+
+- Added a bounded LRU cache for prepared 3D scene snapshots so recently visited center tiles are reused instead of rebuilt.
+- Replaced per-snapshot radius scanning and heap selection with cached nearest-first view-radius offsets.
+- Preserved 3D culling order, map-edge clipping, primitive caps, gameplay state, 2D rendering, AI, weapons, and collision behavior.
+
+## v0.1.9 -> v0.2.0
+
+- Added visible runtime object lists to prepared 3D scene snapshots so the renderer no longer scans every runtime object each frame.
+- Built visible runtime objects through the existing tile occupancy index while preserving stable source ordering and multi-tile object de-duplication.
+- Kept gameplay, collisions, AI, weapons, 2D rendering, and 3D visual output unchanged.
+
+
+## v0.2.0 -> v0.2.1
+
+- Added a compact standalone FPS counter anchored to the top-right corner of both 2D and 3D runtimes.
+- Reused the shared UI font renderer without restoring the removed debug overlay or diagnostic row building.
+- Kept gameplay, rendering budgets, controls, AI, weapons, and runtime config unchanged.
+
+## v0.2.1 -> v0.2.2
+
+- Disabled tactical positioning by default to prevent heavy surround-slot assignment spikes during mass alerts.
+- Added a per-frame enemy A* rebuild budget so alerted groups spread pathfinding work across updates instead of rebuilding every path at once.
+- Added deterministic path rebuild staggering and tests for budgeted path queries without changing rendering, weapons, collisions, or enemy damage.
+
+## v0.2.2 -> v0.2.3
+
+- Fixed enemy hit reactions so damaged enemies search from the incoming shot origin instead of targeting their own position.
+- Allowed returning enemies to be interrupted by new gunshot sounds or hits, resetting stale search timers and clearing return-home paths.
+- Kept squad alert broadcast range based on the alerted enemy while sending squadmates to investigate the actual stimulus position.
+
+## v0.2.3 -> v0.2.4
+
+- Reworked 2D hitscan tracers into short fading streaks instead of full-length laser-like lines with bullet dots.
+- Improved material-aware projectile impact markers for stone, wood, metal, foliage, dirt and explosive surfaces.
+- Added configurable enemy aim spread so engaged enemies no longer fire perfectly at the player center every shot.
+- Moved player/enemy hit feedback positions to the actual closest point on the shot segment instead of always using actor centers.
+## v0.2.4 -> v0.2.5
+
+- Перевёл стрельбу врагов на общую базу оружия: AK-47 как основной ствол и pistol как fallback после полного исчерпания AK-боезапаса.
+- Добавил для врагов отдельный per-enemy ammo/reload state: магазин, резерв и reload теперь работают по параметрам выбранного оружия.
+- Заменил круглые impact-маркеры на короткую фазовую анимацию: flash, материалозависимые debris/sparks/dust и маленький lingering decal.
+- Оставил enemy aim error отдельным параметром поверх weapon spread, чтобы боты не стреляли математически в центр игрока.
+
+## v0.2.5 -> v0.2.6
+
+- Added runtime-configurable material impact particle settings: particle count, size range, spread distance, and burst intensity.
+- Added shell casing ejection visuals for every spawned shot in both 2D and experimental 3D renderers.
+- Synchronized 3D combat visuals with the 2D direction by replacing circular impact rings/spheres with flash and particle-style impact feedback.
+- Kept projectile and weapon gameplay unchanged; the new shell casings and impact particles are visual-only.
+
+
+## v0.2.6 -> v0.2.7
+
+- Added material-configurable impact decals with separate radius and lifetime settings from the short flash/particle phase.
+- Kept impact states alive long enough for lingering hit marks while fading flash and debris on their shorter configured lifetime.
+- Rendered the same small hit mark/decal concept in both 2D and experimental 3D without restoring circular debug markers.
+- Updated default runtime config, Russian configuration docs, and runtime config tests for the new decal fields.
+
+## v0.2.7 -> v0.2.8
+
+- Added structured `map_package/map.json` loading with referenced layer, gameplay, runtime object, runtime grid, gameplay zone, and elevation files while preserving legacy `tactical_map.json` fallback.
+- Extended runtime map/object models to retain new map-package metadata: runtime grids, gameplay zones, elevation features/transitions, collision footprints, visual bounds, draw sorting hints, occlusion hints, interior elevation, and bunker firing ports.
+- Updated map inspection output and tests so the runtime can verify structured map-package data without changing current gameplay behavior.
+- Synchronized stale projectile impact config test expectations with the existing v0.2.7 default runtime config values so the full test suite is green again.
+
+## v0.2.8 -> v0.2.9
+
+- Added typed runtime-grid accessors for movement, collision, projectile blocking, vision blocking, cover, concealment, and height layers loaded from structured `map_package/` exports.
+- Made runtime movement, projectile blocking, vision blocking, cover, concealment, and height queries prefer runtime-grid data while preserving legacy tile-based fallback behavior.
+- Updated collision speed queries and structured map-package tests so new maps can drive gameplay decisions without changing AI, rendering, or elevation movement rules yet.

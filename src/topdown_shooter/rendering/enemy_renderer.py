@@ -104,12 +104,38 @@ class EnemyRenderer:
             self._draw_enemy(enemy)
 
         for marker in hit_markers:
-            x = int(round(marker.position.x))
-            y = int(round(marker.position.y))
-            radius = marker.radius_px
-            self._raylib.draw_circle_lines(x, y, radius, self._raylib.MAGENTA)
-            self._raylib.draw_line(x - int(radius), y, x + int(radius), y, self._raylib.MAGENTA)
-            self._raylib.draw_line(x, y - int(radius), x, y + int(radius), self._raylib.MAGENTA)
+            self._draw_enemy_hit_marker(marker)
+
+    def _draw_enemy_hit_marker(self, marker: EnemyHitMarkerState) -> None:
+        """Draw a small non-debug enemy bullet hit burst."""
+        progress = min(1.0, max(0.0, marker.age_seconds / marker.lifetime_seconds))
+        strength = max(0.0, 1.0 - progress)
+        if strength <= 0.0:
+            return
+        raylib = self._raylib
+        alpha = int(205 * strength)
+        center = raylib.Vector2(marker.position.x, marker.position.y)
+        color = raylib.Color(188, 28, 26, alpha)
+        dark_color = raylib.Color(74, 12, 12, max(0, alpha - 70))
+        radius = max(2.0, marker.radius_px * (0.45 + progress * 0.35))
+        raylib.draw_line_ex(
+            raylib.Vector2(center.x - radius * 0.55, center.y - radius * 0.2),
+            raylib.Vector2(center.x + radius * 0.42, center.y + radius * 0.18),
+            1.5,
+            color,
+        )
+        raylib.draw_line_ex(
+            raylib.Vector2(center.x - radius * 0.18, center.y + radius * 0.48),
+            raylib.Vector2(center.x + radius * 0.2, center.y - radius * 0.38),
+            1.0,
+            dark_color,
+        )
+        self._draw_hit_pixel(center.x + radius * 0.7, center.y - radius * 0.12, color)
+        self._draw_hit_pixel(center.x - radius * 0.5, center.y + radius * 0.45, dark_color)
+
+    def _draw_hit_pixel(self, x: float, y: float, color: object) -> None:
+        """Draw one tiny enemy hit particle."""
+        self._raylib.draw_rectangle(int(round(x)), int(round(y)), 1, 1, color)
 
     def _budget_debug_enemies(
         self,

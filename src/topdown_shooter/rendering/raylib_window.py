@@ -2,19 +2,35 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from topdown_shooter.combat.enemies import EnemySystem
 from topdown_shooter.combat.projectiles import ProjectileSystem
 from topdown_shooter.combat.weapons import WeaponConfigLoader, WeaponController, WeaponState
-from topdown_shooter.config.runtime_config import KeyChordConfig, RuntimeConfig
-from topdown_shooter.debug.overlay import DebugOverlay
+from topdown_shooter.config.runtime_config import RuntimeConfig
+from topdown_shooter.gameplay.camera_feedback import CameraFeedbackSystem
+from topdown_shooter.gameplay.combat_runtime import update_combat_runtime
+from topdown_shooter.gameplay.explosions import RuntimeExplosionSystem
+from topdown_shooter.gameplay.interactions import RuntimeObjectInteractionSystem
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
 from topdown_shooter.rendering.camera import CameraRig
+from topdown_shooter.rendering.combat_feedback import CombatFeedbackOverlay
 from topdown_shooter.rendering.enemy_renderer import EnemyRenderer
 from topdown_shooter.rendering.fps_counter import FpsCounter
 from topdown_shooter.rendering.map_renderer import MapRenderer
+from topdown_shooter.rendering.raylib_input import (
+    RaylibInputResolver,
+    configure_raylib_logging,
+    is_any_key_down,
+)
 from topdown_shooter.rendering.player_hud import PlayerHud
 from topdown_shooter.rendering.player_renderer import PlayerRenderer
 from topdown_shooter.rendering.projectile_renderer import ProjectileRenderer
+from topdown_shooter.rendering.window_layout import (
+    apply_raylib_window_position,
+    resolve_raylib_window_layout,
+)
+from topdown_shooter.ui.runtime_ui import ControlsHelpLine, RuntimeUi
 from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.coordinates import WorldCoord
 from topdown_shooter.world.pathfinding import GridPathfinder
@@ -26,10 +42,6 @@ from topdown_shooter.world.runtime_map import RuntimeMap
 
 class RaylibUnavailableError(RuntimeError):
     """Raised when the raylib Python package is not available."""
-
-
-class InvalidControlBindingError(RuntimeError):
-    """Raised when a configured input binding is not known to raylib."""
 
 
 def import_raylib() -> object:
@@ -55,6 +67,8 @@ def import_raylib() -> object:
 class RaylibWindow:
     """Run a minimal raylib map window."""
 
+    _POSITION_RETRY_FRAMES = 12
+
     def __init__(
         self,
         runtime_map: RuntimeMap,
@@ -70,10 +84,12 @@ class RaylibWindow:
         """
         self._runtime_map = runtime_map
         self._package = package
-        self._config = config
         self._raylib = import_raylib()
-        self._quit_key = self._resolve_key(config.controls.quit)
-        self._debug_overlay_chord = self._resolve_key_chord(config.controls.debug_overlay)
+        self._input = RaylibInputResolver(self._raylib)
+        self._window_layout = resolve_raylib_window_layout(self._raylib, config.window)
+        self._pending_window_position_frames = self._POSITION_RETRY_FRAMES
+        self._config = replace(config, window=self._window_layout.window)
+        config = self._config
         self._camera_up_keys = self._resolve_keys(config.controls.camera_up)
         self._camera_down_keys = self._resolve_keys(config.controls.camera_down)
         self._camera_left_keys = self._resolve_keys(config.controls.camera_left)
@@ -94,13 +110,16 @@ class RaylibWindow:
         self._weapon_slot_1_key = self._resolve_key(config.controls.weapon_slot_1)
         self._weapon_slot_2_key = self._resolve_key(config.controls.weapon_slot_2)
         self._weapon_slot_3_key = self._resolve_key(config.controls.weapon_slot_3)
-        self._debug_overlay_enabled = config.debug_overlay.enabled_by_default
-        self._renderer = MapRenderer(self._raylib)
-        self._fps_counter = FpsCounter(
+        self._interact_key = self._resolve_key(config.controls.interact)
+        self._interaction_system = RuntimeObjectInteractionSystem()
+        self._explosion_system = RuntimeExplosionSystem()
+        self._ui = RuntimeUi(
             raylib=self._raylib,
-            config=config.fps_counter,
-            window=config.window,
+            config=config,
+            renderer_name="2D",
+            help_lines=self._build_help_lines(config),
         )
+        self._renderer = MapRenderer(self._raylib)
         self._player = PlayerState.spawn_at_map_start(
             runtime_map,
             max_health=config.player.max_health,
@@ -117,7 +136,7 @@ class RaylibWindow:
         self._projectile_system = ProjectileSystem(
             collision_service=self._collision_service,
             impact_markers_enabled=config.projectile_impacts.enabled,
-            impact_lifetime_seconds=config.projectile_impacts.lifetime_seconds,
+            impact_lifetime_seconds=config.projectile_impacts.max_lifetime_seconds,
             impact_radius_px=config.projectile_impacts.radius_px,
         )
         weapon_database = WeaponConfigLoader().load(config.weapons.database_path)
@@ -165,19 +184,27 @@ class RaylibWindow:
             marker_radius_px=config.player.marker_radius_px,
             aim_debug=config.aim_debug,
         )
-        self._projectile_renderer = ProjectileRenderer(raylib=self._raylib)
+        self._projectile_renderer = ProjectileRenderer(
+            raylib=self._raylib,
+            impact_config=config.projectile_impacts,
+            shell_ejection_config=config.shell_ejection,
+        )
+        self._combat_feedback = CombatFeedbackOverlay(
+            raylib=self._raylib,
+            window=config.window,
+        )
+        self._camera_feedback = CameraFeedbackSystem()
         self._player_hud = PlayerHud(
             raylib=self._raylib,
             config=config.hud,
             window=config.window,
-            font_path=config.debug_overlay.font_path,
-            font_spacing=config.debug_overlay.font_spacing,
+            font_path=config.ui.font_path,
+            font_spacing=config.ui.font_spacing,
         )
-        self._debug_overlay = DebugOverlay(
+        self._fps_counter = FpsCounter(
             raylib=self._raylib,
-            runtime_map=runtime_map,
-            package=package,
-            config=config,
+            window=config.window,
+            ui=config.ui,
         )
         self._camera_rig = CameraRig(
             runtime_map=runtime_map,
@@ -191,168 +218,89 @@ class RaylibWindow:
         raylib = self._raylib
         self._configure_raylib_logging()
         raylib.init_window(window.width, window.height, window.title)
+        raylib.set_exit_key(raylib.KEY_NULL)
+        self._apply_initial_window_position()
         raylib.set_target_fps(window.target_fps)
 
         try:
             while not raylib.window_should_close():
-                if raylib.is_key_pressed(self._quit_key):
+                self._apply_initial_window_position()
+                ui_input = self._ui.handle_input()
+                if ui_input.should_exit:
                     break
-                if self._is_key_chord_pressed(self._debug_overlay_chord):
-                    self._debug_overlay_enabled = not self._debug_overlay_enabled
                 frame_time = raylib.get_frame_time()
-                self._update_player_controls(frame_time)
-                self._update_camera_controls(frame_time)
                 input_camera = self._camera_rig.build_raylib_camera(raylib)
-                self._update_player_aim(input_camera)
-                self._update_combat_controls(frame_time)
-                self._projectile_system.update(frame_time)
-                self._enemy_system.update(
-                    frame_time,
-                    squad_alert_broadcast_delay_seconds=(
-                        self._config.enemies.squad_alert_broadcast_delay_seconds
-                    ),
-                    squad_alert_broadcast_radius_px=(
-                        self._config.enemies.squad_alert_broadcast_radius_px
-                    ),
-                )
-                if self._weapon_fire_events_last_update > 0:
-                    self._enemy_system.alert_enemies_by_sound(
-                        origin=self._player.world_position,
-                        noise_radius_px=self._weapon_controller.stats.noise_radius_px,
-                        squad_alert_broadcast_delay_seconds=(
-                            self._config.enemies.squad_alert_broadcast_delay_seconds
-                        ),
-                        squad_alert_broadcast_radius_px=(
-                            self._config.enemies.squad_alert_broadcast_radius_px
-                        ),
+                if not ui_input.blocks_gameplay:
+                    self._update_player_controls(frame_time)
+                    self._update_camera_controls(frame_time)
+                    input_camera = self._camera_rig.build_raylib_camera(raylib)
+                    self._update_player_aim(input_camera)
+                    self._update_combat_controls(frame_time)
+                    self._update_interactions(frame_time)
+                    update_combat_runtime(
+                        player=self._player,
+                        enemy_system=self._enemy_system,
+                        projectile_system=self._projectile_system,
+                        weapon_controller=self._weapon_controller,
+                        collision_service=self._collision_service,
+                        pathfinder=self._enemy_pathfinder,
+                        runtime_map=self._runtime_map,
+                        config=self._config,
+                        frame_time=frame_time,
+                        weapon_fire_events=self._weapon_fire_events_last_update,
+                        player_speed_px_per_second=self._player_speed_px_per_second,
                     )
-                self._enemy_system.apply_projectile_hits(
-                    projectiles=self._projectile_system.projectiles,
-                    enemy_collision_radius_px=self._config.enemies.marker_radius_px,
-                    squad_alert_broadcast_delay_seconds=(
-                        self._config.enemies.squad_alert_broadcast_delay_seconds
-                    ),
-                    squad_alert_broadcast_radius_px=(
-                        self._config.enemies.squad_alert_broadcast_radius_px
-                    ),
+                    explosion_results = self._explosion_system.process_projectile_events(
+                        events=self._projectile_system.events,
+                        runtime_map=self._runtime_map,
+                        player=self._player,
+                        enemy_system=self._enemy_system,
+                        projectile_system=self._projectile_system,
+                    )
+                    projectile_events = self._projectile_system.consume_events()
+                    self._projectile_renderer.add_events(projectile_events)
+                    self._combat_feedback.add_events(projectile_events)
+                    self._camera_feedback.add_projectile_events(
+                        projectile_events,
+                        player_position=self._player.world_position,
+                        tile_size_px=self._runtime_map.tile_size_px,
+                    )
+                    self._camera_feedback.add_explosions(
+                        explosion_results,
+                        player_position=self._player.world_position,
+                        tile_size_px=self._runtime_map.tile_size_px,
+                    )
+                    self._camera_rig.update_follow_target(
+                        player_position=self._player.world_position,
+                        frame_time=frame_time,
+                        aim_direction_x=self._player.aim.direction_x,
+                        aim_direction_y=self._player.aim.direction_y,
+                    )
+                active_frame_time = frame_time if not ui_input.blocks_gameplay else 0.0
+                self._camera_feedback.update(active_frame_time)
+                camera_offset = self._camera_feedback.offset
+                camera = self._camera_rig.build_raylib_camera(
+                    raylib,
+                    shake_offset_x=camera_offset.x,
+                    shake_offset_y=camera_offset.y,
                 )
-                self._enemy_system.update_perception(
-                    player_position=self._player.world_position,
-                    collision_service=self._collision_service,
-                    vision_range_px=self._config.enemies.vision_range_px,
-                    vision_angle_degrees=self._config.enemies.vision_angle_degrees,
-                    line_of_sight_sample_step_px=(
-                        self._config.enemies.line_of_sight_sample_step_px
-                    ),
-                    squad_alert_broadcast_delay_seconds=(
-                        self._config.enemies.squad_alert_broadcast_delay_seconds
-                    ),
-                    squad_alert_broadcast_radius_px=(
-                        self._config.enemies.squad_alert_broadcast_radius_px
-                    ),
-                )
-                self._enemy_system.update_chase_movement(
-                    player_position=self._player.world_position,
-                    collision_service=self._collision_service,
-                    frame_time=frame_time,
-                    chase_speed_px_per_second=self._config.enemies.chase_speed_px_per_second,
-                    enemy_collision_radius_px=self._config.enemies.marker_radius_px,
-                    tile_size_px=self._runtime_map.tile_size_px,
-                    preferred_combat_distance_px=(
-                        self._config.enemies.preferred_combat_distance_px
-                    ),
-                    combat_distance_tolerance_px=(
-                        self._config.enemies.combat_distance_tolerance_px
-                    ),
-                    minimum_combat_distance_px=(
-                        self._config.enemies.minimum_combat_distance_px
-                    ),
-                    movement_direction_smoothing=(
-                        self._config.enemies.movement_direction_smoothing
-                    ),
-                    approach_weight=self._config.enemies.approach_weight,
-                    strafe_weight=self._config.enemies.strafe_weight,
-                    retreat_weight=self._config.enemies.retreat_weight,
-                    strafe_switch_min_seconds=(
-                        self._config.enemies.strafe_switch_min_seconds
-                    ),
-                    strafe_switch_max_seconds=(
-                        self._config.enemies.strafe_switch_max_seconds
-                    ),
-                    line_of_sight_sample_step_px=(
-                        self._config.enemies.line_of_sight_sample_step_px
-                    ),
-                    pathfinder=self._enemy_pathfinder,
-                    pathfinding_enabled=self._config.enemies.pathfinding_enabled,
-                    path_rebuild_interval_seconds=(
-                        self._config.enemies.path_rebuild_interval_seconds
-                    ),
-                    path_target_rebuild_distance_px=(
-                        self._config.enemies.path_target_rebuild_distance_px
-                    ),
-                    path_max_iterations=self._config.enemies.path_max_iterations,
-                    path_waypoint_reach_distance_px=(
-                        self._config.enemies.path_waypoint_reach_distance_px
-                    ),
-                    player_speed_px_per_second=self._player_speed_px_per_second,
-                    tactical_positioning_enabled=(
-                        self._config.enemies.tactical_positioning_enabled
-                    ),
-                    player_stationary_speed_threshold_px_per_second=(
-                        self._config.enemies.player_stationary_speed_threshold_px_per_second
-                    ),
-                    player_stationary_time_seconds=(
-                        self._config.enemies.player_stationary_time_seconds
-                    ),
-                    tactical_slot_count=self._config.enemies.tactical_slot_count,
-                    tactical_surround_distance_px=(
-                        self._config.enemies.tactical_surround_distance_px
-                    ),
-                    tactical_reassign_interval_seconds=(
-                        self._config.enemies.tactical_reassign_interval_seconds
-                    ),
-                    tactical_slot_reached_distance_px=(
-                        self._config.enemies.tactical_slot_reached_distance_px
-                    ),
-                    tactical_min_slot_spacing_px=(
-                        self._config.enemies.tactical_min_slot_spacing_px
-                    ),
-                    tactical_min_slot_angle_degrees=(
-                        self._config.enemies.tactical_min_slot_angle_degrees
-                    ),
-                    tactical_slot_commitment_seconds=(
-                        self._config.enemies.tactical_slot_commitment_seconds
-                    ),
-                    tactical_player_reposition_distance_px=(
-                        self._config.enemies.tactical_player_reposition_distance_px
-                    ),
-                    lost_sight_timeout_seconds=(
-                        self._config.enemies.lost_sight_timeout_seconds
-                    ),
-                    return_home_reached_distance_px=(
-                        self._config.enemies.return_home_reached_distance_px
-                    ),
-                )
-                self._projectile_system.prune_dead()
-                self._camera_rig.update_follow_target(
-                    player_position=self._player.world_position,
-                    frame_time=frame_time,
-                    aim_direction_x=self._player.aim.direction_x,
-                    aim_direction_y=self._player.aim.direction_y,
-                )
-                camera = self._camera_rig.build_raylib_camera(raylib)
 
                 raylib.begin_drawing()
                 raylib.clear_background(raylib.BLACK)
                 raylib.begin_mode_2d(camera)
-                render_stats = self._renderer.draw(
+                self._renderer.draw(
                     runtime_map=self._runtime_map,
                     camera=self._camera_rig.state,
                     window_config=self._config.window,
+                    consumed_runtime_object_ids=frozenset(
+                        self._interaction_system.consumed_object_ids
+                        | self._explosion_system.destroyed_object_ids,
+                    ),
                 )
                 self._projectile_renderer.draw(
                     projectiles=self._projectile_system.projectiles,
                     impacts=self._projectile_system.impacts,
+                    frame_time=frame_time,
                 )
                 self._enemy_renderer.draw(
                     enemies=self._enemy_system.enemies,
@@ -361,23 +309,48 @@ class RaylibWindow:
                 )
                 self._player_renderer.draw(self._player)
                 raylib.end_mode_2d()
-                self._player_hud.draw(self._player, self._weapon_controller.stats)
-                if self._debug_overlay_enabled:
-                    self._debug_overlay.draw(
-                        camera=self._camera_rig.state,
-                        raylib_camera=camera,
-                        player=self._player,
-                        render_stats=render_stats,
-                        projectile_stats=self._projectile_system.stats,
-                        weapon_stats=self._weapon_controller.stats,
-                        enemy_stats=self._enemy_system.stats,
-                    )
+                self._combat_feedback.update(frame_time if not ui_input.blocks_gameplay else 0.0)
+                self._player_hud.draw(
+                    self._player,
+                    self._weapon_controller.stats,
+                    damage_pulse=self._combat_feedback.hud_damage_pulse,
+                    status_message=self._interaction_system.active_message,
+                )
+                self._combat_feedback.draw()
                 self._fps_counter.draw()
+                self._ui.draw()
                 raylib.end_drawing()
         finally:
             self._player_hud.unload()
-            self._debug_overlay.unload()
+            self._fps_counter.unload()
+            self._ui.unload()
             raylib.close_window()
+
+
+    @staticmethod
+    def _build_help_lines(config: RuntimeConfig) -> tuple[ControlsHelpLine, ...]:
+        """Build 2D controls help lines from runtime bindings."""
+        return (
+            ControlsHelpLine("W/A/S/D", "move player"),
+            ControlsHelpLine("Mouse", "aim"),
+            ControlsHelpLine(config.controls.fire_primary, "fire"),
+            ControlsHelpLine("1/2/3", "select weapon"),
+            ControlsHelpLine(config.controls.reload, "reload"),
+            ControlsHelpLine(config.controls.interact, "interact / use cache"),
+            ControlsHelpLine("Arrow keys", "pan camera"),
+            ControlsHelpLine("Q/E or wheel", "zoom camera"),
+            ControlsHelpLine(config.controls.camera_reset, "reset camera"),
+            ControlsHelpLine(config.controls.camera_toggle_follow, "toggle follow camera"),
+            ControlsHelpLine(config.controls.help, "pause / controls"),
+            ControlsHelpLine(config.controls.quit, "exit confirmation"),
+        )
+
+    def _apply_initial_window_position(self) -> None:
+        """Re-apply startup window position for window managers that defer placement."""
+        if self._pending_window_position_frames <= 0:
+            return
+        apply_raylib_window_position(self._raylib, self._window_layout)
+        self._pending_window_position_frames -= 1
 
     def _update_player_aim(self, raylib_camera: object) -> None:
         """Update player aim from the current mouse world position.
@@ -413,6 +386,19 @@ class RaylibWindow:
             origin=self._player.world_position,
             direction_x=self._player.aim.direction_x,
             direction_y=self._player.aim.direction_y,
+            muzzle_offset_px=self._config.player.fire_muzzle_offset_px,
+        )
+
+
+    def _update_interactions(self, frame_time: float) -> None:
+        """Apply nearby runtime object interactions for this frame."""
+        self._interaction_system.update(frame_time)
+        if not self._raylib.is_key_pressed(self._interact_key):
+            return
+        self._interaction_system.try_interact(
+            runtime_map=self._runtime_map,
+            player=self._player,
+            weapon_controller=self._weapon_controller,
         )
 
     def _update_player_controls(self, frame_time: float) -> None:
@@ -477,9 +463,7 @@ class RaylibWindow:
             self._camera_rig.zoom_by(-self._config.camera.zoom_step)
         if self._camera_zoom_mouse_wheel_enabled:
             wheel_delta = self._raylib.get_mouse_wheel_move()
-            if wheel_delta != 0.0 and self._debug_overlay_enabled and self._debug_overlay.is_mouse_over_panel():
-                self._debug_overlay.scroll_by_wheel_delta(wheel_delta)
-            elif wheel_delta != 0.0:
+            if wheel_delta != 0.0:
                 self._camera_rig.zoom_by(wheel_delta * self._config.camera.zoom_step)
         if self._raylib.is_key_pressed(self._camera_reset_key):
             self._camera_rig.reset_to_start()
@@ -488,97 +472,21 @@ class RaylibWindow:
 
     def _configure_raylib_logging(self) -> None:
         """Reduce raylib logging noise before opening the window."""
-        set_level = getattr(self._raylib, "set_trace_log_level", None)
-        warning_level = getattr(self._raylib, "LOG_WARNING", None)
-        if callable(set_level) and isinstance(warning_level, int):
-            set_level(warning_level)
+        configure_raylib_logging(self._raylib)
 
     def _resolve_key(self, key_name: str) -> int:
-        """Resolve a configured key name to a raylib key constant.
-
-        Args:
-            key_name: Raylib key constant name, such as ``KEY_ESCAPE``.
-
-        Returns:
-            Raylib key constant value.
-
-        Raises:
-            InvalidControlBindingError: If the key is not available.
-        """
-        key_value = getattr(self._raylib, key_name, None)
-        if not isinstance(key_value, int):
-            raise InvalidControlBindingError(
-                f"Unknown raylib key binding in runtime config: {key_name}",
-            )
-        return key_value
+        """Resolve a configured key name to a raylib key constant."""
+        return self._input.key(key_name)
 
     def _resolve_mouse_button(self, button_name: str) -> int:
-        """Resolve a configured mouse button name to a raylib constant.
-
-        Args:
-            button_name: Raylib mouse button constant name.
-
-        Returns:
-            Raylib mouse button constant value.
-
-        Raises:
-            InvalidControlBindingError: If the mouse button is not available.
-        """
-        button_value = getattr(self._raylib, button_name, None)
-        if not isinstance(button_value, int):
-            raise InvalidControlBindingError(
-                f"Unknown raylib mouse binding in runtime config: {button_name}",
-            )
-        return button_value
+        """Resolve a configured mouse button name to a raylib constant."""
+        return self._input.mouse_button(button_name)
 
     def _resolve_keys(self, key_names: tuple[str, ...]) -> tuple[int, ...]:
-        """Resolve configured key names to raylib key constants.
-
-        Args:
-            key_names: Raylib key constant names.
-
-        Returns:
-            Raylib key constants.
-        """
-        return tuple(self._resolve_key(key_name) for key_name in key_names)
-
-    def _resolve_key_chord(self, chord: KeyChordConfig) -> tuple[int, tuple[int, ...]]:
-        """Resolve a configured key chord to raylib key constants.
-
-        Args:
-            chord: Configured key chord.
-
-        Returns:
-            Main key and modifier keys.
-        """
-        return (
-            self._resolve_key(chord.key),
-            tuple(self._resolve_key(modifier) for modifier in chord.modifiers),
-        )
+        """Resolve configured key names to raylib key constants."""
+        return self._input.keys(key_names)
 
     def _is_any_key_down(self, keys: tuple[int, ...]) -> bool:
-        """Return whether any configured key is currently down.
+        """Return whether any configured key is currently down."""
+        return is_any_key_down(self._raylib, keys)
 
-        Args:
-            keys: Raylib key constants.
-
-        Returns:
-            True if at least one key is down.
-        """
-        return any(self._raylib.is_key_down(key) for key in keys)
-
-    def _is_key_chord_pressed(self, chord: tuple[int, tuple[int, ...]]) -> bool:
-        """Return whether a configured key chord was pressed this frame.
-
-        Args:
-            chord: Main key and modifier keys.
-
-        Returns:
-            True if the chord was pressed.
-        """
-        key, modifiers = chord
-        if not self._raylib.is_key_pressed(key):
-            return False
-        if not modifiers:
-            return True
-        return any(self._raylib.is_key_down(modifier) for modifier in modifiers)

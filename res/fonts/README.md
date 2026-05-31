@@ -2,7 +2,7 @@
 
 Put runtime font assets here.
 
-The default debug overlay configuration expects:
+The default runtime UI configuration expects:
 
 ```text
 res/fonts/PressStart2P-Regular.ttf

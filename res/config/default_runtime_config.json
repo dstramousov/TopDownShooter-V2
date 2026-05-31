@@ -1,9 +1,17 @@
 {
   "window": {
     "title": "TopDownShooter V.2",
-    "width": 1280,
-    "height": 720,
-    "target_fps": 60
+    "target_fps": 60,
+    "screen_margin_px": 300
+  },
+  "ui": {
+    "font_path": "res/fonts/PressStart2P-Regular.ttf",
+    "font_spacing": 0.0,
+    "modal_padding": 18,
+    "modal_font_size": 8,
+    "modal_line_spacing": 6,
+    "modal_section_spacing": 12,
+    "modal_background_alpha": 120
   },
   "camera": {
     "zoom": 1.0,
@@ -24,33 +32,11 @@
     "marker_radius_px": 6,
     "movement_speed_px_per_second": 160.0,
     "collision_radius_px": 5,
-    "max_health": 100
-  },
-  "debug_overlay": {
-    "enabled_by_default": true,
-    "panel_width": 1200,
-    "padding": 18,
-    "font_size": 8,
-    "line_spacing": 6,
-    "section_spacing": 12,
-    "column_gap": 32,
-    "label_width": 128,
-    "background_alpha": 120,
-    "font_path": "res/fonts/PressStart2P-Regular.ttf",
-    "font_spacing": 0.0,
-    "layout": "right_panel",
-    "side_panel_width": 420,
-    "scroll_step_px": 36
+    "max_health": 100,
+    "fire_muzzle_offset_px": 10.0
   },
   "controls": {
     "quit": "KEY_ESCAPE",
-    "debug_overlay": {
-      "key": "KEY_D",
-      "modifiers": [
-        "KEY_LEFT_CONTROL",
-        "KEY_RIGHT_CONTROL"
-      ]
-    },
     "camera_up": [
       "KEY_UP"
     ],
@@ -84,7 +70,10 @@
     "reload": "KEY_R",
     "weapon_slot_1": "KEY_ONE",
     "weapon_slot_2": "KEY_TWO",
-    "weapon_slot_3": "KEY_THREE"
+    "weapon_slot_3": "KEY_THREE",
+    "help": "KEY_F1",
+    "mouse_capture_toggle": "KEY_F10",
+    "interact": "KEY_SPACE"
   },
   "aim_debug": {
     "enabled": true,
@@ -92,23 +81,113 @@
     "marker_radius_px": 4.0,
     "line_thickness_px": 2.0
   },
-  "fps_counter": {
-    "enabled": true,
-    "position": "top_right",
-    "margin_x": 12,
-    "margin_y": 12,
-    "font_size": 14
-  },
   "weapons": {
     "database_path": "res/config/weapons.json"
   },
   "projectile_impacts": {
     "enabled": true,
-    "lifetime_seconds": 0.16,
-    "radius_px": 5.0
+    "lifetime_seconds": 0.56,
+    "radius_px": 15.0,
+    "material_effects": {
+      "default": {
+        "particle_count": 5,
+        "particle_size_px": [
+          1.0,
+          2.0
+        ],
+        "spread_distance_px": 12.0,
+        "burst_intensity": 1.0,
+        "decal_enabled": true,
+        "decal_radius_px": 1.5,
+        "decal_lifetime_seconds": 1.2
+      },
+      "stone": {
+        "particle_count": 7,
+        "particle_size_px": [
+          2.0,
+          4.0
+        ],
+        "spread_distance_px": 12.0,
+        "burst_intensity": 7.15,
+        "decal_enabled": true,
+        "decal_radius_px": 4.0,
+        "decal_lifetime_seconds": 6.0
+      },
+      "wood": {
+        "particle_count": 5,
+        "particle_size_px": [
+          1.0,
+          3.0
+        ],
+        "spread_distance_px": 17.0,
+        "burst_intensity": 1.1,
+        "decal_enabled": true,
+        "decal_radius_px": 2.0,
+        "decal_lifetime_seconds": 1.8
+      },
+      "metal": {
+        "particle_count": 6,
+        "particle_size_px": [
+          1.0,
+          2.0
+        ],
+        "spread_distance_px": 20.0,
+        "burst_intensity": 1.35,
+        "decal_enabled": true,
+        "decal_radius_px": 2.0,
+        "decal_lifetime_seconds": 2.5
+      },
+      "foliage": {
+        "particle_count": 6,
+        "particle_size_px": [
+          1.0,
+          2.0
+        ],
+        "spread_distance_px": 14.0,
+        "burst_intensity": 0.85,
+        "decal_enabled": false,
+        "decal_radius_px": 0.0,
+        "decal_lifetime_seconds": 0.0
+      },
+      "dirt": {
+        "particle_count": 8,
+        "particle_size_px": [
+          2.0,
+          4.0
+        ],
+        "spread_distance_px": 15.0,
+        "burst_intensity": 0.75,
+        "decal_enabled": true,
+        "decal_radius_px": 1.5,
+        "decal_lifetime_seconds": 0.8
+      },
+      "explosive_metal": {
+        "particle_count": 9,
+        "particle_size_px": [
+          1.0,
+          3.0
+        ],
+        "spread_distance_px": 26.0,
+        "burst_intensity": 1.65,
+        "decal_enabled": true,
+        "decal_radius_px": 2.5,
+        "decal_lifetime_seconds": 2.5
+      },
+      "explosion": {
+        "particle_count": 12,
+        "particle_size_px": [
+          2.0,
+          5.0
+        ],
+        "spread_distance_px": 34.0,
+        "burst_intensity": 1.8,
+        "decal_enabled": true,
+        "decal_radius_px": 3.0,
+        "decal_lifetime_seconds": 1.2
+      }
+    }
   },
   "hud": {
-    "enabled": true,
     "position": "top",
     "margin_x": 12,
     "margin_y": 12,
@@ -157,11 +236,12 @@
     "path_rebuild_interval_seconds": 0.35,
     "path_target_rebuild_distance_px": 48.0,
     "path_max_iterations": 2048,
+    "path_max_rebuilds_per_frame": 4,
     "path_waypoint_reach_distance_px": 12.0,
     "draw_enemy_paths": false,
     "max_debug_enemy_paths": 6,
     "debug_enemy_render_distance_px": 900.0,
-    "tactical_positioning_enabled": true,
+    "tactical_positioning_enabled": false,
     "player_stationary_speed_threshold_px_per_second": 12.0,
     "player_stationary_time_seconds": 0.7,
     "tactical_slot_count": 12,
@@ -173,6 +253,106 @@
     "tactical_slot_commitment_seconds": 2.5,
     "tactical_player_reposition_distance_px": 56.0,
     "draw_tactical_slots": false,
-    "max_debug_tactical_slots": 8
+    "max_debug_tactical_slots": 8,
+    "fire_enabled": true,
+    "fire_max_distance_px": 300.0,
+    "fire_muzzle_offset_px": 10.0,
+    "fire_primary_weapon_id": "ak47",
+    "fire_fallback_weapon_id": "pistol",
+    "fire_aim_error_degrees": 8.0
+  },
+  "render3d": {
+    "enabled": false,
+    "view_radius_tiles": 35,
+    "tile_size": 1.0,
+    "height_scale": 1.0,
+    "render_mode": "optimized",
+    "max_visible_primitives": 1400,
+    "camera": {
+      "height": 13.0,
+      "distance": 12.0,
+      "look_ahead_tiles": 5.0,
+      "movement_look_ahead_tiles": 3.5,
+      "look_ahead_smoothing": 0.2,
+      "follow_smoothing": 0.14,
+      "top_down_height": 70.0,
+      "top_down_back_offset_tiles": 0.25
+    },
+    "player_movement": {
+      "movement_speed_tiles_per_second": 6.0,
+      "acceleration_tiles_per_second_squared": 28.0,
+      "deceleration_tiles_per_second_squared": 34.0,
+      "mouse_turn_sensitivity": 0.004,
+      "invert_mouse_x": false
+    },
+    "enemies": {
+      "draw_enemy_markers": true,
+      "max_visible_enemies": 128,
+      "marker_radius_tiles": 0.28,
+      "marker_height_tiles": 1.15,
+      "direction_line_length_tiles": 1.1
+    },
+    "projectiles": {
+      "draw_aim_line": true,
+      "aim_line_length_tiles": 8.0,
+      "draw_projectiles": true,
+      "max_visible_projectiles": 256,
+      "projectile_radius_tiles": 0.08,
+      "projectile_height_tiles": 0.72,
+      "draw_impacts": true,
+      "impact_height_tiles": 0.55
+    },
+    "combat_visuals": {
+      "draw_projectile_tracers": true,
+      "projectile_tracer_length_tiles": 2.8,
+      "projectile_tracer_height_offset_tiles": 0.08,
+      "draw_impact_rings": false,
+      "impact_ring_radius_tiles": 0.34,
+      "impact_ring_height_tiles": 0.08,
+      "enemy_hit_flash_seconds": 0.12,
+      "draw_enemy_hit_markers": true,
+      "max_visible_enemy_hit_markers": 64,
+      "enemy_hit_marker_radius_tiles": 0.34,
+      "enemy_hit_marker_height_tiles": 1.35
+    },
+    "controls": {
+      "camera_reset": "KEY_C",
+      "view_mode_toggle": "KEY_V",
+      "distance_fade_toggle": "KEY_L",
+      "enemy_vision_toggle": "KEY_O"
+    },
+    "view_mode": "gameplay",
+    "distance_fade": {
+      "enabled": true,
+      "fade_start_ratio": 0.25,
+      "min_brightness": 0.25,
+      "fog_density": 2.5,
+      "keep_markers_bright": true
+    },
+    "enemy_vision": {
+      "enabled": false,
+      "max_visible_cones": 24,
+      "cone_segments": 8,
+      "height_tiles": 0.08,
+      "range_scale": 1.0,
+      "idle_alpha": 70,
+      "alert_alpha": 105,
+      "combat_alpha": 145
+    }
+  },
+  "shell_ejection": {
+    "enabled": true,
+    "shell_size_px": [
+      1.0,
+      4.0
+    ],
+    "lifetime_seconds": [
+      1.0,
+      2.0
+    ],
+    "ejection_distance_px": 18.0,
+    "ejection_intensity": 1.0,
+    "spread_degrees": 36.0,
+    "max_active_shells": 2048
   }
 }

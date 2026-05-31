@@ -18,15 +18,17 @@ class WindowConfig:
 
     Attributes:
         title: Window title.
-        width: Window width in pixels.
-        height: Window height in pixels.
         target_fps: Target frames per second.
+        screen_margin_px: Desired free screen margin on every side.
+        width: Resolved runtime window width in pixels.
+        height: Resolved runtime window height in pixels.
     """
 
     title: str
-    width: int
-    height: int
     target_fps: int
+    screen_margin_px: int = 100
+    width: int = 0
+    height: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,12 +75,14 @@ class PlayerConfig:
         movement_speed_px_per_second: Player movement speed in world pixels per second.
         collision_radius_px: Player collision radius in world pixels.
         max_health: Initial and maximum player health points.
+        fire_muzzle_offset_px: Forward projectile spawn offset from player center.
     """
 
     marker_radius_px: int
     movement_speed_px_per_second: float
     collision_radius_px: int
     max_health: int
+    fire_muzzle_offset_px: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,18 +114,97 @@ class WeaponsConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class ImpactParticleConfig:
+    """Material impact particle and decal settings.
+
+    Attributes:
+        particle_count: Number of visible particles emitted by one impact.
+        particle_size_min_px: Minimum particle size in world pixels.
+        particle_size_max_px: Maximum particle size in world pixels.
+        spread_distance_px: Maximum travel distance from the impact center.
+        burst_intensity: Ejection strength multiplier from the impact center.
+        decal_enabled: Whether this material leaves a lingering hit mark.
+        decal_radius_px: Hit mark radius in world pixels.
+        decal_lifetime_seconds: Hit mark lifetime in seconds.
+    """
+
+    particle_count: int
+    particle_size_min_px: float
+    particle_size_max_px: float
+    spread_distance_px: float
+    burst_intensity: float
+    decal_enabled: bool
+    decal_radius_px: float
+    decal_lifetime_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
 class ProjectileImpactConfig:
     """Projectile impact marker settings.
 
     Attributes:
         enabled: Whether blocked projectile hits create short-lived markers.
-        lifetime_seconds: Impact marker lifetime in seconds.
-        radius_px: Impact marker radius in world pixels.
+        lifetime_seconds: Flash and particle lifetime in seconds.
+        radius_px: Flash and particle radius in world pixels.
+        material_effects: Material-specific impact particle and decal settings.
     """
 
     enabled: bool
     lifetime_seconds: float
     radius_px: float
+    material_effects: dict[str, ImpactParticleConfig]
+
+    @property
+    def max_lifetime_seconds(self) -> float:
+        """Return the retention lifetime required by particles and decals."""
+        decal_lifetimes = (
+            effect.decal_lifetime_seconds
+            for effect in self.material_effects.values()
+            if effect.decal_enabled
+        )
+        return max((self.lifetime_seconds, *decal_lifetimes))
+
+
+@dataclass(frozen=True, slots=True)
+class ShellEjectionConfig:
+    """Shell casing ejection visual settings.
+
+    Attributes:
+        enabled: Whether every fired shot emits one visible shell casing.
+        shell_size_min_px: Minimum shell casing size in world pixels.
+        shell_size_max_px: Maximum shell casing size in world pixels.
+        lifetime_min_seconds: Minimum shell casing lifetime.
+        lifetime_max_seconds: Maximum shell casing lifetime.
+        ejection_distance_px: Maximum shell travel distance from the weapon side.
+        ejection_intensity: Ejection strength multiplier from the weapon side.
+        spread_degrees: Directional spread around the right-side ejection normal.
+        max_active_shells: Safety cap for currently retained shell casings.
+    """
+
+    enabled: bool
+    shell_size_min_px: float
+    shell_size_max_px: float
+    lifetime_min_seconds: float
+    lifetime_max_seconds: float
+    ejection_distance_px: float
+    ejection_intensity: float
+    spread_degrees: float
+    max_active_shells: int
+
+
+@dataclass(frozen=True, slots=True)
+class DisabledShellEjectionConfig:
+    """Fallback shell ejection settings used by tests and legacy callers."""
+
+    enabled: bool = False
+    shell_size_min_px: float = 2.0
+    shell_size_max_px: float = 4.0
+    lifetime_min_seconds: float = 1.0
+    lifetime_max_seconds: float = 2.0
+    ejection_distance_px: float = 16.0
+    ejection_intensity: float = 1.0
+    spread_degrees: float = 35.0
+    max_active_shells: int = 2048
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,6 +252,7 @@ class EnemyConfig:
         path_rebuild_interval_seconds: Minimum delay between enemy path rebuilds.
         path_target_rebuild_distance_px: Player movement distance that forces path rebuild.
         path_max_iterations: Maximum A* iterations per enemy path query.
+        path_max_rebuilds_per_frame: Maximum enemy A* path rebuilds allowed per update.
         path_waypoint_reach_distance_px: Distance used to advance enemy path waypoints.
         draw_enemy_paths: Whether debug enemy A* paths are drawn.
         max_debug_enemy_paths: Maximum enemy A* paths drawn per frame. Zero disables them.
@@ -186,6 +270,12 @@ class EnemyConfig:
         tactical_player_reposition_distance_px: Player movement distance that forces slot reassignment.
         draw_tactical_slots: Whether debug tactical target slots are drawn.
         max_debug_tactical_slots: Maximum tactical slot markers drawn per frame. Zero disables them.
+        fire_enabled: Whether engaged enemies can shoot at the player.
+        fire_primary_weapon_id: Initial enemy weapon id from the shared weapon database.
+        fire_fallback_weapon_id: Backup enemy weapon id used when primary ammo is empty.
+        fire_max_distance_px: Maximum distance where enemies are allowed to shoot.
+        fire_muzzle_offset_px: Forward projectile spawn offset from enemy center.
+        fire_aim_error_degrees: Additional enemy-only aim error cone in degrees.
     """
 
     marker_radius_px: int
@@ -228,6 +318,7 @@ class EnemyConfig:
     path_rebuild_interval_seconds: float
     path_target_rebuild_distance_px: float
     path_max_iterations: int
+    path_max_rebuilds_per_frame: int
     path_waypoint_reach_distance_px: float
     draw_enemy_paths: bool
     max_debug_enemy_paths: int
@@ -245,43 +336,35 @@ class EnemyConfig:
     tactical_player_reposition_distance_px: float
     draw_tactical_slots: bool
     max_debug_tactical_slots: int
+    fire_enabled: bool
+    fire_primary_weapon_id: str
+    fire_fallback_weapon_id: str
+    fire_max_distance_px: float
+    fire_muzzle_offset_px: float
+    fire_aim_error_degrees: float
 
 
 @dataclass(frozen=True, slots=True)
-class DebugOverlayConfig:
-    """Debug overlay display settings.
+class UiConfig:
+    """Shared UI display settings.
 
     Attributes:
-        enabled_by_default: Whether the overlay starts enabled.
-        layout: Overlay layout mode. Supported values are ``overlay`` and ``right_panel``.
-        panel_width: Overlay panel width in pixels for the classic overlay layout.
-        side_panel_width: Right-side debug panel width in pixels.
-        scroll_step_px: Scroll distance applied per mouse wheel tick in the right panel.
-        padding: Inner panel padding in pixels.
-        font_path: Relative or absolute path to the optional overlay TTF font.
-        font_size: Text font size in pixels.
+        font_path: Relative or absolute path to the shared UI TTF font.
         font_spacing: Extra spacing between rendered font glyphs.
-        line_spacing: Extra spacing between text lines in pixels.
-        section_spacing: Extra spacing between overlay sections in pixels.
-        column_gap: Horizontal spacing between two overlay columns in pixels.
-        label_width: Reserved label area width in pixels.
-        background_alpha: Panel background alpha value in the 0..255 range.
+        modal_padding: Inner modal panel padding in pixels.
+        modal_font_size: Modal text font size in pixels.
+        modal_line_spacing: Extra spacing between modal text lines in pixels.
+        modal_section_spacing: Extra spacing between modal sections in pixels.
+        modal_background_alpha: Modal panel background alpha value in the 0..255 range.
     """
 
-    enabled_by_default: bool
-    layout: str
-    panel_width: int
-    side_panel_width: int
-    scroll_step_px: int
-    padding: int
     font_path: str
-    font_size: int
     font_spacing: float
-    line_spacing: int
-    section_spacing: int
-    column_gap: int
-    label_width: int
-    background_alpha: int
+    modal_padding: int
+    modal_font_size: int
+    modal_line_spacing: int
+    modal_section_spacing: int
+    modal_background_alpha: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -289,7 +372,6 @@ class HudConfig:
     """Player HUD display settings.
 
     Attributes:
-        enabled: Whether player HUD is drawn.
         position: HUD anchor position. Supported values are ``top``, ``bottom``,
             ``left``, and ``right``.
         margin_x: Horizontal margin from the selected screen edge.
@@ -299,7 +381,6 @@ class HudConfig:
         background_alpha: Panel background alpha value in the 0..255 range.
     """
 
-    enabled: bool
     position: str
     margin_x: int
     margin_y: int
@@ -309,36 +390,224 @@ class HudConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class FpsCounterConfig:
-    """Standalone FPS counter settings.
+class Render3DCameraConfig:
+    """Experimental 3D follow-camera settings.
 
     Attributes:
-        enabled: Whether the standalone FPS counter is drawn.
-        margin_x: Horizontal distance from the selected corner.
-        margin_y: Vertical distance from the selected corner.
-        font_size: Counter text font size in pixels.
-        position: Counter anchor position. Supported values are ``top_left``,
-            ``top_right``, ``bottom_left``, and ``bottom_right``.
+        height: Low-follow camera height above the player in 3D tile units.
+        distance: Low-follow camera distance behind the player in 3D tile units.
+        look_ahead_tiles: Forward target look-ahead distance in tile units.
+        movement_look_ahead_tiles: Smoothed camera anchor offset in movement direction.
+        look_ahead_smoothing: Smoothing factor for movement look-ahead offset.
+        follow_smoothing: Camera smoothing factor for follow updates.
+        top_down_height: Top-down camera height above the player in tile units.
+        top_down_back_offset_tiles: Small top-down Z offset to avoid a singular view.
     """
 
-    enabled: bool
-    margin_x: int
-    margin_y: int
-    font_size: int
-    position: str
+    height: float
+    distance: float
+    look_ahead_tiles: float
+    movement_look_ahead_tiles: float
+    look_ahead_smoothing: float
+    follow_smoothing: float
+    top_down_height: float
+    top_down_back_offset_tiles: float
 
 
 @dataclass(frozen=True, slots=True)
-class KeyChordConfig:
-    """A configurable key chord.
+class Render3DPlayerMovementConfig:
+    """Experimental 3D player movement settings.
 
     Attributes:
-        key: Main raylib key constant name.
-        modifiers: Modifier raylib key constant names. Any pressed modifier matches.
+        movement_speed_tiles_per_second: Maximum player speed in tile units.
+        acceleration_tiles_per_second_squared: Acceleration toward requested movement.
+        deceleration_tiles_per_second_squared: Braking speed when movement input is released.
+        mouse_turn_sensitivity: Mouse yaw sensitivity in radians per pixel.
+        invert_mouse_x: Whether horizontal mouse yaw should be inverted.
     """
 
-    key: str
-    modifiers: tuple[str, ...]
+    movement_speed_tiles_per_second: float
+    acceleration_tiles_per_second_squared: float
+    deceleration_tiles_per_second_squared: float
+    mouse_turn_sensitivity: float
+    invert_mouse_x: bool
+
+
+@dataclass(frozen=True, slots=True)
+class Render3DDistanceFadeConfig:
+    """Experimental 3D distance fade settings.
+
+    Attributes:
+        enabled: Whether distance fade starts enabled.
+        fade_start_ratio: Radius ratio where fading begins.
+        min_brightness: Minimum brightness multiplier at the render radius edge.
+        fog_density: Curve exponent controlling how aggressively distance fog grows.
+        keep_markers_bright: Whether gameplay markers ignore distance fade.
+    """
+
+    enabled: bool
+    fade_start_ratio: float
+    min_brightness: float
+    fog_density: float
+    keep_markers_bright: bool
+
+
+@dataclass(frozen=True, slots=True)
+class Render3DControlsConfig:
+    """Experimental 3D renderer control bindings.
+
+    Attributes:
+        camera_reset: Key name used to reset only the 3D follow camera smoothing.
+        view_mode_toggle: Key name used to cycle 3D view modes.
+        distance_fade_toggle: Key name used to toggle distance fade.
+        enemy_vision_toggle: Key name used to toggle enemy vision cones.
+    """
+
+    camera_reset: str
+    view_mode_toggle: str
+    distance_fade_toggle: str
+    enemy_vision_toggle: str
+
+
+@dataclass(frozen=True, slots=True)
+class Render3DProjectileConfig:
+    """Experimental 3D projectile and aim marker settings.
+
+    Attributes:
+        draw_aim_line: Whether the player aim line is drawn.
+        aim_line_length_tiles: Aim line length in 3D tile units.
+        draw_projectiles: Whether active projectile markers are drawn.
+        max_visible_projectiles: Maximum projectile markers drawn per frame.
+        projectile_radius_tiles: Projectile marker radius in 3D tile units.
+        projectile_height_tiles: Projectile marker height above the map in 3D tile units.
+        draw_impacts: Whether projectile impact markers are drawn.
+        impact_height_tiles: Impact marker height above the map in 3D tile units.
+    """
+
+    draw_aim_line: bool
+    aim_line_length_tiles: float
+    draw_projectiles: bool
+    max_visible_projectiles: int
+    projectile_radius_tiles: float
+    projectile_height_tiles: float
+    draw_impacts: bool
+    impact_height_tiles: float
+
+
+@dataclass(frozen=True, slots=True)
+class Render3DCombatVisualsConfig:
+    """Experimental 3D combat readability settings.
+
+    Attributes:
+        draw_projectile_tracers: Whether projectiles draw longer direction tracers.
+        projectile_tracer_length_tiles: Projectile tracer length in 3D tile units.
+        projectile_tracer_height_offset_tiles: Extra tracer height above projectile markers.
+        draw_impact_rings: Whether impacts draw expanding ground rings.
+        impact_ring_radius_tiles: Base impact ring radius in 3D tile units.
+        impact_ring_height_tiles: Impact ring height above the map in 3D tile units.
+        enemy_hit_flash_seconds: Duration for enemy hit flash in 3D seconds.
+        draw_enemy_hit_markers: Whether enemy hit markers are drawn in 3D.
+        max_visible_enemy_hit_markers: Maximum enemy hit markers drawn per frame.
+        enemy_hit_marker_radius_tiles: Enemy hit marker radius in 3D tile units.
+        enemy_hit_marker_height_tiles: Enemy hit marker height above the map.
+    """
+
+    draw_projectile_tracers: bool
+    projectile_tracer_length_tiles: float
+    projectile_tracer_height_offset_tiles: float
+    draw_impact_rings: bool
+    impact_ring_radius_tiles: float
+    impact_ring_height_tiles: float
+    enemy_hit_flash_seconds: float
+    draw_enemy_hit_markers: bool
+    max_visible_enemy_hit_markers: int
+    enemy_hit_marker_radius_tiles: float
+    enemy_hit_marker_height_tiles: float
+
+
+@dataclass(frozen=True, slots=True)
+class Render3DEnemyConfig:
+    """Experimental 3D enemy marker settings.
+
+    Attributes:
+        draw_enemy_markers: Whether enemy markers are drawn in the 3D experiment.
+        max_visible_enemies: Maximum enemy markers drawn per frame.
+        marker_radius_tiles: Enemy marker radius in 3D tile units.
+        marker_height_tiles: Enemy marker height in 3D tile units.
+        direction_line_length_tiles: Enemy facing line length in 3D tile units.
+    """
+
+    draw_enemy_markers: bool
+    max_visible_enemies: int
+    marker_radius_tiles: float
+    marker_height_tiles: float
+    direction_line_length_tiles: float
+
+
+@dataclass(frozen=True, slots=True)
+class Render3DEnemyVisionConfig:
+    """Experimental 3D enemy vision cone visualization settings.
+
+    Attributes:
+        enabled: Whether enemy vision cones start enabled.
+        max_visible_cones: Maximum enemy vision cones drawn per frame.
+        cone_segments: Number of arc segments used for one cone.
+        height_tiles: Height above the map where vision lines are drawn.
+        range_scale: Multiplier applied to the runtime enemy vision range.
+        idle_alpha: Alpha used for idle enemy cones.
+        alert_alpha: Alpha used for alerted/searching enemy cones.
+        combat_alpha: Alpha used for engaged enemy cones.
+    """
+
+    enabled: bool
+    max_visible_cones: int
+    cone_segments: int
+    height_tiles: float
+    range_scale: float
+    idle_alpha: int
+    alert_alpha: int
+    combat_alpha: int
+
+
+@dataclass(frozen=True, slots=True)
+class Render3DConfig:
+    """Experimental 3D renderer settings.
+
+    Attributes:
+        enabled: Whether the experimental 3D renderer is enabled by config.
+        view_radius_tiles: Radius around the player/camera used for 3D culling.
+        tile_size: 3D world size of one map tile.
+        height_scale: Multiplier for generated 3D primitive heights.
+        render_mode: Default 3D render mode. Supported values are ``optimized``
+            and ``per_tile``.
+        view_mode: Default 3D view mode. Supported values are ``clean``,
+            ``gameplay``, and ``debug``.
+        max_visible_primitives: Safety cap for visible primitive rendering.
+        camera: Follow-camera settings.
+        player_movement: Experimental 3D player movement settings.
+        controls: Experimental 3D control bindings.
+        distance_fade: Experimental 3D distance fade settings.
+        enemies: Experimental 3D enemy marker settings.
+        enemy_vision: Experimental 3D enemy vision cone settings.
+        projectiles: Experimental 3D projectile marker settings.
+        combat_visuals: Experimental 3D combat readability settings.
+    """
+
+    enabled: bool
+    view_radius_tiles: int
+    tile_size: float
+    height_scale: float
+    render_mode: str
+    view_mode: str
+    max_visible_primitives: int
+    camera: Render3DCameraConfig
+    player_movement: Render3DPlayerMovementConfig
+    controls: Render3DControlsConfig
+    distance_fade: Render3DDistanceFadeConfig
+    enemies: Render3DEnemyConfig
+    enemy_vision: Render3DEnemyVisionConfig
+    projectiles: Render3DProjectileConfig
+    combat_visuals: Render3DCombatVisualsConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -347,7 +616,8 @@ class ControlsConfig:
 
     Attributes:
         quit: Key name used to close the runtime window.
-        debug_overlay: Key chord used to toggle debug overlay visibility.
+        help: Key name used to toggle the controls help overlay.
+        mouse_capture_toggle: Key name used to release or capture the mouse in 3D.
         camera_up: Key names used to pan the camera up.
         camera_down: Key names used to pan the camera down.
         camera_left: Key names used to pan the camera left.
@@ -366,10 +636,12 @@ class ControlsConfig:
         weapon_slot_1: Key name used to equip weapon slot 1.
         weapon_slot_2: Key name used to equip weapon slot 2.
         weapon_slot_3: Key name used to equip weapon slot 3.
+        interact: Key name used to interact with nearby runtime objects.
     """
 
     quit: str
-    debug_overlay: KeyChordConfig
+    help: str
+    mouse_capture_toggle: str
     camera_up: tuple[str, ...]
     camera_down: tuple[str, ...]
     camera_left: tuple[str, ...]
@@ -388,6 +660,7 @@ class ControlsConfig:
     weapon_slot_1: str
     weapon_slot_2: str
     weapon_slot_3: str
+    interact: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -401,10 +674,11 @@ class RuntimeConfig:
         aim_debug: Aim debug display settings.
         weapons: Weapon database settings.
         projectile_impacts: Projectile impact marker settings.
+        shell_ejection: Shell casing ejection visual settings.
         enemies: Enemy marker display settings.
-        debug_overlay: Debug overlay display settings.
+        ui: Shared UI display settings.
         hud: Player HUD display settings.
-        fps_counter: Standalone FPS counter display settings.
+        render3d: Experimental 3D renderer settings.
         controls: Control bindings.
     """
 
@@ -414,10 +688,11 @@ class RuntimeConfig:
     aim_debug: AimDebugConfig
     weapons: WeaponsConfig
     projectile_impacts: ProjectileImpactConfig
+    shell_ejection: ShellEjectionConfig
     enemies: EnemyConfig
-    debug_overlay: DebugOverlayConfig
+    ui: UiConfig
     hud: HudConfig
-    fps_counter: FpsCounterConfig
+    render3d: Render3DConfig
     controls: ControlsConfig
 
 
@@ -475,17 +750,20 @@ class RuntimeConfigLoader:
         aim_debug = self._require_dict(raw_config, "aim_debug")
         weapons = self._require_dict(raw_config, "weapons")
         projectile_impacts = self._require_dict(raw_config, "projectile_impacts")
+        shell_ejection = self._require_dict(raw_config, "shell_ejection")
         enemies = self._require_dict(raw_config, "enemies")
-        debug_overlay = self._require_dict(raw_config, "debug_overlay")
+        ui = self._require_dict(raw_config, "ui")
         hud = self._require_dict(raw_config, "hud")
-        fps_counter = self._require_dict(raw_config, "fps_counter")
+        render3d = self._require_dict(raw_config, "render3d")
         controls = self._require_dict(raw_config, "controls")
         return RuntimeConfig(
             window=WindowConfig(
                 title=self._require_str(window, "title"),
-                width=self._require_positive_int(window, "width"),
-                height=self._require_positive_int(window, "height"),
                 target_fps=self._require_positive_int(window, "target_fps"),
+                screen_margin_px=self._require_non_negative_int(
+                    window,
+                    "screen_margin_px",
+                ),
             ),
             camera=self._build_camera_config(camera),
             player=PlayerConfig(
@@ -499,6 +777,10 @@ class RuntimeConfigLoader:
                     "collision_radius_px",
                 ),
                 max_health=self._require_positive_int(player, "max_health"),
+                fire_muzzle_offset_px=self._require_non_negative_float(
+                    player,
+                    "fire_muzzle_offset_px",
+                ),
             ),
             aim_debug=AimDebugConfig(
                 enabled=self._require_bool(aim_debug, "enabled"),
@@ -519,6 +801,42 @@ class RuntimeConfigLoader:
                     "lifetime_seconds",
                 ),
                 radius_px=self._require_positive_float(projectile_impacts, "radius_px"),
+                material_effects=self._build_impact_material_effects(projectile_impacts),
+            ),
+            shell_ejection=ShellEjectionConfig(
+                enabled=self._require_bool(shell_ejection, "enabled"),
+                shell_size_min_px=self._require_float_pair_min(
+                    shell_ejection,
+                    "shell_size_px",
+                ),
+                shell_size_max_px=self._require_float_pair_max(
+                    shell_ejection,
+                    "shell_size_px",
+                ),
+                lifetime_min_seconds=self._require_float_pair_min(
+                    shell_ejection,
+                    "lifetime_seconds",
+                ),
+                lifetime_max_seconds=self._require_float_pair_max(
+                    shell_ejection,
+                    "lifetime_seconds",
+                ),
+                ejection_distance_px=self._require_positive_float(
+                    shell_ejection,
+                    "ejection_distance_px",
+                ),
+                ejection_intensity=self._require_positive_float(
+                    shell_ejection,
+                    "ejection_intensity",
+                ),
+                spread_degrees=self._require_non_negative_float(
+                    shell_ejection,
+                    "spread_degrees",
+                ),
+                max_active_shells=self._require_positive_int(
+                    shell_ejection,
+                    "max_active_shells",
+                ),
             ),
             enemies=EnemyConfig(
                 marker_radius_px=self._require_positive_int(enemies, "marker_radius_px"),
@@ -645,6 +963,10 @@ class RuntimeConfigLoader:
                     "path_target_rebuild_distance_px",
                 ),
                 path_max_iterations=self._require_positive_int(enemies, "path_max_iterations"),
+                path_max_rebuilds_per_frame=self._require_non_negative_int(
+                    enemies,
+                    "path_max_rebuilds_per_frame",
+                ),
                 path_waypoint_reach_distance_px=self._require_non_negative_float(
                     enemies,
                     "path_waypoint_reach_distance_px",
@@ -709,28 +1031,41 @@ class RuntimeConfigLoader:
                     enemies,
                     "max_debug_tactical_slots",
                 ),
-            ),
-            debug_overlay=DebugOverlayConfig(
-                enabled_by_default=self._require_bool(debug_overlay, "enabled_by_default"),
-                layout=self._require_debug_overlay_layout(debug_overlay, "layout"),
-                panel_width=self._require_positive_int(debug_overlay, "panel_width"),
-                side_panel_width=self._require_positive_int(debug_overlay, "side_panel_width"),
-                scroll_step_px=self._require_positive_int(debug_overlay, "scroll_step_px"),
-                padding=self._require_non_negative_int(debug_overlay, "padding"),
-                font_path=self._require_str(debug_overlay, "font_path"),
-                font_size=self._require_positive_int(debug_overlay, "font_size"),
-                font_spacing=self._require_non_negative_float(debug_overlay, "font_spacing"),
-                line_spacing=self._require_non_negative_int(debug_overlay, "line_spacing"),
-                section_spacing=self._require_non_negative_int(
-                    debug_overlay,
-                    "section_spacing",
+                fire_enabled=self._require_bool(enemies, "fire_enabled"),
+                fire_primary_weapon_id=self._require_str(
+                    enemies,
+                    "fire_primary_weapon_id",
                 ),
-                column_gap=self._require_non_negative_int(debug_overlay, "column_gap"),
-                label_width=self._require_positive_int(debug_overlay, "label_width"),
-                background_alpha=self._require_alpha(debug_overlay, "background_alpha"),
+                fire_fallback_weapon_id=self._require_str(
+                    enemies,
+                    "fire_fallback_weapon_id",
+                ),
+                fire_max_distance_px=self._require_positive_float(
+                    enemies,
+                    "fire_max_distance_px",
+                ),
+                fire_muzzle_offset_px=self._require_non_negative_float(
+                    enemies,
+                    "fire_muzzle_offset_px",
+                ),
+                fire_aim_error_degrees=self._require_non_negative_float(
+                    enemies,
+                    "fire_aim_error_degrees",
+                ),
+            ),
+            ui=UiConfig(
+                font_path=self._require_str(ui, "font_path"),
+                font_spacing=self._require_non_negative_float(ui, "font_spacing"),
+                modal_padding=self._require_non_negative_int(ui, "modal_padding"),
+                modal_font_size=self._require_positive_int(ui, "modal_font_size"),
+                modal_line_spacing=self._require_non_negative_int(ui, "modal_line_spacing"),
+                modal_section_spacing=self._require_non_negative_int(
+                    ui,
+                    "modal_section_spacing",
+                ),
+                modal_background_alpha=self._require_alpha(ui, "modal_background_alpha"),
             ),
             hud=HudConfig(
-                enabled=self._require_bool(hud, "enabled"),
                 position=self._require_str(hud, "position"),
                 margin_x=self._require_non_negative_int(hud, "margin_x"),
                 margin_y=self._require_non_negative_int(hud, "margin_y"),
@@ -738,16 +1073,11 @@ class RuntimeConfigLoader:
                 font_size=self._require_positive_int(hud, "font_size"),
                 background_alpha=self._require_alpha(hud, "background_alpha"),
             ),
-            fps_counter=FpsCounterConfig(
-                enabled=self._require_bool(fps_counter, "enabled"),
-                margin_x=self._require_non_negative_int(fps_counter, "margin_x"),
-                margin_y=self._require_non_negative_int(fps_counter, "margin_y"),
-                font_size=self._require_positive_int(fps_counter, "font_size"),
-                position=self._require_str(fps_counter, "position"),
-            ),
+            render3d=self._build_render3d_config(render3d),
             controls=ControlsConfig(
                 quit=self._require_str(controls, "quit"),
-                debug_overlay=self._require_key_chord(controls, "debug_overlay"),
+                help=self._require_str(controls, "help"),
+                mouse_capture_toggle=self._require_str(controls, "mouse_capture_toggle"),
                 camera_up=self._require_key_names(controls, "camera_up"),
                 camera_down=self._require_key_names(controls, "camera_down"),
                 camera_left=self._require_key_names(controls, "camera_left"),
@@ -769,26 +1099,390 @@ class RuntimeConfigLoader:
                 weapon_slot_1=self._require_str(controls, "weapon_slot_1"),
                 weapon_slot_2=self._require_str(controls, "weapon_slot_2"),
                 weapon_slot_3=self._require_str(controls, "weapon_slot_3"),
+                interact=self._require_str(controls, "interact"),
             ),
         )
 
-    def _require_debug_overlay_layout(self, data: dict[str, Any], field: str) -> str:
-        """Read and validate a debug overlay layout value.
+    def _build_render3d_config(self, render3d: dict[str, Any]) -> Render3DConfig:
+        """Build typed experimental 3D renderer config from raw data.
+
+        Args:
+            render3d: Raw 3D renderer configuration dictionary.
+
+        Returns:
+            Experimental 3D renderer configuration.
+        """
+        camera = self._require_dict(render3d, "camera")
+        player_movement = self._require_dict(render3d, "player_movement")
+        controls = self._require_dict(render3d, "controls")
+        distance_fade = self._require_dict(render3d, "distance_fade")
+        enemies = self._require_dict(render3d, "enemies")
+        enemy_vision = self._require_dict(render3d, "enemy_vision")
+        projectiles = self._require_dict(render3d, "projectiles")
+        combat_visuals = self._require_dict(render3d, "combat_visuals")
+        render_mode = self._require_render3d_mode(render3d, "render_mode")
+        view_mode = self._require_render3d_view_mode(render3d, "view_mode")
+        return Render3DConfig(
+            enabled=self._require_bool(render3d, "enabled"),
+            view_radius_tiles=self._require_positive_int(render3d, "view_radius_tiles"),
+            tile_size=self._require_positive_float(render3d, "tile_size"),
+            height_scale=self._require_positive_float(render3d, "height_scale"),
+            render_mode=render_mode,
+            view_mode=view_mode,
+            max_visible_primitives=self._require_positive_int(
+                render3d,
+                "max_visible_primitives",
+            ),
+            camera=Render3DCameraConfig(
+                height=self._require_positive_float(camera, "height"),
+                distance=self._require_positive_float(camera, "distance"),
+                look_ahead_tiles=self._require_non_negative_float(
+                    camera,
+                    "look_ahead_tiles",
+                ),
+                movement_look_ahead_tiles=self._require_non_negative_float(
+                    camera,
+                    "movement_look_ahead_tiles",
+                ),
+                look_ahead_smoothing=self._require_non_negative_float(
+                    camera,
+                    "look_ahead_smoothing",
+                ),
+                follow_smoothing=self._require_non_negative_float(
+                    camera,
+                    "follow_smoothing",
+                ),
+                top_down_height=self._require_positive_float(
+                    camera,
+                    "top_down_height",
+                ),
+                top_down_back_offset_tiles=self._require_positive_float(
+                    camera,
+                    "top_down_back_offset_tiles",
+                ),
+            ),
+            player_movement=Render3DPlayerMovementConfig(
+                movement_speed_tiles_per_second=self._require_positive_float(
+                    player_movement,
+                    "movement_speed_tiles_per_second",
+                ),
+                acceleration_tiles_per_second_squared=self._require_positive_float(
+                    player_movement,
+                    "acceleration_tiles_per_second_squared",
+                ),
+                deceleration_tiles_per_second_squared=self._require_positive_float(
+                    player_movement,
+                    "deceleration_tiles_per_second_squared",
+                ),
+                mouse_turn_sensitivity=self._require_positive_float(
+                    player_movement,
+                    "mouse_turn_sensitivity",
+                ),
+                invert_mouse_x=self._require_bool(
+                    player_movement,
+                    "invert_mouse_x",
+                ),
+            ),
+            controls=Render3DControlsConfig(
+                camera_reset=self._require_str(controls, "camera_reset"),
+                view_mode_toggle=self._require_str(controls, "view_mode_toggle"),
+                distance_fade_toggle=self._require_str(
+                    controls,
+                    "distance_fade_toggle",
+                ),
+                enemy_vision_toggle=self._require_str(
+                    controls,
+                    "enemy_vision_toggle",
+                ),
+            ),
+            distance_fade=Render3DDistanceFadeConfig(
+                enabled=self._require_bool(distance_fade, "enabled"),
+                fade_start_ratio=self._require_unit_interval_float(
+                    distance_fade,
+                    "fade_start_ratio",
+                ),
+                min_brightness=self._require_unit_interval_float(
+                    distance_fade,
+                    "min_brightness",
+                ),
+                fog_density=self._require_positive_float(
+                    distance_fade,
+                    "fog_density",
+                ),
+                keep_markers_bright=self._require_bool(
+                    distance_fade,
+                    "keep_markers_bright",
+                ),
+            ),
+            projectiles=Render3DProjectileConfig(
+                draw_aim_line=self._require_bool(
+                    projectiles,
+                    "draw_aim_line",
+                ),
+                aim_line_length_tiles=self._require_positive_float(
+                    projectiles,
+                    "aim_line_length_tiles",
+                ),
+                draw_projectiles=self._require_bool(
+                    projectiles,
+                    "draw_projectiles",
+                ),
+                max_visible_projectiles=self._require_positive_int(
+                    projectiles,
+                    "max_visible_projectiles",
+                ),
+                projectile_radius_tiles=self._require_positive_float(
+                    projectiles,
+                    "projectile_radius_tiles",
+                ),
+                projectile_height_tiles=self._require_positive_float(
+                    projectiles,
+                    "projectile_height_tiles",
+                ),
+                draw_impacts=self._require_bool(
+                    projectiles,
+                    "draw_impacts",
+                ),
+                impact_height_tiles=self._require_positive_float(
+                    projectiles,
+                    "impact_height_tiles",
+                ),
+            ),
+            combat_visuals=Render3DCombatVisualsConfig(
+                draw_projectile_tracers=self._require_bool(
+                    combat_visuals,
+                    "draw_projectile_tracers",
+                ),
+                projectile_tracer_length_tiles=self._require_positive_float(
+                    combat_visuals,
+                    "projectile_tracer_length_tiles",
+                ),
+                projectile_tracer_height_offset_tiles=self._require_non_negative_float(
+                    combat_visuals,
+                    "projectile_tracer_height_offset_tiles",
+                ),
+                draw_impact_rings=self._require_bool(
+                    combat_visuals,
+                    "draw_impact_rings",
+                ),
+                impact_ring_radius_tiles=self._require_positive_float(
+                    combat_visuals,
+                    "impact_ring_radius_tiles",
+                ),
+                impact_ring_height_tiles=self._require_non_negative_float(
+                    combat_visuals,
+                    "impact_ring_height_tiles",
+                ),
+                enemy_hit_flash_seconds=self._require_positive_float(
+                    combat_visuals,
+                    "enemy_hit_flash_seconds",
+                ),
+                draw_enemy_hit_markers=self._require_bool(
+                    combat_visuals,
+                    "draw_enemy_hit_markers",
+                ),
+                max_visible_enemy_hit_markers=self._require_positive_int(
+                    combat_visuals,
+                    "max_visible_enemy_hit_markers",
+                ),
+                enemy_hit_marker_radius_tiles=self._require_positive_float(
+                    combat_visuals,
+                    "enemy_hit_marker_radius_tiles",
+                ),
+                enemy_hit_marker_height_tiles=self._require_non_negative_float(
+                    combat_visuals,
+                    "enemy_hit_marker_height_tiles",
+                ),
+            ),
+            enemies=Render3DEnemyConfig(
+                draw_enemy_markers=self._require_bool(
+                    enemies,
+                    "draw_enemy_markers",
+                ),
+                max_visible_enemies=self._require_positive_int(
+                    enemies,
+                    "max_visible_enemies",
+                ),
+                marker_radius_tiles=self._require_positive_float(
+                    enemies,
+                    "marker_radius_tiles",
+                ),
+                marker_height_tiles=self._require_positive_float(
+                    enemies,
+                    "marker_height_tiles",
+                ),
+                direction_line_length_tiles=self._require_positive_float(
+                    enemies,
+                    "direction_line_length_tiles",
+                ),
+            ),
+            enemy_vision=Render3DEnemyVisionConfig(
+                enabled=self._require_bool(enemy_vision, "enabled"),
+                max_visible_cones=self._require_positive_int(
+                    enemy_vision,
+                    "max_visible_cones",
+                ),
+                cone_segments=self._require_positive_int(
+                    enemy_vision,
+                    "cone_segments",
+                ),
+                height_tiles=self._require_non_negative_float(
+                    enemy_vision,
+                    "height_tiles",
+                ),
+                range_scale=self._require_positive_float(
+                    enemy_vision,
+                    "range_scale",
+                ),
+                idle_alpha=self._require_alpha_int(enemy_vision, "idle_alpha"),
+                alert_alpha=self._require_alpha_int(enemy_vision, "alert_alpha"),
+                combat_alpha=self._require_alpha_int(enemy_vision, "combat_alpha"),
+            ),
+        )
+
+    def _build_impact_material_effects(
+        self,
+        projectile_impacts: dict[str, Any],
+    ) -> dict[str, ImpactParticleConfig]:
+        """Build material-specific impact particle configuration.
+
+        Args:
+            projectile_impacts: Raw projectile impact configuration section.
+
+        Returns:
+            Validated material effect mapping.
+        """
+        raw_effects = self._require_dict(projectile_impacts, "material_effects")
+        effects: dict[str, ImpactParticleConfig] = {}
+        for material_name, raw_effect in raw_effects.items():
+            if not isinstance(material_name, str) or not material_name.strip():
+                raise RuntimeConfigError("Runtime config impact material key is invalid.")
+            if not isinstance(raw_effect, dict):
+                raise RuntimeConfigError(
+                    "Runtime config impact material effect must be an object: "
+                    f"{material_name}",
+                )
+            effects[material_name.strip()] = ImpactParticleConfig(
+                particle_count=self._require_positive_int(
+                    raw_effect,
+                    "particle_count",
+                ),
+                particle_size_min_px=self._require_float_pair_min(
+                    raw_effect,
+                    "particle_size_px",
+                ),
+                particle_size_max_px=self._require_float_pair_max(
+                    raw_effect,
+                    "particle_size_px",
+                ),
+                spread_distance_px=self._require_positive_float(
+                    raw_effect,
+                    "spread_distance_px",
+                ),
+                burst_intensity=self._require_positive_float(
+                    raw_effect,
+                    "burst_intensity",
+                ),
+                decal_enabled=self._require_bool(
+                    raw_effect,
+                    "decal_enabled",
+                ),
+                decal_radius_px=self._require_non_negative_float(
+                    raw_effect,
+                    "decal_radius_px",
+                ),
+                decal_lifetime_seconds=self._require_non_negative_float(
+                    raw_effect,
+                    "decal_lifetime_seconds",
+                ),
+            )
+            effect = effects[material_name.strip()]
+            if effect.decal_enabled and (
+                effect.decal_radius_px <= 0.0
+                or effect.decal_lifetime_seconds <= 0.0
+            ):
+                raise RuntimeConfigError(
+                    "Runtime config enabled impact decal must have positive radius "
+                    f"and lifetime: {material_name}",
+                )
+        if "default" not in effects:
+            raise RuntimeConfigError(
+                "Runtime config projectile impact effects must include 'default'.",
+            )
+        return effects
+
+    def _require_symbol_tuple(self, data: dict[str, Any], key: str) -> tuple[str, ...]:
+        """Read one-character tile symbols from runtime config."""
+        value = data.get(key)
+        if not isinstance(value, list) or not value:
+            raise RuntimeConfigError(f"Runtime config symbol list is missing: {key}")
+        symbols: list[str] = []
+        for item in value:
+            if not isinstance(item, str) or len(item) != 1:
+                raise RuntimeConfigError(f"Runtime config symbol list is invalid: {key}")
+            symbols.append(item)
+        return tuple(symbols)
+
+    def _require_alpha_int(self, data: dict[str, Any], field: str) -> int:
+        """Read a color alpha channel value from 0 to 255.
 
         Args:
             data: Source mapping.
             field: Field name to read.
 
         Returns:
-            Validated debug overlay layout.
+            Validated integer alpha value.
 
         Raises:
-            RuntimeConfigError: If the layout value is unsupported.
+            RuntimeConfigError: If the value is outside the allowed range.
+        """
+        value = self._require_non_negative_int(data, field)
+        if value > 255:
+            raise RuntimeConfigError(
+                "Runtime config field "
+                f"'{field}' must be less than or equal to 255.",
+            )
+        return value
+
+    def _require_render3d_mode(self, data: dict[str, Any], field: str) -> str:
+        """Read and validate an experimental 3D render mode.
+
+        Args:
+            data: Source mapping.
+            field: Field name to read.
+
+        Returns:
+            Validated render mode.
+
+        Raises:
+            RuntimeConfigError: If the render mode value is unsupported.
         """
         value = self._require_str(data, field)
-        if value not in {"overlay", "right_panel"}:
+        if value not in {"optimized", "per_tile"}:
             raise RuntimeConfigError(
-                f"Runtime config field '{field}' must be 'overlay' or 'right_panel'.",
+                "Runtime config field "
+                f"'{field}' must be 'optimized' or 'per_tile'.",
+            )
+        return value
+
+    def _require_render3d_view_mode(self, data: dict[str, Any], field: str) -> str:
+        """Read and validate an experimental 3D view mode.
+
+        Args:
+            data: Source mapping.
+            field: Field name to read.
+
+        Returns:
+            Validated view mode.
+
+        Raises:
+            RuntimeConfigError: If the view mode value is unsupported.
+        """
+        value = self._require_str(data, field)
+        if value not in {"clean", "gameplay", "debug"}:
+            raise RuntimeConfigError(
+                "Runtime config field "
+                f"'{field}' must be 'clean', 'gameplay', or 'debug'.",
             )
         return value
 
@@ -965,6 +1659,46 @@ class RuntimeConfigLoader:
             raise RuntimeConfigError(f"Runtime config number is missing or invalid: {key}")
         return float(value)
 
+    def _require_unit_interval_float(self, data: dict[str, Any], key: str) -> float:
+        """Read and validate a float value in the 0..1 range."""
+        value = self._require_non_negative_float(data, key)
+        if value > 1.0:
+            raise RuntimeConfigError(
+                f"Runtime config field '{key}' must be less than or equal to 1.0.",
+            )
+        return value
+
+    def _require_float_pair_min(self, data: dict[str, Any], key: str) -> float:
+        """Return the validated lower value from a two-number range."""
+        return self._require_positive_float_pair(data, key)[0]
+
+    def _require_float_pair_max(self, data: dict[str, Any], key: str) -> float:
+        """Return the validated upper value from a two-number range."""
+        return self._require_positive_float_pair(data, key)[1]
+
+    def _require_positive_float_pair(
+        self,
+        data: dict[str, Any],
+        key: str,
+    ) -> tuple[float, float]:
+        """Read a positive inclusive numeric range from config."""
+        value = data.get(key)
+        if (
+            not isinstance(value, list)
+            or len(value) != 2
+            or not all(isinstance(item, int | float) for item in value)
+        ):
+            raise RuntimeConfigError(
+                f"Runtime config number range is missing or invalid: {key}",
+            )
+        min_value = float(value[0])
+        max_value = float(value[1])
+        if min_value <= 0.0 or max_value <= 0.0 or min_value > max_value:
+            raise RuntimeConfigError(
+                f"Runtime config number range is invalid: {key}",
+            )
+        return min_value, max_value
+
     def _require_key_names(self, data: dict[str, Any], key: str) -> tuple[str, ...]:
         """Return one or more required key names.
 
@@ -984,23 +1718,3 @@ class RuntimeConfigLoader:
             return tuple(value)
         raise RuntimeConfigError(f"Runtime config key list is missing or invalid: {key}")
 
-    def _require_key_chord(self, data: dict[str, Any], key: str) -> KeyChordConfig:
-        """Return a required key chord value.
-
-        Args:
-            data: Source dictionary.
-            key: Required key.
-
-        Returns:
-            Key chord configuration.
-        """
-        raw_chord = self._require_dict(data, key)
-        raw_modifiers = raw_chord.get("modifiers", [])
-        if not isinstance(raw_modifiers, list) or not all(
-            isinstance(modifier, str) and modifier.strip() for modifier in raw_modifiers
-        ):
-            raise RuntimeConfigError(f"Runtime config key chord modifiers are invalid: {key}")
-        return KeyChordConfig(
-            key=self._require_str(raw_chord, "key"),
-            modifiers=tuple(raw_modifiers),
-        )

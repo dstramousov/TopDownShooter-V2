@@ -1,7 +1,10 @@
 """Tests for static enemy marker spawning."""
 
-from topdown_shooter.combat.enemies import EnemySystem
+import random
+
+from topdown_shooter.combat.enemies import EnemyState, EnemySystem
 from topdown_shooter.combat.projectiles import ProjectileState
+from topdown_shooter.combat.weapons import WeaponConfigLoader
 from topdown_shooter.world.coordinates import TileCoord, WorldCoord, world_to_tile
 from topdown_shooter.world.runtime_map import RuntimeMap, TacticalRuntimeSummary
 from topdown_shooter.world.tile import RuntimeTile
@@ -111,16 +114,15 @@ def test_enemy_system_applies_projectile_damage_and_hit_markers() -> None:
         previous_position=WorldCoord(x=24.0, y=24.0),
         direction_x=1.0,
         direction_y=0.0,
-        speed_px_per_second=16.0,
         max_distance_px=64.0,
-        lifetime_seconds=10.0,
+        lifetime_seconds=0.1,
         radius_px=3.0,
         damage=35.0,
     )
 
     system.apply_projectile_hits((projectile,), enemy_collision_radius_px=6.0)
 
-    assert projectile.alive is False
+    assert projectile.damage_active is False
     assert system.stats.active_enemies == 1
     assert system.stats.total_hits == 1
     assert system.stats.killed_enemies == 0
@@ -158,16 +160,15 @@ def test_enemy_system_removes_enemy_when_health_reaches_zero() -> None:
         previous_position=WorldCoord(x=24.0, y=24.0),
         direction_x=1.0,
         direction_y=0.0,
-        speed_px_per_second=16.0,
         max_distance_px=64.0,
-        lifetime_seconds=10.0,
+        lifetime_seconds=0.1,
         radius_px=3.0,
         damage=50.0,
     )
 
     system.apply_projectile_hits((projectile,), enemy_collision_radius_px=6.0)
 
-    assert projectile.alive is False
+    assert projectile.damage_active is False
     assert system.stats.active_enemies == 0
     assert system.stats.spawned_enemies == 1
     assert system.stats.killed_enemies == 1
@@ -356,9 +357,8 @@ def test_enemy_system_alerts_enemy_when_projectile_hits() -> None:
         previous_position=WorldCoord(x=24.0, y=24.0),
         direction_x=1.0,
         direction_y=0.0,
-        speed_px_per_second=16.0,
         max_distance_px=64.0,
-        lifetime_seconds=10.0,
+        lifetime_seconds=0.1,
         radius_px=3.0,
         damage=10.0,
     )
@@ -808,6 +808,97 @@ def test_alerted_enemy_reports_failed_path_when_goal_is_unreachable() -> None:
     assert system.stats.moving_enemies == 0
 
 
+def test_path_rebuild_budget_limits_mass_alert_spikes() -> None:
+    """Enemy path rebuilds should be spread across updates by a frame budget."""
+    from topdown_shooter.world.collision import TileCollisionService
+    from topdown_shooter.world.pathfinding import GridPathfinder
+
+    runtime_map = _build_runtime_map_from_rows((
+        "+++++",
+        "+###+",
+        "+++++",
+        "+###+",
+        "+++++",
+    ))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {"id": "spawn_0", "position": [0, 1], "facing_angle_degrees": 0.0},
+                {"id": "spawn_1", "position": [0, 3], "facing_angle_degrees": 0.0},
+            ],
+        },
+        runtime_map,
+    )
+    for enemy in system.enemies:
+        enemy.alerted = True
+
+    common_kwargs = {
+        "player_position": WorldCoord(x=72.0, y=24.0),
+        "collision_service": TileCollisionService(runtime_map),
+        "frame_time": 0.1,
+        "chase_speed_px_per_second": 16.0,
+        "enemy_collision_radius_px": 2.0,
+        "tile_size_px": runtime_map.tile_size_px,
+        "preferred_combat_distance_px": 0.0,
+        "approach_weight": 1.0,
+        "pathfinder": GridPathfinder(runtime_map),
+        "pathfinding_enabled": True,
+        "path_rebuild_interval_seconds": 10.0,
+        "path_target_rebuild_distance_px": 16.0,
+        "path_max_iterations": 128,
+        "path_max_rebuilds_per_frame": 1,
+        "path_waypoint_reach_distance_px": 2.0,
+    }
+
+    system.update_chase_movement(**common_kwargs)
+
+    assert system.stats.path_rebuilds == 1
+    assert sum(1 for enemy in system.enemies if enemy.path_tiles) == 1
+
+    system.update_chase_movement(**common_kwargs)
+
+    assert system.stats.path_rebuilds == 1
+    assert sum(1 for enemy in system.enemies if enemy.path_tiles) == 2
+
+
+def test_zero_path_rebuild_budget_disables_new_path_queries() -> None:
+    """A zero path rebuild budget should skip A* queries without crashing movement."""
+    from topdown_shooter.world.collision import TileCollisionService
+    from topdown_shooter.world.pathfinding import GridPathfinder
+
+    runtime_map = _build_runtime_map_from_rows(("+++++", "+###+", "+++++"))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {"id": "spawn_0", "position": [0, 1], "facing_angle_degrees": 0.0},
+            ],
+        },
+        runtime_map,
+    )
+    system.enemies[0].alerted = True
+
+    system.update_chase_movement(
+        player_position=WorldCoord(x=72.0, y=24.0),
+        collision_service=TileCollisionService(runtime_map),
+        frame_time=0.1,
+        chase_speed_px_per_second=16.0,
+        enemy_collision_radius_px=2.0,
+        tile_size_px=runtime_map.tile_size_px,
+        preferred_combat_distance_px=0.0,
+        approach_weight=1.0,
+        pathfinder=GridPathfinder(runtime_map),
+        pathfinding_enabled=True,
+        path_rebuild_interval_seconds=0.35,
+        path_target_rebuild_distance_px=16.0,
+        path_max_iterations=64,
+        path_max_rebuilds_per_frame=0,
+        path_waypoint_reach_distance_px=2.0,
+    )
+
+    assert system.stats.path_rebuilds == 0
+    assert system.stats.failed_path_rebuilds == 0
+    assert system.enemies[0].path_tiles == ()
+
 
 def test_stationary_player_triggers_tactical_surround_assignments() -> None:
     """Alerted enemies should get reachable surround slots around a stationary player."""
@@ -1137,9 +1228,8 @@ def test_enemy_squad_alert_propagates_after_configured_delay() -> None:
         previous_position=hit_enemy.world_position,
         direction_x=1.0,
         direction_y=0.0,
-        speed_px_per_second=16.0,
         max_distance_px=64.0,
-        lifetime_seconds=10.0,
+        lifetime_seconds=0.1,
         radius_px=3.0,
         damage=10.0,
     )
@@ -1196,9 +1286,8 @@ def test_enemy_squad_alert_uses_nearby_fallback_radius() -> None:
         previous_position=origin.world_position,
         direction_x=1.0,
         direction_y=0.0,
-        speed_px_per_second=16.0,
         max_distance_px=64.0,
-        lifetime_seconds=10.0,
+        lifetime_seconds=0.1,
         radius_px=3.0,
         damage=10.0,
     )
@@ -1475,3 +1564,358 @@ def test_returned_enemy_snaps_home_and_restores_initial_facing() -> None:
     assert enemy.world_position == enemy.home_position
     assert enemy.facing_angle_degrees == 135.0
     assert system.stats.returned_home_enemies == 1
+
+
+
+def test_projectile_hit_sets_search_target_to_shot_origin() -> None:
+    """Damaged idle enemies should investigate the incoming shot origin."""
+    runtime_map = _build_runtime_map()
+    system = EnemySystem.from_tactical_map(
+        {"enemy_spawn_zones": [{"id": "spawn_0", "position": [2, 1]}]},
+        runtime_map,
+        enemy_max_health=100.0,
+    )
+    enemy = system.enemies[0]
+    enemy.time_since_player_seen_seconds = 99.0
+    shot_origin = WorldCoord(x=8.0, y=24.0)
+    projectile = ProjectileState(
+        position=enemy.world_position,
+        previous_position=shot_origin,
+        direction_x=1.0,
+        direction_y=0.0,
+        max_distance_px=128.0,
+        radius_px=3.0,
+        damage=10.0,
+    )
+
+    system.apply_projectile_hits((projectile,), enemy_collision_radius_px=8.0)
+
+    assert enemy.alerted is True
+    assert enemy.awareness_state == "searching"
+    assert enemy.last_seen_player_position == shot_origin
+    assert enemy.time_since_player_seen_seconds == 0.0
+
+
+def test_returning_enemy_is_interrupted_by_new_sound_alert() -> None:
+    """Returning enemies should stop going home when a fresh shot is heard."""
+    runtime_map = _build_runtime_map()
+    system = EnemySystem.from_tactical_map(
+        {"enemy_spawn_zones": [{"id": "spawn_0", "position": [1, 1]}]},
+        runtime_map,
+    )
+    enemy = system.enemies[0]
+    sound_origin = WorldCoord(x=72.0, y=24.0)
+    enemy.alerted = True
+    enemy.awareness_state = "returning"
+    enemy.last_seen_player_position = WorldCoord(x=120.0, y=24.0)
+    enemy.time_since_player_seen_seconds = 99.0
+    enemy.path_tiles = (TileCoord(x=1, y=1), TileCoord(x=2, y=1))
+    enemy.path_waypoint_index = 1
+
+    alerted = system.alert_enemies_by_sound(
+        origin=sound_origin,
+        noise_radius_px=128.0,
+    )
+
+    assert alerted == 1
+    assert enemy.alerted is True
+    assert enemy.awareness_state == "searching"
+    assert enemy.last_seen_player_position == sound_origin
+    assert enemy.time_since_player_seen_seconds == 0.0
+    assert enemy.path_tiles == ()
+    assert enemy.path_waypoint_index == 0
+
+
+def test_returning_enemy_hit_interrupts_return_home_path() -> None:
+    """Damaging a returning enemy should immediately replace return-home with search."""
+    runtime_map = _build_runtime_map()
+    system = EnemySystem.from_tactical_map(
+        {"enemy_spawn_zones": [{"id": "spawn_0", "position": [2, 1]}]},
+        runtime_map,
+        enemy_max_health=100.0,
+    )
+    enemy = system.enemies[0]
+    shot_origin = WorldCoord(x=8.0, y=24.0)
+    enemy.alerted = True
+    enemy.awareness_state = "returning"
+    enemy.time_since_player_seen_seconds = 99.0
+    enemy.path_tiles = (TileCoord(x=2, y=1), TileCoord(x=1, y=1))
+    enemy.path_waypoint_index = 1
+    projectile = ProjectileState(
+        position=enemy.world_position,
+        previous_position=shot_origin,
+        direction_x=1.0,
+        direction_y=0.0,
+        max_distance_px=128.0,
+        radius_px=3.0,
+        damage=10.0,
+    )
+
+    system.apply_projectile_hits((projectile,), enemy_collision_radius_px=8.0)
+
+    assert enemy.awareness_state == "searching"
+    assert enemy.last_seen_player_position == shot_origin
+    assert enemy.time_since_player_seen_seconds == 0.0
+    assert enemy.path_tiles == ()
+    assert enemy.path_waypoint_index == 0
+
+
+def test_squad_alert_investigates_sound_origin_not_broadcaster_position() -> None:
+    """Squadmates should search the stimulus point, not the broadcaster position."""
+    source = EnemyState(
+        enemy_id="enemy_0",
+        spawn_id="squad",
+        zone_id="zone",
+        spawn_type="test",
+        role="rifleman",
+        tile=TileCoord(x=5, y=1),
+        world_position=WorldCoord(x=88.0, y=24.0),
+        home_position=WorldCoord(x=88.0, y=24.0),
+        max_health=100.0,
+        health=100.0,
+        facing_angle_degrees=180.0,
+    )
+    squadmate = EnemyState(
+        enemy_id="enemy_1",
+        spawn_id="squad",
+        zone_id="zone",
+        spawn_type="test",
+        role="rifleman",
+        tile=TileCoord(x=8, y=1),
+        world_position=WorldCoord(x=136.0, y=24.0),
+        home_position=WorldCoord(x=136.0, y=24.0),
+        max_health=100.0,
+        health=100.0,
+        facing_angle_degrees=180.0,
+    )
+    system = EnemySystem(enemies=(source, squadmate), source_spawn_zones=1)
+    sound_origin = WorldCoord(x=72.0, y=24.0)
+
+    system.alert_enemies_by_sound(
+        origin=sound_origin,
+        noise_radius_px=24.0,
+        squad_alert_broadcast_delay_seconds=0.0,
+    )
+
+    assert source.alerted is True
+    assert squadmate.alerted is True
+    assert source.last_seen_player_position == sound_origin
+    assert squadmate.last_seen_player_position == sound_origin
+    assert squadmate.last_seen_player_position != source.world_position
+
+def test_enemy_system_ignores_enemy_owned_projectiles_for_enemy_damage() -> None:
+    """Enemy-owned projectiles should not damage enemies."""
+    tactical_map: dict[str, object] = {
+        "enemy_spawn_zones": [
+            {
+                "id": "spawn_0",
+                "zone_id": "zone_a",
+                "spawn_type": "initial_squad",
+                "position": [2, 1],
+                "preferred_roles": ["rifleman"],
+            },
+        ],
+    }
+    system = EnemySystem.from_tactical_map(
+        tactical_map,
+        _build_runtime_map(),
+        enemy_max_health=50.0,
+    )
+    projectile = ProjectileState(
+        position=WorldCoord(x=48.0, y=24.0),
+        previous_position=WorldCoord(x=24.0, y=24.0),
+        direction_x=1.0,
+        direction_y=0.0,
+        max_distance_px=64.0,
+        lifetime_seconds=0.1,
+        radius_px=3.0,
+        damage=50.0,
+        owner="enemy",
+    )
+
+    system.apply_projectile_hits((projectile,), enemy_collision_radius_px=6.0)
+
+    assert projectile.alive is True
+    assert system.stats.active_enemies == 1
+    assert system.stats.total_hits == 0
+    assert system.enemies[0].health == 50.0
+
+
+def test_enemy_system_fires_projectile_from_engaged_enemy() -> None:
+    """Engaged enemies should spawn hostile hitscan traces when they see the player."""
+    from topdown_shooter.combat.projectiles import ProjectileSystem
+    from topdown_shooter.world.collision import TileCollisionService
+
+    tactical_map: dict[str, object] = {
+        "enemy_spawn_zones": [
+            {
+                "id": "spawn_0",
+                "zone_id": "zone_a",
+                "spawn_type": "initial_squad",
+                "position": [1, 1],
+                "preferred_roles": ["rifleman"],
+            },
+        ],
+    }
+    runtime_map = _build_runtime_map()
+    collision_service = TileCollisionService(runtime_map)
+    projectile_system = ProjectileSystem(collision_service=collision_service)
+    system = EnemySystem.from_tactical_map(tactical_map, runtime_map)
+    enemy = system.enemies[0]
+    enemy.alerted = True
+    enemy.awareness_state = "engaged"
+
+    weapon_database = WeaponConfigLoader().load("res/config/weapons.json")
+
+    shots_fired = system.fire_at_player(
+        player_position=WorldCoord(56.0, 24.0),
+        projectile_system=projectile_system,
+        collision_service=collision_service,
+        weapon_database=weapon_database,
+        frame_time=0.0,
+        max_fire_distance_px=128.0,
+        muzzle_offset_px=4.0,
+        line_of_sight_sample_step_px=4.0,
+        primary_weapon_id="ak47",
+        fallback_weapon_id="pistol",
+    )
+
+    assert shots_fired == 1
+    assert enemy.fire_cooldown_seconds == weapon_database.get("ak47").fire_interval_seconds
+    assert enemy.current_weapon_id == "ak47"
+    assert enemy.ammo_by_weapon_id["ak47"].ammo_in_magazine == 29
+    assert projectile_system.projectiles[0].owner == "enemy"
+    assert projectile_system.projectiles[0].damage == weapon_database.get("ak47").damage
+    assert projectile_system.projectiles[0].visual_profile == "ak47"
+
+
+def test_enemy_system_fire_spread_offsets_enemy_aim() -> None:
+    """Enemy fire spread should avoid perfect center-mass hits every shot."""
+    from topdown_shooter.combat.projectiles import ProjectileSystem
+    from topdown_shooter.world.collision import TileCollisionService
+
+    tactical_map: dict[str, object] = {
+        "enemy_spawn_zones": [
+            {
+                "id": "spawn_0",
+                "zone_id": "zone_a",
+                "spawn_type": "initial_squad",
+                "position": [1, 1],
+                "preferred_roles": ["rifleman"],
+            },
+        ],
+    }
+    runtime_map = _build_runtime_map()
+    collision_service = TileCollisionService(runtime_map)
+    projectile_system = ProjectileSystem(collision_service=collision_service)
+    system = EnemySystem.from_tactical_map(tactical_map, runtime_map)
+    enemy = system.enemies[0]
+    enemy.alerted = True
+    enemy.awareness_state = "engaged"
+
+    weapon_database = WeaponConfigLoader().load("res/config/weapons.json")
+
+    shots_fired = system.fire_at_player(
+        player_position=WorldCoord(56.0, 24.0),
+        projectile_system=projectile_system,
+        collision_service=collision_service,
+        weapon_database=weapon_database,
+        frame_time=0.0,
+        max_fire_distance_px=128.0,
+        muzzle_offset_px=4.0,
+        line_of_sight_sample_step_px=4.0,
+        primary_weapon_id="ak47",
+        fallback_weapon_id="pistol",
+        aim_error_degrees=20.0,
+        rng=random.Random(1),
+    )
+
+    assert shots_fired == 1
+    assert abs(projectile_system.projectiles[0].direction_y) > 0.01
+
+
+def test_enemy_system_switches_to_pistol_after_primary_ammo_is_empty() -> None:
+    """Enemies should fall back to the shared pistol after AK ammo is exhausted."""
+    from topdown_shooter.combat.projectiles import ProjectileSystem
+    from topdown_shooter.world.collision import TileCollisionService
+
+    tactical_map: dict[str, object] = {
+        "enemy_spawn_zones": [
+            {
+                "id": "spawn_0",
+                "zone_id": "zone_a",
+                "spawn_type": "initial_squad",
+                "position": [1, 1],
+                "preferred_roles": ["rifleman"],
+            },
+        ],
+    }
+    runtime_map = _build_runtime_map()
+    collision_service = TileCollisionService(runtime_map)
+    projectile_system = ProjectileSystem(collision_service=collision_service)
+    weapon_database = WeaponConfigLoader().load("res/config/weapons.json")
+    system = EnemySystem.from_tactical_map(tactical_map, runtime_map)
+    enemy = system.enemies[0]
+    enemy.alerted = True
+    enemy.awareness_state = "engaged"
+    EnemySystem._ensure_enemy_weapon_state(
+        enemy=enemy,
+        weapon_database=weapon_database,
+        primary_weapon_id="ak47",
+        fallback_weapon_id="pistol",
+    )
+    enemy.ammo_by_weapon_id["ak47"].ammo_in_magazine = 0
+    enemy.ammo_by_weapon_id["ak47"].reserve_ammo = 0
+
+    shots_fired = system.fire_at_player(
+        player_position=WorldCoord(56.0, 24.0),
+        projectile_system=projectile_system,
+        collision_service=collision_service,
+        weapon_database=weapon_database,
+        frame_time=0.0,
+        max_fire_distance_px=128.0,
+        muzzle_offset_px=4.0,
+        line_of_sight_sample_step_px=4.0,
+        primary_weapon_id="ak47",
+        fallback_weapon_id="pistol",
+    )
+
+    assert shots_fired == 1
+    assert enemy.current_weapon_id == "pistol"
+    assert enemy.ammo_by_weapon_id["pistol"].ammo_in_magazine == 7
+    assert projectile_system.projectiles[0].damage == weapon_database.get("pistol").damage
+    assert projectile_system.projectiles[0].visual_profile == "pistol"
+
+
+def test_enemy_projectile_hit_marker_uses_segment_impact_point() -> None:
+    """Enemy hit feedback should appear at the bullet impact point, not always center."""
+    tactical_map: dict[str, object] = {
+        "enemy_spawn_zones": [
+            {
+                "id": "spawn_0",
+                "zone_id": "zone_a",
+                "spawn_type": "initial_squad",
+                "position": [1, 1],
+                "preferred_roles": ["rifleman"],
+            },
+        ],
+    }
+    system = EnemySystem.from_tactical_map(tactical_map, _build_runtime_map())
+    projectile = ProjectileState(
+        position=WorldCoord(40.0, 18.0),
+        previous_position=WorldCoord(10.0, 18.0),
+        direction_x=1.0,
+        direction_y=0.0,
+        max_distance_px=100.0,
+        lifetime_seconds=0.1,
+        radius_px=2.0,
+        damage=7.0,
+        owner="player",
+    )
+
+    system.apply_projectile_hits(
+        projectiles=(projectile,),
+        enemy_collision_radius_px=8.0,
+    )
+
+    assert system.hit_markers[0].position == WorldCoord(24.0, 18.0)
