@@ -23,6 +23,10 @@ from topdown_shooter.map_preparation.visual_object_family import (
     VisualObjectFamilyResolver,
     VisualObjectFamilyResult,
 )
+from topdown_shooter.map_preparation.visual_scene_preset import (
+    VisualScenePresetAssigner,
+    VisualScenePresetResult,
+)
 from topdown_shooter.world.runtime_map import RuntimeMap
 from topdown_shooter.world.runtime_map_builder import RuntimeMapBuilder
 
@@ -70,6 +74,9 @@ class MapPreparationService:
     VISUAL_OBJECT_FAMILIES_FILE = "visual_object_families.json"
     VISUAL_OBJECT_FAMILY_REPORT_FILE = "visual_object_family_report.json"
     VISUAL_OBJECT_FAMILY_SUMMARY_FILE = "visual_object_family_summary.txt"
+    VISUAL_SCENE_PRESETS_FILE = "visual_scene_presets.json"
+    VISUAL_SCENE_PRESET_REPORT_FILE = "visual_scene_preset_report.json"
+    VISUAL_SCENE_PRESET_SUMMARY_FILE = "visual_scene_preset_summary.txt"
 
     def __init__(
         self,
@@ -79,6 +86,7 @@ class MapPreparationService:
         visual_context_analyzer: VisualContextAnalyzer | None = None,
         visual_quality_analyzer: VisualQualityAnalyzer | None = None,
         visual_object_family_resolver: VisualObjectFamilyResolver | None = None,
+        visual_scene_preset_assigner: VisualScenePresetAssigner | None = None,
     ) -> None:
         """Initialize the preparation service.
 
@@ -88,6 +96,7 @@ class MapPreparationService:
             visual_context_analyzer: Optional visual context analyzer override for tests.
             visual_quality_analyzer: Optional visual quality analyzer override for tests.
             visual_object_family_resolver: Optional visual object family resolver override for tests.
+            visual_scene_preset_assigner: Optional visual scene preset assigner override for tests.
         """
         self._loader = loader or MapPackageLoader()
         self._runtime_builder = runtime_builder or RuntimeMapBuilder()
@@ -95,6 +104,9 @@ class MapPreparationService:
         self._visual_quality_analyzer = visual_quality_analyzer or VisualQualityAnalyzer()
         self._visual_object_family_resolver = (
             visual_object_family_resolver or VisualObjectFamilyResolver()
+        )
+        self._visual_scene_preset_assigner = (
+            visual_scene_preset_assigner or VisualScenePresetAssigner()
         )
 
     def prepare(self, source_dir: Path, output_dir: Path) -> PreparedMapResult:
@@ -133,6 +145,11 @@ class MapPreparationService:
             visual_summary=visual_summary,
             scene_candidates=visual_context_result.scene_candidates,
         )
+        visual_scene_preset_result = self._visual_scene_preset_assigner.assign(
+            profile=package.manifest.profile,
+            scene_ranking=visual_quality_result.scene_ranking,
+            object_families=visual_object_family_result.family_index,
+        )
         generated_artifacts = self._write_visual_context_artifacts(
             output_dir=resolved_output_dir,
             result=visual_context_result,
@@ -149,6 +166,12 @@ class MapPreparationService:
                 result=visual_quality_result,
             ),
         )
+        generated_artifacts.extend(
+            self._write_visual_scene_preset_artifacts(
+                output_dir=resolved_output_dir,
+                result=visual_scene_preset_result,
+            ),
+        )
         report = self._build_preparation_report(
             package=package,
             runtime_map=runtime_map,
@@ -159,6 +182,7 @@ class MapPreparationService:
             visual_context_report=visual_context_result.report,
             visual_object_family_report=visual_object_family_result.family_report,
             visual_quality_report=visual_quality_result.quality_report,
+            visual_scene_preset_report=visual_scene_preset_result.preset_report,
         )
         manifest = self._build_prepared_manifest(
             package=package,
@@ -209,9 +233,11 @@ class MapPreparationService:
         context_scenes = self._require_report_dict(visual_context, "scene_candidates")
         visual_quality = self._require_report_dict(report, "visual_quality")
         visual_families = self._require_report_dict(report, "visual_object_families")
+        visual_scene_presets = self._require_report_dict(report, "visual_scene_presets")
         quality_scenes = self._require_report_dict(visual_quality, "scene_ranking")
         quality_generic = self._require_report_dict(visual_quality, "generic_objects")
         family_generic = self._require_report_dict(visual_families, "generic_objects")
+        preset_coverage = self._require_report_dict(visual_scene_presets, "preset_coverage")
         copied_artifacts = output.get("copied_artifacts", [])
         copied_count = len(copied_artifacts) if isinstance(copied_artifacts, list) else 0
         visual_state = "present" if visual.get("present") is True else "missing"
@@ -252,6 +278,12 @@ class MapPreparationService:
                     "- resolved generic families: "
                     f"{family_generic.get('resolved_generic_objects', 'unknown')}"
                     f"/{family_generic.get('generic_objects', 'unknown')}"
+                ),
+                f"- scene presets: {visual_scene_presets.get('status', 'unknown')}",
+                (
+                    "- assigned scene presets: "
+                    f"{preset_coverage.get('assigned_scenes', 'unknown')}"
+                    f"/{preset_coverage.get('total_scenes', 'unknown')}"
                 ),
                 f"- copied artifacts: {copied_count}",
                 f"- output: {output.get('path', 'unknown')}",
@@ -413,6 +445,33 @@ class MapPreparationService:
         )
         return artifacts
 
+    def _write_visual_scene_preset_artifacts(
+        self,
+        *,
+        output_dir: Path,
+        result: VisualScenePresetResult,
+    ) -> list[str]:
+        """Write generated visual scene preset artifacts into the prepared package.
+
+        Args:
+            output_dir: Destination prepared-map directory.
+            result: Visual scene preset assignment result.
+
+        Returns:
+            Generated relative artifact paths.
+        """
+        visual_dir = output_dir / self.VISUAL_MAP_DIR
+        reports_dir = output_dir / self.REPORTS_DIR
+        artifacts = [
+            f"{self.VISUAL_MAP_DIR}/{self.VISUAL_SCENE_PRESETS_FILE}",
+            f"{self.REPORTS_DIR}/{self.VISUAL_SCENE_PRESET_REPORT_FILE}",
+            f"{self.REPORTS_DIR}/{self.VISUAL_SCENE_PRESET_SUMMARY_FILE}",
+        ]
+        self._write_json(visual_dir / self.VISUAL_SCENE_PRESETS_FILE, result.scene_presets)
+        self._write_json(reports_dir / self.VISUAL_SCENE_PRESET_REPORT_FILE, result.preset_report)
+        self._write_text(reports_dir / self.VISUAL_SCENE_PRESET_SUMMARY_FILE, result.preset_summary)
+        return artifacts
+
     def _write_visual_quality_artifacts(
         self,
         *,
@@ -552,6 +611,7 @@ class MapPreparationService:
         visual_context_report: dict[str, Any],
         visual_object_family_report: dict[str, Any],
         visual_quality_report: dict[str, Any],
+        visual_scene_preset_report: dict[str, Any],
     ) -> dict[str, Any]:
         """Build the preparation report dictionary.
 
@@ -565,6 +625,7 @@ class MapPreparationService:
             visual_context_report: Visual context analyzer report.
             visual_object_family_report: Visual object family resolver report.
             visual_quality_report: Visual quality gates report.
+            visual_scene_preset_report: Visual scene preset assignment report.
 
         Returns:
             Preparation report dictionary.
@@ -612,6 +673,11 @@ class MapPreparationService:
                 "passed",
                 "Visual quality gates must rank scenes and report non-blocking art readiness.",
             ),
+            self._check(
+                "visual_scene_presets_built",
+                "passed",
+                "Visual scene presets must be assigned to accepted ranked scenes.",
+            ),
         ]
         status = self._build_overall_status(checks)
         report_path = output_dir / self.REPORTS_DIR / self.PREPARATION_REPORT_FILE
@@ -649,6 +715,7 @@ class MapPreparationService:
             "visual_context": visual_context_report,
             "visual_object_families": visual_object_family_report,
             "visual_quality": visual_quality_report,
+            "visual_scene_presets": visual_scene_preset_report,
             "checks": checks,
             "output": {
                 "path": str(output_dir),

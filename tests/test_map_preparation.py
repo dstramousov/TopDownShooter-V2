@@ -314,6 +314,9 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
     object_families_path = output_dir / "visual_map/visual_object_families.json"
     object_family_report_path = output_dir / "reports/visual_object_family_report.json"
     object_family_summary_path = output_dir / "reports/visual_object_family_summary.txt"
+    scene_presets_path = output_dir / "visual_map/visual_scene_presets.json"
+    scene_preset_report_path = output_dir / "reports/visual_scene_preset_report.json"
+    scene_preset_summary_path = output_dir / "reports/visual_scene_preset_summary.txt"
     assert result.status == "passed"
     assert context_path.is_file()
     assert regions_path.is_file()
@@ -325,6 +328,9 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
     assert object_families_path.is_file()
     assert object_family_report_path.is_file()
     assert object_family_summary_path.is_file()
+    assert scene_presets_path.is_file()
+    assert scene_preset_report_path.is_file()
+    assert scene_preset_summary_path.is_file()
 
     context = json.loads(context_path.read_text(encoding="utf-8"))
     regions = json.loads(regions_path.read_text(encoding="utf-8"))
@@ -335,6 +341,9 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
     object_families = json.loads(object_families_path.read_text(encoding="utf-8"))
     object_family_report = json.loads(object_family_report_path.read_text(encoding="utf-8"))
     object_family_summary = object_family_summary_path.read_text(encoding="utf-8")
+    scene_presets = json.loads(scene_presets_path.read_text(encoding="utf-8"))
+    scene_preset_report = json.loads(scene_preset_report_path.read_text(encoding="utf-8"))
+    scene_preset_summary = scene_preset_summary_path.read_text(encoding="utf-8")
     preparation_report = json.loads(result.report_path.read_text(encoding="utf-8"))
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
 
@@ -364,16 +373,27 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
     }
     assert "Visual quality gates" in quality_summary
     assert "Visual object families" in object_family_summary
+    assert scene_presets["schema_version"] == "visual-scene-presets-v1"
+    assert scene_presets["summary"]["total_scenes"] >= 1
+    assert scene_presets["summary"]["assigned_scenes"] >= 1
+    assert scene_preset_report["schema_version"] == "visual-scene-preset-report-v1"
+    assert scene_preset_report["status"] == "ok"
+    assert scene_preset_report["preset_coverage"]["assigned_scenes"] >= 1
+    assert "Visual scene presets" in scene_preset_summary
     assert preparation_report["visual_context"]["status"] == "passed"
     assert preparation_report["visual_context"]["regions"]["forest_regions"] == 1
     assert preparation_report["visual_object_families"]["status"] == "needs_work"
     assert preparation_report["visual_quality"]["status"] == "needs_work"
+    assert preparation_report["visual_scene_presets"]["status"] == "ok"
     check_codes = {check["code"] for check in preparation_report["checks"]}
     assert "visual_context_built" in check_codes
     assert "visual_object_families_built" in check_codes
     assert "visual_quality_built" in check_codes
+    assert "visual_scene_presets_built" in check_codes
     assert "visual_map/visual_context.json" in manifest["artifacts"]["generated"]
     assert "visual_map/visual_scene_ranking.json" in manifest["artifacts"]["generated"]
     assert "visual_map/visual_object_families.json" in manifest["artifacts"]["generated"]
     assert "reports/visual_object_family_report.json" in manifest["artifacts"]["generated"]
     assert "reports/visual_quality_report.json" in manifest["artifacts"]["generated"]
+    assert "visual_map/visual_scene_presets.json" in manifest["artifacts"]["generated"]
+    assert "reports/visual_scene_preset_report.json" in manifest["artifacts"]["generated"]

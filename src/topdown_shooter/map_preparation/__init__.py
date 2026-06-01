@@ -12,6 +12,10 @@ from topdown_shooter.map_preparation.visual_object_family import (
     VisualObjectFamilyResolver,
     VisualObjectFamilyResult,
 )
+from topdown_shooter.map_preparation.visual_scene_preset import (
+    VisualScenePresetAssigner,
+    VisualScenePresetResult,
+)
 from topdown_shooter.map_preparation.visual_context import (
     VisualContextAnalyzer,
     VisualContextResult,
@@ -26,4 +30,6 @@ __all__ = [
     "VisualObjectFamilyResult",
     "VisualQualityAnalyzer",
     "VisualQualityResult",
+    "VisualScenePresetAssigner",
+    "VisualScenePresetResult",
 ]

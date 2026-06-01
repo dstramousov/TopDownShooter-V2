@@ -969,3 +969,9 @@
 - Added visual object family resolution during map preparation to turn generic visual objects into source-type family diagnostics.
 - `--prepare-map` now writes `visual_object_families.json`, `visual_object_family_report.json`, and `visual_object_family_summary.txt`.
 - Extended preparation summary and reports with resolved/unresolved generic family counts while keeping gameplay geometry, collision, and renderers unchanged.
+
+## v0.2.26 -> v0.2.27
+
+- Added visual scene preset assignment during map preparation to turn accepted ranked scenes into deterministic scene dressing intents.
+- `--prepare-map` now writes `visual_scene_presets.json`, `visual_scene_preset_report.json`, and `visual_scene_preset_summary.txt`.
+- Extended preparation summary and reports with scene preset coverage while keeping gameplay geometry, collision, and renderers unchanged.
