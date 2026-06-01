@@ -944,3 +944,9 @@
 - Added presentation timing config for raylib runtimes with explicit `target_fps`, `uncapped`, and `vsync` modes.
 - Added startup OpenGL driver vblank environment hints to diagnose/fix `present`/`EndDrawing` stalls that ignore `target_fps` changes.
 - Exposed presentation mode, target FPS, and driver-vsync status in frame-profiler counters for 2D and 3D runtimes.
+
+## v0.2.22 -> v0.2.23
+
+- Added a prepared-map creation pipeline that validates generated map packages, builds runtime map data, and writes `manifest.json` plus preparation reports.
+- Added CLI support for `topdown-shooter --map <source> --prepare-map --out <prepared_map>` as the backend foundation for future New Game / world creation flow.
+- Copied runtime-relevant source artifacts into the prepared package, including structured `map_package/` and optional `visual_map/`, while keeping gameplay geometry unchanged.
