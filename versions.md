@@ -962,3 +962,10 @@
 - Added visual scene ranking during map preparation to turn raw scene candidates into accepted scenes and rejected noise with stable reasons.
 - Added non-blocking visual quality gates for visual-map readiness, generic-object ratio, accepted scenes, and rejected candidate summaries.
 - `--prepare-map` now writes `visual_scene_ranking.json`, `visual_quality_report.json`, and `visual_quality_summary.txt` while keeping gameplay geometry, collision, and renderers unchanged.
+
+
+## v0.2.25 -> v0.2.26
+
+- Added visual object family resolution during map preparation to turn generic visual objects into source-type family diagnostics.
+- `--prepare-map` now writes `visual_object_families.json`, `visual_object_family_report.json`, and `visual_object_family_summary.txt`.
+- Extended preparation summary and reports with resolved/unresolved generic family counts while keeping gameplay geometry, collision, and renderers unchanged.

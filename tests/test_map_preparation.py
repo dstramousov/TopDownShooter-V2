@@ -132,8 +132,24 @@ def _write_structured_package_with_visual_map(package_dir: Path) -> None:
         {
             "schema_version": "visual-objects-v1",
             "items": [
-                {"id": "generic_000", "asset_family": "object.generic"},
-                {"id": "log_000", "asset_family": "fallen_log"},
+                {
+                    "id": "generic_000",
+                    "source_object_id": "fallen_log_000",
+                    "source_object_type": "fallen_log",
+                    "asset_family": "object.generic",
+                },
+                {
+                    "id": "generic_unknown",
+                    "source_object_id": "mystery_000",
+                    "source_object_type": "mystery_relic",
+                    "asset_family": "object.generic",
+                },
+                {
+                    "id": "log_000",
+                    "source_object_id": "fallen_log_001",
+                    "source_object_type": "fallen_log",
+                    "asset_family": "fallen_log",
+                },
             ],
         },
     )
@@ -195,8 +211,8 @@ def test_map_preparation_copies_structured_and_visual_artifacts(tmp_path: Path) 
     assert manifest["contract"]["changes_gameplay"] is False
     assert report["source"]["format"] == "map_package"
     assert report["visual_map"]["layers_count"] == 1
-    assert report["visual_map"]["objects_count"] == 2
-    assert report["visual_map"]["generic_objects_count"] == 1
+    assert report["visual_map"]["objects_count"] == 3
+    assert report["visual_map"]["generic_objects_count"] == 2
     assert report["visual_map"]["chunks_count"] == 1
     assert report["visual_map"]["contract_status"] == "passed"
 
@@ -295,6 +311,9 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
     scene_ranking_path = output_dir / "visual_map/visual_scene_ranking.json"
     quality_report_path = output_dir / "reports/visual_quality_report.json"
     quality_summary_path = output_dir / "reports/visual_quality_summary.txt"
+    object_families_path = output_dir / "visual_map/visual_object_families.json"
+    object_family_report_path = output_dir / "reports/visual_object_family_report.json"
+    object_family_summary_path = output_dir / "reports/visual_object_family_summary.txt"
     assert result.status == "passed"
     assert context_path.is_file()
     assert regions_path.is_file()
@@ -303,6 +322,9 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
     assert scene_ranking_path.is_file()
     assert quality_report_path.is_file()
     assert quality_summary_path.is_file()
+    assert object_families_path.is_file()
+    assert object_family_report_path.is_file()
+    assert object_family_summary_path.is_file()
 
     context = json.loads(context_path.read_text(encoding="utf-8"))
     regions = json.loads(regions_path.read_text(encoding="utf-8"))
@@ -310,6 +332,9 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
     scene_ranking = json.loads(scene_ranking_path.read_text(encoding="utf-8"))
     quality_report = json.loads(quality_report_path.read_text(encoding="utf-8"))
     quality_summary = quality_summary_path.read_text(encoding="utf-8")
+    object_families = json.loads(object_families_path.read_text(encoding="utf-8"))
+    object_family_report = json.loads(object_family_report_path.read_text(encoding="utf-8"))
+    object_family_summary = object_family_summary_path.read_text(encoding="utf-8")
     preparation_report = json.loads(result.report_path.read_text(encoding="utf-8"))
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
 
@@ -327,12 +352,28 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
     assert quality_report["schema_version"] == "visual-quality-report-v1"
     assert quality_report["scene_ranking"]["accepted_scenes"] >= 1
     assert quality_report["generic_objects"]["status"] == "bad"
+    assert object_families["schema_version"] == "visual-object-families-v1"
+    assert object_families["summary"]["generic_objects"] == 2
+    assert object_families["summary"]["resolved_generic_objects"] == 1
+    assert object_families["summary"]["unresolved_generic_objects"] == 1
+    assert object_family_report["schema_version"] == "visual-object-family-report-v1"
+    assert object_family_report["status"] == "needs_work"
+    assert object_family_report["generic_objects"]["generic_by_source_type"] == {
+        "fallen_log": 1,
+        "mystery_relic": 1,
+    }
     assert "Visual quality gates" in quality_summary
+    assert "Visual object families" in object_family_summary
     assert preparation_report["visual_context"]["status"] == "passed"
     assert preparation_report["visual_context"]["regions"]["forest_regions"] == 1
+    assert preparation_report["visual_object_families"]["status"] == "needs_work"
     assert preparation_report["visual_quality"]["status"] == "needs_work"
-    assert "visual_context_built" in {check["code"] for check in preparation_report["checks"]}
-    assert "visual_quality_built" in {check["code"] for check in preparation_report["checks"]}
+    check_codes = {check["code"] for check in preparation_report["checks"]}
+    assert "visual_context_built" in check_codes
+    assert "visual_object_families_built" in check_codes
+    assert "visual_quality_built" in check_codes
     assert "visual_map/visual_context.json" in manifest["artifacts"]["generated"]
     assert "visual_map/visual_scene_ranking.json" in manifest["artifacts"]["generated"]
+    assert "visual_map/visual_object_families.json" in manifest["artifacts"]["generated"]
+    assert "reports/visual_object_family_report.json" in manifest["artifacts"]["generated"]
     assert "reports/visual_quality_report.json" in manifest["artifacts"]["generated"]

@@ -19,6 +19,10 @@ from topdown_shooter.map_preparation.visual_context import (
     VisualContextAnalyzer,
     VisualContextResult,
 )
+from topdown_shooter.map_preparation.visual_object_family import (
+    VisualObjectFamilyResolver,
+    VisualObjectFamilyResult,
+)
 from topdown_shooter.world.runtime_map import RuntimeMap
 from topdown_shooter.world.runtime_map_builder import RuntimeMapBuilder
 
@@ -63,6 +67,9 @@ class MapPreparationService:
     VISUAL_SCENE_RANKING_FILE = "visual_scene_ranking.json"
     VISUAL_QUALITY_REPORT_FILE = "visual_quality_report.json"
     VISUAL_QUALITY_SUMMARY_FILE = "visual_quality_summary.txt"
+    VISUAL_OBJECT_FAMILIES_FILE = "visual_object_families.json"
+    VISUAL_OBJECT_FAMILY_REPORT_FILE = "visual_object_family_report.json"
+    VISUAL_OBJECT_FAMILY_SUMMARY_FILE = "visual_object_family_summary.txt"
 
     def __init__(
         self,
@@ -71,6 +78,7 @@ class MapPreparationService:
         runtime_builder: RuntimeMapBuilder | None = None,
         visual_context_analyzer: VisualContextAnalyzer | None = None,
         visual_quality_analyzer: VisualQualityAnalyzer | None = None,
+        visual_object_family_resolver: VisualObjectFamilyResolver | None = None,
     ) -> None:
         """Initialize the preparation service.
 
@@ -79,11 +87,15 @@ class MapPreparationService:
             runtime_builder: Optional runtime map builder override for tests.
             visual_context_analyzer: Optional visual context analyzer override for tests.
             visual_quality_analyzer: Optional visual quality analyzer override for tests.
+            visual_object_family_resolver: Optional visual object family resolver override for tests.
         """
         self._loader = loader or MapPackageLoader()
         self._runtime_builder = runtime_builder or RuntimeMapBuilder()
         self._visual_context_analyzer = visual_context_analyzer or VisualContextAnalyzer()
         self._visual_quality_analyzer = visual_quality_analyzer or VisualQualityAnalyzer()
+        self._visual_object_family_resolver = (
+            visual_object_family_resolver or VisualObjectFamilyResolver()
+        )
 
     def prepare(self, source_dir: Path, output_dir: Path) -> PreparedMapResult:
         """Prepare a generated map package for runtime consumption.
@@ -111,7 +123,11 @@ class MapPreparationService:
             package=package,
             output_dir=resolved_output_dir,
         )
-        visual_summary = self._build_visual_map_summary(package.package_dir)
+        visual_map_source = self._load_visual_map_source(package.package_dir)
+        visual_summary = self._build_visual_map_summary(visual_map_source)
+        visual_object_family_result = self._visual_object_family_resolver.resolve(
+            visual_map_source.get("visual_objects"),
+        )
         visual_context_result = self._visual_context_analyzer.analyze(runtime_map)
         visual_quality_result = self._visual_quality_analyzer.analyze(
             visual_summary=visual_summary,
@@ -120,6 +136,12 @@ class MapPreparationService:
         generated_artifacts = self._write_visual_context_artifacts(
             output_dir=resolved_output_dir,
             result=visual_context_result,
+        )
+        generated_artifacts.extend(
+            self._write_visual_object_family_artifacts(
+                output_dir=resolved_output_dir,
+                result=visual_object_family_result,
+            ),
         )
         generated_artifacts.extend(
             self._write_visual_quality_artifacts(
@@ -135,6 +157,7 @@ class MapPreparationService:
             generated_artifacts=generated_artifacts,
             visual_summary=visual_summary,
             visual_context_report=visual_context_result.report,
+            visual_object_family_report=visual_object_family_result.family_report,
             visual_quality_report=visual_quality_result.quality_report,
         )
         manifest = self._build_prepared_manifest(
@@ -185,8 +208,10 @@ class MapPreparationService:
         context_regions = self._require_report_dict(visual_context, "regions")
         context_scenes = self._require_report_dict(visual_context, "scene_candidates")
         visual_quality = self._require_report_dict(report, "visual_quality")
+        visual_families = self._require_report_dict(report, "visual_object_families")
         quality_scenes = self._require_report_dict(visual_quality, "scene_ranking")
         quality_generic = self._require_report_dict(visual_quality, "generic_objects")
+        family_generic = self._require_report_dict(visual_families, "generic_objects")
         copied_artifacts = output.get("copied_artifacts", [])
         copied_count = len(copied_artifacts) if isinstance(copied_artifacts, list) else 0
         visual_state = "present" if visual.get("present") is True else "missing"
@@ -221,6 +246,12 @@ class MapPreparationService:
                     f"{quality_generic.get('generic_objects', 'unknown')}"
                     f"/{quality_generic.get('total_objects', 'unknown')} "
                     f"{quality_generic.get('status', 'unknown')}"
+                ),
+                f"- object families: {visual_families.get('status', 'unknown')}",
+                (
+                    "- resolved generic families: "
+                    f"{family_generic.get('resolved_generic_objects', 'unknown')}"
+                    f"/{family_generic.get('generic_objects', 'unknown')}"
                 ),
                 f"- copied artifacts: {copied_count}",
                 f"- output: {output.get('path', 'unknown')}",
@@ -349,6 +380,39 @@ class MapPreparationService:
         self._write_json(reports_dir / self.VISUAL_CONTEXT_REPORT_FILE, result.report)
         return artifacts
 
+    def _write_visual_object_family_artifacts(
+        self,
+        *,
+        output_dir: Path,
+        result: VisualObjectFamilyResult,
+    ) -> list[str]:
+        """Write generated visual object family artifacts into the prepared package.
+
+        Args:
+            output_dir: Destination prepared-map directory.
+            result: Visual object family resolver result.
+
+        Returns:
+            Generated relative artifact paths.
+        """
+        visual_dir = output_dir / self.VISUAL_MAP_DIR
+        reports_dir = output_dir / self.REPORTS_DIR
+        artifacts = [
+            f"{self.VISUAL_MAP_DIR}/{self.VISUAL_OBJECT_FAMILIES_FILE}",
+            f"{self.REPORTS_DIR}/{self.VISUAL_OBJECT_FAMILY_REPORT_FILE}",
+            f"{self.REPORTS_DIR}/{self.VISUAL_OBJECT_FAMILY_SUMMARY_FILE}",
+        ]
+        self._write_json(visual_dir / self.VISUAL_OBJECT_FAMILIES_FILE, result.family_index)
+        self._write_json(
+            reports_dir / self.VISUAL_OBJECT_FAMILY_REPORT_FILE,
+            result.family_report,
+        )
+        self._write_text(
+            reports_dir / self.VISUAL_OBJECT_FAMILY_SUMMARY_FILE,
+            result.family_summary,
+        )
+        return artifacts
+
     def _write_visual_quality_artifacts(
         self,
         *,
@@ -376,20 +440,40 @@ class MapPreparationService:
         self._write_text(reports_dir / self.VISUAL_QUALITY_SUMMARY_FILE, result.quality_summary)
         return artifacts
 
-    def _build_visual_map_summary(self, package_dir: Path) -> dict[str, Any]:
-        """Build a lightweight summary for an optional visual map export.
+    def _load_visual_map_source(self, package_dir: Path) -> dict[str, Any]:
+        """Load optional visual map source artifacts once.
 
         Args:
             package_dir: Source package directory.
 
         Returns:
-            Visual map summary dictionary.
+            Dictionary containing raw optional visual map artifacts and paths.
         """
         visual_dir = package_dir / "visual_map"
-        visual_map = self._try_read_json(visual_dir / "visual_map.json")
-        visual_layers = self._try_read_json(visual_dir / "visual_layers.json")
-        visual_objects = self._try_read_json(visual_dir / "visual_objects.json")
-        visual_chunks = self._try_read_json(visual_dir / "visual_chunks.json")
+        return {
+            "visual_dir": visual_dir,
+            "visual_map": self._try_read_json(visual_dir / "visual_map.json"),
+            "visual_layers": self._try_read_json(visual_dir / "visual_layers.json"),
+            "visual_objects": self._try_read_json(visual_dir / "visual_objects.json"),
+            "visual_chunks": self._try_read_json(visual_dir / "visual_chunks.json"),
+        }
+
+    def _build_visual_map_summary(self, visual_map_source: dict[str, Any]) -> dict[str, Any]:
+        """Build a lightweight summary for an optional visual map export.
+
+        Args:
+            visual_map_source: Raw visual map source artifacts loaded from disk.
+
+        Returns:
+            Visual map summary dictionary.
+        """
+        visual_dir = visual_map_source.get("visual_dir")
+        if not isinstance(visual_dir, Path):
+            raise InvalidMapPackageError("Visual map source is missing visual_dir.")
+        visual_map = self._optional_dict(visual_map_source.get("visual_map"))
+        visual_layers = self._optional_dict(visual_map_source.get("visual_layers"))
+        visual_objects = self._optional_dict(visual_map_source.get("visual_objects"))
+        visual_chunks = self._optional_dict(visual_map_source.get("visual_chunks"))
         present = visual_dir.is_dir() or visual_map is not None
         contract = self._extract_visual_contract(visual_map or {})
         contract_status = self._build_visual_contract_status(contract, present=present)
@@ -466,6 +550,7 @@ class MapPreparationService:
         generated_artifacts: list[str],
         visual_summary: dict[str, Any],
         visual_context_report: dict[str, Any],
+        visual_object_family_report: dict[str, Any],
         visual_quality_report: dict[str, Any],
     ) -> dict[str, Any]:
         """Build the preparation report dictionary.
@@ -478,6 +563,7 @@ class MapPreparationService:
             generated_artifacts: Generated relative artifacts.
             visual_summary: Optional visual map summary.
             visual_context_report: Visual context analyzer report.
+            visual_object_family_report: Visual object family resolver report.
             visual_quality_report: Visual quality gates report.
 
         Returns:
@@ -515,6 +601,11 @@ class MapPreparationService:
                 "visual_context_built",
                 str(visual_context_report.get("status", "failed")),
                 "Visual context analyzer must produce region and scene-candidate artifacts.",
+            ),
+            self._check(
+                "visual_object_families_built",
+                "passed",
+                "Visual object family resolver must diagnose generic sprite usage.",
             ),
             self._check(
                 "visual_quality_built",
@@ -556,6 +647,7 @@ class MapPreparationService:
             },
             "visual_map": visual_summary,
             "visual_context": visual_context_report,
+            "visual_object_families": visual_object_family_report,
             "visual_quality": visual_quality_report,
             "checks": checks,
             "output": {
@@ -765,6 +857,17 @@ class MapPreparationService:
         """
         value = report.get(key)
         return value if isinstance(value, dict) else {}
+
+    def _optional_dict(self, value: Any) -> dict[str, Any] | None:
+        """Return a dictionary value or ``None``.
+
+        Args:
+            value: Raw value.
+
+        Returns:
+            Dictionary value or ``None``.
+        """
+        return value if isinstance(value, dict) else None
 
     def _try_read_json(self, path: Path) -> dict[str, Any] | None:
         """Read an optional JSON object.
