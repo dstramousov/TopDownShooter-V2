@@ -60,3 +60,35 @@ def test_grid_pathfinder_blocks_diagonal_corner_cutting() -> None:
 
     assert result.tiles == ()
     assert result.stats.reached_goal is False
+
+
+def test_grid_pathfinder_caches_walkability_snapshot() -> None:
+    """Pathfinding should not query RuntimeMap walkability during search."""
+
+    class ProbeRuntimeMap:
+        """Minimal runtime-map probe that fails after snapshot build."""
+
+        width_tiles = 5
+        height_tiles = 3
+
+        def __init__(self) -> None:
+            self.lookup_allowed = True
+
+        def is_tile_walkable(self, tile: TileCoord) -> bool:
+            if not self.lookup_allowed:
+                raise AssertionError("RuntimeMap walkability should be cached")
+            return not (tile.y == 1 and 1 <= tile.x <= 3)
+
+    runtime_map = ProbeRuntimeMap()
+    pathfinder = GridPathfinder(runtime_map)  # type: ignore[arg-type]
+    runtime_map.lookup_allowed = False
+
+    result = pathfinder.find_path(
+        start=TileCoord(0, 1),
+        goal=TileCoord(4, 1),
+        max_iterations=64,
+    )
+
+    assert result.stats.reached_goal is True
+    assert result.tiles[0] == TileCoord(0, 1)
+    assert result.tiles[-1] == TileCoord(4, 1)

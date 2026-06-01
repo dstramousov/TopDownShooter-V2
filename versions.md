@@ -915,3 +915,9 @@
 - Reduced default enemy A* pathfinding pressure after gunshot alerts by increasing rebuild spacing, lowering per-frame rebuild budget, and reducing per-query iteration caps.
 - Added failed path-query backoff so unreachable targets do not trigger repeated expensive A* rebuilds every update.
 - Documented the new pathfinding guard and added tests covering failed-path backoff and updated runtime config defaults.
+
+## v0.2.17 -> v0.2.18
+
+- Оптимизирован `GridPathfinder`: walkability grid теперь кэшируется при создании pathfinder-а, а A* работает на raw `(x, y)` координатах без повторных дорогих запросов в `RuntimeMap`.
+- Снижена стоимость enemy pathfinding после gunshot alert на больших structured maps.
+- Сохранено прежнее поведение pathfinding, включая запрет diagonal corner cutting.
