@@ -235,3 +235,85 @@ def test_cli_prepare_map_requires_output_dir(
     captured = capsys.readouterr()
     assert exit_code == 2
     assert "--prepare-map requires --out" in captured.err
+
+
+def _write_structured_package_for_visual_context(package_dir: Path) -> None:
+    """Write a structured fixture with forest, road, ruin, and water symbols."""
+    _write_structured_package_with_visual_map(package_dir)
+    rows = [
+        "TTTTTTT",
+        "T..S..T",
+        "T..R#.T",
+        "T.wG..T",
+        "TTTTTTT",
+    ]
+    manifest_path = package_dir / "_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["dimensions"] = {"width_tiles": 7, "height_tiles": 5, "tile_size_px": 16}
+    _write_json(manifest_path, manifest)
+
+    map_index_path = package_dir / "map_package/map.json"
+    map_index = json.loads(map_index_path.read_text(encoding="utf-8"))
+    map_index["dimensions"] = {"width_tiles": 7, "height_tiles": 5, "tile_size_px": 16}
+    _write_json(map_index_path, map_index)
+
+    _write_json(
+        package_dir / "map_package/layers/tile_grid.json",
+        {
+            "schema_version": "tile-grid-layer-v1",
+            "kind": "tile_grid",
+            "width": 7,
+            "height": 5,
+            "format": "ascii_rows",
+            "rows": rows,
+        },
+    )
+    _write_json(
+        package_dir / "map_package/layers/movement_costs.json",
+        {
+            "schema_version": "movement-layer-v1",
+            "kind": "movement_costs",
+            "width": 7,
+            "height": 5,
+            "costs_by_tile": {"S": 1, "G": 1, ".": 1, "R": 1, "w": 3},
+        },
+    )
+
+
+def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None:
+    """Preparation should build visual context, regions, and scene candidates."""
+    source_dir = tmp_path / "source_context"
+    output_dir = tmp_path / "prepared_context"
+    _write_structured_package_for_visual_context(source_dir)
+
+    result = MapPreparationService().prepare(source_dir=source_dir, output_dir=output_dir)
+
+    context_path = output_dir / "visual_map/visual_context.json"
+    regions_path = output_dir / "visual_map/visual_regions.json"
+    candidates_path = output_dir / "visual_map/visual_scene_candidates.json"
+    context_report_path = output_dir / "reports/visual_context_report.json"
+    assert result.status == "passed"
+    assert context_path.is_file()
+    assert regions_path.is_file()
+    assert candidates_path.is_file()
+    assert context_report_path.is_file()
+
+    context = json.loads(context_path.read_text(encoding="utf-8"))
+    regions = json.loads(regions_path.read_text(encoding="utf-8"))
+    candidates = json.loads(candidates_path.read_text(encoding="utf-8"))
+    preparation_report = json.loads(result.report_path.read_text(encoding="utf-8"))
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    assert context["schema_version"] == "visual-context-v1"
+    assert context["dimensions"] == {"width_tiles": 7, "height_tiles": 5, "tile_size_px": 16}
+    assert context["rows"][0][0]["primary"] in {"forest_edge", "forest_outer_corner"}
+    assert context["rows"][1][3]["primary"] == "clearing"
+    assert "marker_start" in context["rows"][1][3]["flags"]
+    assert "near_road" in context["rows"][1][3]["flags"]
+    assert regions["summary"]["forest_regions"] == 1
+    assert regions["summary"]["ruin_clusters"] == 1
+    assert candidates["summary"]["total_candidates"] >= 2
+    assert preparation_report["visual_context"]["status"] == "passed"
+    assert preparation_report["visual_context"]["regions"]["forest_regions"] == 1
+    assert "visual_context_built" in {check["code"] for check in preparation_report["checks"]}
+    assert "visual_map/visual_context.json" in manifest["artifacts"]["generated"]

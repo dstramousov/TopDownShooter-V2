@@ -950,3 +950,9 @@
 - Added a prepared-map creation pipeline that validates generated map packages, builds runtime map data, and writes `manifest.json` plus preparation reports.
 - Added CLI support for `topdown-shooter --map <source> --prepare-map --out <prepared_map>` as the backend foundation for future New Game / world creation flow.
 - Copied runtime-relevant source artifacts into the prepared package, including structured `map_package/` and optional `visual_map/`, while keeping gameplay geometry unchanged.
+
+## v0.2.23 -> v0.2.24
+
+- Added `VisualContextAnalyzer` to derive per-tile visual context, connected visual regions, and scene candidates during map preparation.
+- `--prepare-map` now writes `visual_context.json`, `visual_regions.json`, `visual_scene_candidates.json`, and `visual_context_report.json` into the prepared map package.
+- Extended preparation manifest, report, and CLI summary with generated visual-context artifacts while preserving gameplay geometry, collision, and renderer behavior.

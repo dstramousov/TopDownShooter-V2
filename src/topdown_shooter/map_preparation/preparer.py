@@ -11,6 +11,10 @@ from typing import Any
 from topdown_shooter import __version__
 from topdown_shooter.map_loading.errors import InvalidMapPackageError
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage, MapPackageLoader
+from topdown_shooter.map_preparation.visual_context import (
+    VisualContextAnalyzer,
+    VisualContextResult,
+)
 from topdown_shooter.world.runtime_map import RuntimeMap
 from topdown_shooter.world.runtime_map_builder import RuntimeMapBuilder
 
@@ -47,21 +51,29 @@ class MapPreparationService:
     REPORTS_DIR = "reports"
     PREPARATION_REPORT_FILE = "preparation_report.json"
     PREPARATION_SUMMARY_FILE = "preparation_summary.txt"
+    VISUAL_MAP_DIR = "visual_map"
+    VISUAL_CONTEXT_FILE = "visual_context.json"
+    VISUAL_REGIONS_FILE = "visual_regions.json"
+    VISUAL_SCENE_CANDIDATES_FILE = "visual_scene_candidates.json"
+    VISUAL_CONTEXT_REPORT_FILE = "visual_context_report.json"
 
     def __init__(
         self,
         *,
         loader: MapPackageLoader | None = None,
         runtime_builder: RuntimeMapBuilder | None = None,
+        visual_context_analyzer: VisualContextAnalyzer | None = None,
     ) -> None:
         """Initialize the preparation service.
 
         Args:
             loader: Optional package loader override for tests.
             runtime_builder: Optional runtime map builder override for tests.
+            visual_context_analyzer: Optional visual context analyzer override for tests.
         """
         self._loader = loader or MapPackageLoader()
         self._runtime_builder = runtime_builder or RuntimeMapBuilder()
+        self._visual_context_analyzer = visual_context_analyzer or VisualContextAnalyzer()
 
     def prepare(self, source_dir: Path, output_dir: Path) -> PreparedMapResult:
         """Prepare a generated map package for runtime consumption.
@@ -90,18 +102,26 @@ class MapPreparationService:
             output_dir=resolved_output_dir,
         )
         visual_summary = self._build_visual_map_summary(package.package_dir)
+        visual_context_result = self._visual_context_analyzer.analyze(runtime_map)
+        generated_artifacts = self._write_visual_context_artifacts(
+            output_dir=resolved_output_dir,
+            result=visual_context_result,
+        )
         report = self._build_preparation_report(
             package=package,
             runtime_map=runtime_map,
             output_dir=resolved_output_dir,
             copied_artifacts=copied_artifacts,
+            generated_artifacts=generated_artifacts,
             visual_summary=visual_summary,
+            visual_context_report=visual_context_result.report,
         )
         manifest = self._build_prepared_manifest(
             package=package,
             runtime_map=runtime_map,
             output_dir=resolved_output_dir,
             copied_artifacts=copied_artifacts,
+            generated_artifacts=generated_artifacts,
             report=report,
         )
 
@@ -140,6 +160,9 @@ class MapPreparationService:
         dimensions = self._require_report_dict(report, "dimensions")
         visual = self._require_report_dict(report, "visual_map")
         output = self._require_report_dict(report, "output")
+        visual_context = self._require_report_dict(report, "visual_context")
+        context_regions = self._require_report_dict(visual_context, "regions")
+        context_scenes = self._require_report_dict(visual_context, "scene_candidates")
         copied_artifacts = output.get("copied_artifacts", [])
         copied_count = len(copied_artifacts) if isinstance(copied_artifacts, list) else 0
         visual_state = "present" if visual.get("present") is True else "missing"
@@ -160,6 +183,10 @@ class MapPreparationService:
                 ),
                 f"- visual map: {visual_state}",
                 f"- visual contract: {contract_state}",
+                f"- visual context: {visual_context.get('status', 'unknown')}",
+                f"- forest regions: {context_regions.get('forest_regions', 'unknown')}",
+                f"- clearings: {context_regions.get('clearing_regions', 'unknown')}",
+                f"- scene candidates: {context_scenes.get('total_candidates', 'unknown')}",
                 f"- copied artifacts: {copied_count}",
                 f"- output: {output.get('path', 'unknown')}",
                 f"- report: {output.get('report_path', 'unknown')}",
@@ -255,6 +282,38 @@ class MapPreparationService:
                 f"Failed to copy prepared map directory {source_path} -> {target_path}: {exc}",
             ) from exc
 
+    def _write_visual_context_artifacts(
+        self,
+        *,
+        output_dir: Path,
+        result: VisualContextResult,
+    ) -> list[str]:
+        """Write generated visual context artifacts into the prepared package.
+
+        Args:
+            output_dir: Destination prepared-map directory.
+            result: Visual context analyzer result.
+
+        Returns:
+            Generated relative artifact paths.
+        """
+        visual_dir = output_dir / self.VISUAL_MAP_DIR
+        reports_dir = output_dir / self.REPORTS_DIR
+        artifacts = [
+            f"{self.VISUAL_MAP_DIR}/{self.VISUAL_CONTEXT_FILE}",
+            f"{self.VISUAL_MAP_DIR}/{self.VISUAL_REGIONS_FILE}",
+            f"{self.VISUAL_MAP_DIR}/{self.VISUAL_SCENE_CANDIDATES_FILE}",
+            f"{self.REPORTS_DIR}/{self.VISUAL_CONTEXT_REPORT_FILE}",
+        ]
+        self._write_json(visual_dir / self.VISUAL_CONTEXT_FILE, result.context)
+        self._write_json(visual_dir / self.VISUAL_REGIONS_FILE, result.regions)
+        self._write_json(
+            visual_dir / self.VISUAL_SCENE_CANDIDATES_FILE,
+            result.scene_candidates,
+        )
+        self._write_json(reports_dir / self.VISUAL_CONTEXT_REPORT_FILE, result.report)
+        return artifacts
+
     def _build_visual_map_summary(self, package_dir: Path) -> dict[str, Any]:
         """Build a lightweight summary for an optional visual map export.
 
@@ -342,7 +401,9 @@ class MapPreparationService:
         runtime_map: RuntimeMap,
         output_dir: Path,
         copied_artifacts: list[str],
+        generated_artifacts: list[str],
         visual_summary: dict[str, Any],
+        visual_context_report: dict[str, Any],
     ) -> dict[str, Any]:
         """Build the preparation report dictionary.
 
@@ -351,7 +412,9 @@ class MapPreparationService:
             runtime_map: Built runtime map.
             output_dir: Destination prepared-map directory.
             copied_artifacts: Copied relative artifacts.
+            generated_artifacts: Generated relative artifacts.
             visual_summary: Optional visual map summary.
+            visual_context_report: Visual context analyzer report.
 
         Returns:
             Preparation report dictionary.
@@ -383,6 +446,11 @@ class MapPreparationService:
                 "visual_contract",
                 str(visual_summary["contract_status"]),
                 "Visual map must not change gameplay, collision, or marker positions.",
+            ),
+            self._check(
+                "visual_context_built",
+                str(visual_context_report.get("status", "failed")),
+                "Visual context analyzer must produce region and scene-candidate artifacts.",
             ),
         ]
         status = self._build_overall_status(checks)
@@ -418,6 +486,7 @@ class MapPreparationService:
                 "gameplay_zones": len(runtime_map.gameplay_zones),
             },
             "visual_map": visual_summary,
+            "visual_context": visual_context_report,
             "checks": checks,
             "output": {
                 "path": str(output_dir),
@@ -425,6 +494,7 @@ class MapPreparationService:
                 "report_path": str(report_path),
                 "summary_path": str(output_dir / self.REPORTS_DIR / self.PREPARATION_SUMMARY_FILE),
                 "copied_artifacts": copied_artifacts,
+                "generated_artifacts": generated_artifacts,
             },
         }
 
@@ -435,6 +505,7 @@ class MapPreparationService:
         runtime_map: RuntimeMap,
         output_dir: Path,
         copied_artifacts: list[str],
+        generated_artifacts: list[str],
         report: dict[str, Any],
     ) -> dict[str, Any]:
         """Build the prepared map manifest dictionary.
@@ -444,6 +515,7 @@ class MapPreparationService:
             runtime_map: Built runtime map.
             output_dir: Destination prepared-map directory.
             copied_artifacts: Copied relative artifacts.
+            generated_artifacts: Generated relative artifacts.
             report: Preparation report dictionary.
 
         Returns:
@@ -474,13 +546,13 @@ class MapPreparationService:
             },
             "artifacts": {
                 "copied": copied_artifacts,
+                "generated": generated_artifacts,
                 "report": f"{self.REPORTS_DIR}/{self.PREPARATION_REPORT_FILE}",
                 "summary": f"{self.REPORTS_DIR}/{self.PREPARATION_SUMMARY_FILE}",
             },
             "status": report["status"],
             "output_path": str(output_dir),
         }
-
 
     def _source_format(self, package: GeneratedMapPackage) -> str:
         """Return the loaded source package format label.
