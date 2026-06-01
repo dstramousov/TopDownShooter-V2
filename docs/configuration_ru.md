@@ -37,6 +37,38 @@ res/config/
 
 ---
 
+## presentation
+
+Настройки presentation/frame pacing. Используются до создания raylib-окна и помогают
+отделить внутренний limiter raylib от driver/compositor vblank sync.
+
+### mode
+Режим ограничения кадров:
+
+```text
+target_fps — использовать raylib SetTargetFPS(window.target_fps)
+uncapped   — не вызывать SetTargetFPS
+vsync      — включить raylib FLAG_VSYNC_HINT перед init_window
+```
+
+### disable_driver_vsync
+Если `true`, процесс выставляет common OpenGL driver hints перед созданием окна:
+
+```text
+vblank_mode=0
+__GL_SYNC_TO_VBLANK=0
+__GL_MaxFramesAllowed=<max_queued_frames>
+```
+
+Это нужно для диагностики случаев, когда profiler показывает основную задержку
+в `present` / `EndDrawing`, а изменение `target_fps` не влияет на FPS.
+
+### max_queued_frames
+Подсказка для драйверов, которые поддерживают ограничение очереди кадров.
+Обычно для диагностики достаточно значения `1`.
+
+---
+
 ## camera
 
 ### zoom
@@ -716,3 +748,23 @@ ID резервного оружия врага из общей базы `res/co
   "weight": 7.0
 }
 ```
+
+## frame_profiler
+
+Настройки встроенного runtime-профайлера кадров для ветки `perf_normalizer`.
+Профайлер используется для диагностики просадок FPS в 2D и experimental 3D без внешних инструментов.
+
+### enabled
+Включает сбор frame timing diagnostics.
+
+### log_interval_seconds
+Период вывода агрегированного отчёта в консоль.
+
+### slow_frame_threshold_ms
+Порог медленного кадра в миллисекундах. При превышении среднего значения profiler помечает отчёт как `SLOW`.
+
+### draw_overlay
+Показывает компактный overlay в окне игры.
+
+### sample_window_size
+Количество последних кадров, по которым считаются rolling average/max значения.

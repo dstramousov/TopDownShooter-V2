@@ -933,3 +933,14 @@
 - Добавлен cached tile snapshot в `TileCollisionService` для walkability, movement speed и projectile blocking.
 - Enemy line-of-sight теперь использует allocation-free world XY checks вместо создания `WorldCoord` на каждом sample.
 - 2D static terrain cache больше не пересчитывает hash всех tile symbols каждый кадр.
+## v0.2.20 -> v0.2.21
+
+- Добавлен lightweight frame profiler для 2D и experimental 3D runtime.
+- В profiler вынесены секции update/render/present и ключевые counters по enemies/projectiles/impacts/pathfinding.
+- Добавлен runtime config `frame_profiler` с overlay и периодическим console report для диагностики просадок FPS.
+
+## v0.2.21 -> v0.2.22
+
+- Added presentation timing config for raylib runtimes with explicit `target_fps`, `uncapped`, and `vsync` modes.
+- Added startup OpenGL driver vblank environment hints to diagnose/fix `present`/`EndDrawing` stalls that ignore `target_fps` changes.
+- Exposed presentation mode, target FPS, and driver-vsync status in frame-profiler counters for 2D and 3D runtimes.

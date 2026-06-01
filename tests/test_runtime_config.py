@@ -11,6 +11,9 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.window.height == 0
     assert config.window.screen_margin_px == 300
     assert config.window.target_fps == 60
+    assert config.presentation.mode == "target_fps"
+    assert config.presentation.disable_driver_vsync is True
+    assert config.presentation.max_queued_frames == 1
     assert config.controls.quit == "KEY_ESCAPE"
     assert config.controls.help == "KEY_F1"
     assert config.controls.mouse_capture_toggle == "KEY_F10"
@@ -211,6 +214,11 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.render3d.enemy_vision.idle_alpha == 70
     assert config.render3d.enemy_vision.alert_alpha == 105
     assert config.render3d.enemy_vision.combat_alpha == 145
+    assert config.frame_profiler.enabled is True
+    assert config.frame_profiler.log_interval_seconds == 1.0
+    assert config.frame_profiler.slow_frame_threshold_ms == 25.0
+    assert config.frame_profiler.draw_overlay is True
+    assert config.frame_profiler.sample_window_size == 120
     assert config.render3d.projectiles.projectile_height_tiles == 0.72
     assert config.render3d.projectiles.draw_impacts is True
     assert config.render3d.projectiles.impact_height_tiles == 0.55
