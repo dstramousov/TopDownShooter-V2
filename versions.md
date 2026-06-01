@@ -956,3 +956,9 @@
 - Added `VisualContextAnalyzer` to derive per-tile visual context, connected visual regions, and scene candidates during map preparation.
 - `--prepare-map` now writes `visual_context.json`, `visual_regions.json`, `visual_scene_candidates.json`, and `visual_context_report.json` into the prepared map package.
 - Extended preparation manifest, report, and CLI summary with generated visual-context artifacts while preserving gameplay geometry, collision, and renderer behavior.
+
+## v0.2.24 -> v0.2.25
+
+- Added visual scene ranking during map preparation to turn raw scene candidates into accepted scenes and rejected noise with stable reasons.
+- Added non-blocking visual quality gates for visual-map readiness, generic-object ratio, accepted scenes, and rejected candidate summaries.
+- `--prepare-map` now writes `visual_scene_ranking.json`, `visual_quality_report.json`, and `visual_quality_summary.txt` while keeping gameplay geometry, collision, and renderers unchanged.

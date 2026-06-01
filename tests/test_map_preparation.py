@@ -292,15 +292,24 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
     regions_path = output_dir / "visual_map/visual_regions.json"
     candidates_path = output_dir / "visual_map/visual_scene_candidates.json"
     context_report_path = output_dir / "reports/visual_context_report.json"
+    scene_ranking_path = output_dir / "visual_map/visual_scene_ranking.json"
+    quality_report_path = output_dir / "reports/visual_quality_report.json"
+    quality_summary_path = output_dir / "reports/visual_quality_summary.txt"
     assert result.status == "passed"
     assert context_path.is_file()
     assert regions_path.is_file()
     assert candidates_path.is_file()
     assert context_report_path.is_file()
+    assert scene_ranking_path.is_file()
+    assert quality_report_path.is_file()
+    assert quality_summary_path.is_file()
 
     context = json.loads(context_path.read_text(encoding="utf-8"))
     regions = json.loads(regions_path.read_text(encoding="utf-8"))
     candidates = json.loads(candidates_path.read_text(encoding="utf-8"))
+    scene_ranking = json.loads(scene_ranking_path.read_text(encoding="utf-8"))
+    quality_report = json.loads(quality_report_path.read_text(encoding="utf-8"))
+    quality_summary = quality_summary_path.read_text(encoding="utf-8")
     preparation_report = json.loads(result.report_path.read_text(encoding="utf-8"))
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
 
@@ -313,7 +322,17 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
     assert regions["summary"]["forest_regions"] == 1
     assert regions["summary"]["ruin_clusters"] == 1
     assert candidates["summary"]["total_candidates"] >= 2
+    assert scene_ranking["schema_version"] == "visual-scene-ranking-v1"
+    assert scene_ranking["summary"]["accepted_scenes"] >= 1
+    assert quality_report["schema_version"] == "visual-quality-report-v1"
+    assert quality_report["scene_ranking"]["accepted_scenes"] >= 1
+    assert quality_report["generic_objects"]["status"] == "bad"
+    assert "Visual quality gates" in quality_summary
     assert preparation_report["visual_context"]["status"] == "passed"
     assert preparation_report["visual_context"]["regions"]["forest_regions"] == 1
+    assert preparation_report["visual_quality"]["status"] == "needs_work"
     assert "visual_context_built" in {check["code"] for check in preparation_report["checks"]}
+    assert "visual_quality_built" in {check["code"] for check in preparation_report["checks"]}
     assert "visual_map/visual_context.json" in manifest["artifacts"]["generated"]
+    assert "visual_map/visual_scene_ranking.json" in manifest["artifacts"]["generated"]
+    assert "reports/visual_quality_report.json" in manifest["artifacts"]["generated"]

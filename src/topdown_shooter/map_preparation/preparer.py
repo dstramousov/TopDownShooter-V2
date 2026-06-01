@@ -11,6 +11,10 @@ from typing import Any
 from topdown_shooter import __version__
 from topdown_shooter.map_loading.errors import InvalidMapPackageError
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage, MapPackageLoader
+from topdown_shooter.map_preparation.scene_quality import (
+    VisualQualityAnalyzer,
+    VisualQualityResult,
+)
 from topdown_shooter.map_preparation.visual_context import (
     VisualContextAnalyzer,
     VisualContextResult,
@@ -56,6 +60,9 @@ class MapPreparationService:
     VISUAL_REGIONS_FILE = "visual_regions.json"
     VISUAL_SCENE_CANDIDATES_FILE = "visual_scene_candidates.json"
     VISUAL_CONTEXT_REPORT_FILE = "visual_context_report.json"
+    VISUAL_SCENE_RANKING_FILE = "visual_scene_ranking.json"
+    VISUAL_QUALITY_REPORT_FILE = "visual_quality_report.json"
+    VISUAL_QUALITY_SUMMARY_FILE = "visual_quality_summary.txt"
 
     def __init__(
         self,
@@ -63,6 +70,7 @@ class MapPreparationService:
         loader: MapPackageLoader | None = None,
         runtime_builder: RuntimeMapBuilder | None = None,
         visual_context_analyzer: VisualContextAnalyzer | None = None,
+        visual_quality_analyzer: VisualQualityAnalyzer | None = None,
     ) -> None:
         """Initialize the preparation service.
 
@@ -70,10 +78,12 @@ class MapPreparationService:
             loader: Optional package loader override for tests.
             runtime_builder: Optional runtime map builder override for tests.
             visual_context_analyzer: Optional visual context analyzer override for tests.
+            visual_quality_analyzer: Optional visual quality analyzer override for tests.
         """
         self._loader = loader or MapPackageLoader()
         self._runtime_builder = runtime_builder or RuntimeMapBuilder()
         self._visual_context_analyzer = visual_context_analyzer or VisualContextAnalyzer()
+        self._visual_quality_analyzer = visual_quality_analyzer or VisualQualityAnalyzer()
 
     def prepare(self, source_dir: Path, output_dir: Path) -> PreparedMapResult:
         """Prepare a generated map package for runtime consumption.
@@ -103,9 +113,19 @@ class MapPreparationService:
         )
         visual_summary = self._build_visual_map_summary(package.package_dir)
         visual_context_result = self._visual_context_analyzer.analyze(runtime_map)
+        visual_quality_result = self._visual_quality_analyzer.analyze(
+            visual_summary=visual_summary,
+            scene_candidates=visual_context_result.scene_candidates,
+        )
         generated_artifacts = self._write_visual_context_artifacts(
             output_dir=resolved_output_dir,
             result=visual_context_result,
+        )
+        generated_artifacts.extend(
+            self._write_visual_quality_artifacts(
+                output_dir=resolved_output_dir,
+                result=visual_quality_result,
+            ),
         )
         report = self._build_preparation_report(
             package=package,
@@ -115,6 +135,7 @@ class MapPreparationService:
             generated_artifacts=generated_artifacts,
             visual_summary=visual_summary,
             visual_context_report=visual_context_result.report,
+            visual_quality_report=visual_quality_result.quality_report,
         )
         manifest = self._build_prepared_manifest(
             package=package,
@@ -163,6 +184,9 @@ class MapPreparationService:
         visual_context = self._require_report_dict(report, "visual_context")
         context_regions = self._require_report_dict(visual_context, "regions")
         context_scenes = self._require_report_dict(visual_context, "scene_candidates")
+        visual_quality = self._require_report_dict(report, "visual_quality")
+        quality_scenes = self._require_report_dict(visual_quality, "scene_ranking")
+        quality_generic = self._require_report_dict(visual_quality, "generic_objects")
         copied_artifacts = output.get("copied_artifacts", [])
         copied_count = len(copied_artifacts) if isinstance(copied_artifacts, list) else 0
         visual_state = "present" if visual.get("present") is True else "missing"
@@ -187,6 +211,17 @@ class MapPreparationService:
                 f"- forest regions: {context_regions.get('forest_regions', 'unknown')}",
                 f"- clearings: {context_regions.get('clearing_regions', 'unknown')}",
                 f"- scene candidates: {context_scenes.get('total_candidates', 'unknown')}",
+                f"- visual quality: {visual_quality.get('status', 'unknown')}",
+                (
+                    "- accepted scenes: "
+                    f"{quality_scenes.get('accepted_scenes', 'unknown')}"
+                ),
+                (
+                    "- generic objects: "
+                    f"{quality_generic.get('generic_objects', 'unknown')}"
+                    f"/{quality_generic.get('total_objects', 'unknown')} "
+                    f"{quality_generic.get('status', 'unknown')}"
+                ),
                 f"- copied artifacts: {copied_count}",
                 f"- output: {output.get('path', 'unknown')}",
                 f"- report: {output.get('report_path', 'unknown')}",
@@ -314,6 +349,33 @@ class MapPreparationService:
         self._write_json(reports_dir / self.VISUAL_CONTEXT_REPORT_FILE, result.report)
         return artifacts
 
+    def _write_visual_quality_artifacts(
+        self,
+        *,
+        output_dir: Path,
+        result: VisualQualityResult,
+    ) -> list[str]:
+        """Write generated visual quality artifacts into the prepared package.
+
+        Args:
+            output_dir: Destination prepared-map directory.
+            result: Visual quality analyzer result.
+
+        Returns:
+            Generated relative artifact paths.
+        """
+        visual_dir = output_dir / self.VISUAL_MAP_DIR
+        reports_dir = output_dir / self.REPORTS_DIR
+        artifacts = [
+            f"{self.VISUAL_MAP_DIR}/{self.VISUAL_SCENE_RANKING_FILE}",
+            f"{self.REPORTS_DIR}/{self.VISUAL_QUALITY_REPORT_FILE}",
+            f"{self.REPORTS_DIR}/{self.VISUAL_QUALITY_SUMMARY_FILE}",
+        ]
+        self._write_json(visual_dir / self.VISUAL_SCENE_RANKING_FILE, result.scene_ranking)
+        self._write_json(reports_dir / self.VISUAL_QUALITY_REPORT_FILE, result.quality_report)
+        self._write_text(reports_dir / self.VISUAL_QUALITY_SUMMARY_FILE, result.quality_summary)
+        return artifacts
+
     def _build_visual_map_summary(self, package_dir: Path) -> dict[str, Any]:
         """Build a lightweight summary for an optional visual map export.
 
@@ -404,6 +466,7 @@ class MapPreparationService:
         generated_artifacts: list[str],
         visual_summary: dict[str, Any],
         visual_context_report: dict[str, Any],
+        visual_quality_report: dict[str, Any],
     ) -> dict[str, Any]:
         """Build the preparation report dictionary.
 
@@ -415,6 +478,7 @@ class MapPreparationService:
             generated_artifacts: Generated relative artifacts.
             visual_summary: Optional visual map summary.
             visual_context_report: Visual context analyzer report.
+            visual_quality_report: Visual quality gates report.
 
         Returns:
             Preparation report dictionary.
@@ -452,6 +516,11 @@ class MapPreparationService:
                 str(visual_context_report.get("status", "failed")),
                 "Visual context analyzer must produce region and scene-candidate artifacts.",
             ),
+            self._check(
+                "visual_quality_built",
+                "passed",
+                "Visual quality gates must rank scenes and report non-blocking art readiness.",
+            ),
         ]
         status = self._build_overall_status(checks)
         report_path = output_dir / self.REPORTS_DIR / self.PREPARATION_REPORT_FILE
@@ -487,6 +556,7 @@ class MapPreparationService:
             },
             "visual_map": visual_summary,
             "visual_context": visual_context_report,
+            "visual_quality": visual_quality_report,
             "checks": checks,
             "output": {
                 "path": str(output_dir),
