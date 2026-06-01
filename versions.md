@@ -921,3 +921,9 @@
 - Оптимизирован `GridPathfinder`: walkability grid теперь кэшируется при создании pathfinder-а, а A* работает на raw `(x, y)` координатах без повторных дорогих запросов в `RuntimeMap`.
 - Снижена стоимость enemy pathfinding после gunshot alert на больших structured maps.
 - Сохранено прежнее поведение pathfinding, включая запрет diagonal corner cutting.
+
+## v0.2.18 -> v0.2.19
+
+- Added a render-texture cache for immutable 2D terrain tiles so the main loop no longer redraws thousands of static tile rectangles every frame.
+- Kept runtime objects, projectiles, enemies, player, UI, and combat feedback dynamic while caching only the base terrain layer.
+- Added safe cache unload/fallback behavior so tests and environments without render-texture support keep the existing primitive renderer path.

@@ -323,6 +323,7 @@ class RaylibWindow:
                 self._ui.draw()
                 raylib.end_drawing()
         finally:
+            self._renderer.unload()
             self._player_hud.unload()
             self._fps_counter.unload()
             self._ui.unload()
