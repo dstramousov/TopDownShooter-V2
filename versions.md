@@ -885,3 +885,9 @@
 - Added typed gameplay-zone models with bounds, polygons, entry/exit points, linked ids, danger/loot levels, recommended encounters, elevation usage, and tags.
 - Added tile-indexed gameplay-zone query APIs: `zones_at_tile`, `zones_by_type`, `is_tile_in_zone`, `nearest_zone`, zone-type helpers, and zone coverage/count statistics.
 - Updated map inspection and structured map-package tests so gameplay zones are visible to future spawn, loot, mission, and AI systems without changing current gameplay behavior.
+
+## v0.2.12 -> v0.2.13
+
+- Added zone-driven runtime candidate APIs for enemy spawn, loot, danger, safe, and extraction tiles using structured gameplay zones.
+- Filtered enemy spawn candidates to walkable non-safe/non-extraction tiles while preserving legacy tactical spawn fallback behavior for maps without zones.
+- Extended inspection output and tests so future spawn, loot, and mission systems can use gameplay zones without changing AI, balance, rendering, 3D, or elevation behavior.

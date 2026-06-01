@@ -79,6 +79,10 @@ def test_runtime_map_builder_loads_minimal_package(tmp_path: Path) -> None:
     assert runtime_map.blocked_tile_count == 2
     assert runtime_map.gameplay_zones == ()
     assert runtime_map.zones_at_tile(TileCoord(0, 0)) == ()
+    assert runtime_map.enemy_spawn_candidate_tiles == ()
+    assert runtime_map.loot_candidate_tiles == ()
+    assert runtime_map.safe_tiles == ()
+    assert runtime_map.extraction_tiles == ()
 
 
 def test_runtime_map_builder_loads_runtime_objects_and_elevation(tmp_path: Path) -> None:
@@ -416,6 +420,30 @@ def test_runtime_map_builder_loads_structured_map_package_without_legacy_tactica
                     "elevation_usage": "normal_ground",
                     "tags": ["loot", "loot_area"],
                 },
+                {
+                    "id": "zone_002",
+                    "type": "danger_area",
+                    "bounds": {"min_x": 0, "min_y": 2, "max_x": 1, "max_y": 2},
+                    "polygon": [
+                        {"x": 0, "y": 2},
+                        {"x": 1, "y": 2},
+                        {"x": 1, "y": 2},
+                        {"x": 0, "y": 2},
+                    ],
+                    "entry_points": [
+                        {"id": "entry_center", "position": {"x": 0, "y": 2}},
+                    ],
+                    "exit_points": [],
+                    "linked_places": [],
+                    "linked_routes": [],
+                    "linked_markers": [],
+                    "danger_level": 0.85,
+                    "loot_level": 0.0,
+                    "recommended_enemy_types": ["rifleman"],
+                    "recommended_encounter": "ambush",
+                    "elevation_usage": "normal_ground",
+                    "tags": ["danger", "danger_area"],
+                },
             ],
         },
     )
@@ -534,7 +562,7 @@ def test_runtime_map_builder_loads_structured_map_package_without_legacy_tactica
     assert runtime_map.is_tile_vision_blocked(TileCoord(3, 1)) is True
     assert runtime_map.cover_value_at(TileCoord(0, 2)) == 0.45
     assert runtime_map.concealment_value_at(TileCoord(0, 2)) == 0.25
-    assert len(runtime_map.gameplay_zones) == 2
+    assert len(runtime_map.gameplay_zones) == 3
     assert runtime_map.gameplay_zones[0].zone_type == "safe_area"
     assert runtime_map.gameplay_zones[0].bounds is not None
     assert runtime_map.gameplay_zones[0].bounds.tile_count == 4
@@ -555,8 +583,22 @@ def test_runtime_map_builder_loads_structured_map_package_without_legacy_tactica
     assert runtime_map.safe_zones == (runtime_map.gameplay_zones[0],)
     assert runtime_map.loot_zones == (runtime_map.gameplay_zones[1],)
     assert runtime_map.nearest_zone(TileCoord(3, 0), zone_type="loot_area") is runtime_map.gameplay_zones[1]
-    assert runtime_map.gameplay_zone_counts_by_type == {"safe_area": 1, "loot_area": 1}
-    assert runtime_map.gameplay_zone_coverage_tiles == 8
+    assert runtime_map.gameplay_zone_counts_by_type == {
+        "safe_area": 1,
+        "loot_area": 1,
+        "danger_area": 1,
+    }
+    assert runtime_map.gameplay_zone_coverage_tiles == 10
+    assert runtime_map.enemy_spawn_candidate_tiles == (TileCoord(0, 2),)
+    assert runtime_map.loot_candidate_tiles == (TileCoord(3, 1), TileCoord(3, 2))
+    assert runtime_map.danger_tiles == (TileCoord(0, 2), TileCoord(1, 2))
+    assert runtime_map.safe_tiles == (
+        TileCoord(0, 0),
+        TileCoord(1, 0),
+        TileCoord(0, 1),
+        TileCoord(1, 1),
+    )
+    assert runtime_map.extraction_tiles == ()
     assert len(runtime_map.elevation_features) == 1
     assert runtime_map.elevation_features[0].feature_type == "bridge"
     assert len(runtime_map.elevation_transitions) == 1
