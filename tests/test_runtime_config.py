@@ -119,10 +119,11 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.enemies.strafe_switch_min_seconds == 0.9
     assert config.enemies.strafe_switch_max_seconds == 1.6
     assert config.enemies.pathfinding_enabled is True
-    assert config.enemies.path_rebuild_interval_seconds == 0.35
-    assert config.enemies.path_target_rebuild_distance_px == 48.0
-    assert config.enemies.path_max_iterations == 2048
-    assert config.enemies.path_max_rebuilds_per_frame == 4
+    assert config.enemies.path_rebuild_interval_seconds == 0.8
+    assert config.enemies.path_target_rebuild_distance_px == 64.0
+    assert config.enemies.path_max_iterations == 768
+    assert config.enemies.path_max_rebuilds_per_frame == 1
+    assert config.enemies.path_failed_rebuild_backoff_seconds == 2.0
     assert config.enemies.path_waypoint_reach_distance_px == 12.0
     assert config.enemies.draw_enemy_paths is False
     assert config.enemies.max_debug_enemy_paths == 6

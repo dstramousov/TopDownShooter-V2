@@ -1032,6 +1032,56 @@ def test_alerted_enemy_reports_failed_path_when_goal_is_unreachable() -> None:
     assert system.stats.moving_enemies == 0
 
 
+def test_failed_path_rebuild_uses_backoff_before_retrying() -> None:
+    """Failed A* path queries should not retry every update while blocked."""
+    from topdown_shooter.world.collision import TileCollisionService
+    from topdown_shooter.world.pathfinding import GridPathfinder
+
+    runtime_map = _build_runtime_map_from_rows(("+#+", "###", "+#+"))
+    system = EnemySystem.from_tactical_map(
+        {
+            "enemy_spawn_zones": [
+                {
+                    "id": "spawn_0",
+                    "position": [0, 0],
+                    "facing_angle_degrees": 0.0,
+                },
+            ],
+        },
+        runtime_map,
+    )
+    enemy = system.enemies[0]
+    enemy.alerted = True
+
+    common_kwargs = {
+        "player_position": WorldCoord(x=40.0, y=40.0),
+        "collision_service": TileCollisionService(runtime_map),
+        "chase_speed_px_per_second": 16.0,
+        "enemy_collision_radius_px": 2.0,
+        "tile_size_px": runtime_map.tile_size_px,
+        "preferred_combat_distance_px": 0.0,
+        "approach_weight": 1.0,
+        "pathfinder": GridPathfinder(runtime_map),
+        "pathfinding_enabled": True,
+        "path_rebuild_interval_seconds": 0.1,
+        "path_failed_rebuild_backoff_seconds": 2.0,
+        "path_target_rebuild_distance_px": 16.0,
+        "path_max_iterations": 64,
+        "path_waypoint_reach_distance_px": 2.0,
+    }
+
+    system.update_chase_movement(frame_time=1.0, **common_kwargs)
+
+    assert system.stats.path_rebuilds == 1
+    assert system.stats.failed_path_rebuilds == 1
+    assert system.enemies[0].path_tiles == ()
+
+    system.update_chase_movement(frame_time=0.1, **common_kwargs)
+
+    assert system.stats.path_rebuilds == 0
+    assert system.stats.failed_path_rebuilds == 0
+
+
 def test_path_rebuild_budget_limits_mass_alert_spikes() -> None:
     """Enemy path rebuilds should be spread across updates by a frame budget."""
     from topdown_shooter.world.collision import TileCollisionService

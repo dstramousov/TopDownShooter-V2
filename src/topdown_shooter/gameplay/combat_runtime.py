@@ -134,6 +134,9 @@ def update_combat_runtime(
         path_target_rebuild_distance_px=enemy_config.path_target_rebuild_distance_px,
         path_max_iterations=enemy_config.path_max_iterations,
         path_max_rebuilds_per_frame=enemy_config.path_max_rebuilds_per_frame,
+        path_failed_rebuild_backoff_seconds=(
+            enemy_config.path_failed_rebuild_backoff_seconds
+        ),
         path_waypoint_reach_distance_px=enemy_config.path_waypoint_reach_distance_px,
         player_speed_px_per_second=player_speed_px_per_second,
         tactical_positioning_enabled=enemy_config.tactical_positioning_enabled,

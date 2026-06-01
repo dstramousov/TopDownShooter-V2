@@ -909,3 +909,9 @@
 - Added grouped zone-driven initial spawn using `enemy_spawn.group_size_min` / `group_size_max` while keeping legacy tactical-map spawning unchanged.
 - Added weighted `enemy_spawn.enemy_types` entries with type id, runtime role, starting weapon id, and selection weight for zone-driven startup enemies.
 - Preserved spawn safety filters, alive-enemy caps, and duplicate-tile prevention while adding tests for grouped spawn, enemy type assignment, and default runtime config parsing.
+
+## v0.2.16 -> v0.2.17
+
+- Reduced default enemy A* pathfinding pressure after gunshot alerts by increasing rebuild spacing, lowering per-frame rebuild budget, and reducing per-query iteration caps.
+- Added failed path-query backoff so unreachable targets do not trigger repeated expensive A* rebuilds every update.
+- Documented the new pathfinding guard and added tests covering failed-path backoff and updated runtime config defaults.
