@@ -9,7 +9,7 @@ from topdown_shooter.rendering.camera import (
 )
 from topdown_shooter.rendering.map_renderer import MapRenderer
 from topdown_shooter.world.coordinates import TileCoord, WorldCoord
-from topdown_shooter.world.runtime_map import RuntimeMap, TacticalRuntimeSummary
+from topdown_shooter.world.runtime_map import RuntimeMap, RuntimeMapObject, TacticalRuntimeSummary
 from topdown_shooter.world.tile import RuntimeTile
 
 
@@ -27,10 +27,12 @@ class FakeRaylib:
     SKYBLUE = "skyblue"
     LIME = "lime"
     GOLD = "gold"
+    RAYWHITE = "raywhite"
 
     def __init__(self) -> None:
         """Initialize recorded draw calls."""
         self.rectangles: list[tuple[int, int, int, int, object]] = []
+        self.outlines: list[tuple[int, int, int, int, object]] = []
 
     def Color(self, red: int, green: int, blue: int, alpha: int) -> tuple[int, int, int, int]:
         """Build a fake color value."""
@@ -40,8 +42,23 @@ class FakeRaylib:
         """Record a rectangle draw call."""
         self.rectangles.append((x, y, width, height, color))
 
+    def draw_rectangle_lines(
+        self,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        color: object,
+    ) -> None:
+        """Record a rectangle outline draw call."""
+        self.outlines.append((x, y, width, height, color))
 
-def _build_runtime_map(width: int, height: int) -> RuntimeMap:
+
+def _build_runtime_map(
+    width: int,
+    height: int,
+    runtime_objects: tuple[RuntimeMapObject, ...] = (),
+) -> RuntimeMap:
     """Build a synthetic runtime map."""
     tiles = tuple(
         tuple(RuntimeTile(symbol="+", walkable=True, movement_cost=1) for _x in range(width))
@@ -62,6 +79,27 @@ def _build_runtime_map(width: int, height: int) -> RuntimeMap:
             enemy_spawn_zones=0,
             fallback_positions=0,
         ),
+        runtime_objects=runtime_objects,
+    )
+
+
+def _runtime_object(object_type: str, *, width: int = 1, height: int = 1) -> RuntimeMapObject:
+    """Build a runtime object test fixture."""
+    footprint = tuple(
+        TileCoord(x, y)
+        for y in range(height)
+        for x in range(width)
+    )
+    orientation = "east_west" if width >= height else "north_south"
+    return RuntimeMapObject(
+        object_id=f"{object_type}_001",
+        object_type=object_type,
+        role="test",
+        origin=TileCoord(0, 0),
+        footprint=footprint,
+        tags=(object_type,),
+        orientation=orientation,
+        visual_bounds={"x": 0, "y": 0, "width": width, "height": height},
     )
 
 
@@ -95,3 +133,47 @@ def test_map_renderer_draws_only_visible_tiles() -> None:
     assert stats.drawn_tiles == stats.visible_tiles
     assert 0 < stats.drawn_tiles < stats.total_tiles
     assert len(raylib.rectangles) == stats.drawn_tiles
+
+
+def test_map_renderer_draws_distinct_placeholders_for_current_runtime_object_types() -> None:
+    """Current generator object types should not fall back to one generic square."""
+    object_shapes = {
+        "abandoned_backpack": (1, 1),
+        "abandoned_cart": (2, 1),
+        "ancient_beacon": (1, 1),
+        "broken_generator": (2, 1),
+        "buried_bunker_2x2": (2, 2),
+        "buried_bunker_2x3": (2, 3),
+        "cable_spool": (1, 1),
+        "car_wreck": (2, 1),
+        "dead_campfire": (1, 1),
+        "earth_berm": (2, 1),
+        "field_tent": (2, 2),
+        "hill": (3, 3),
+        "old_checkpoint": (2, 3),
+        "old_grave_marker": (1, 1),
+        "old_well": (2, 2),
+        "pit": (2, 2),
+        "ruin_platform": (3, 2),
+        "stone_chunk": (1, 1),
+        "stone_ramp": (2, 1),
+        "stone_stairs": (2, 1),
+        "warning_sign": (1, 1),
+        "watchtower": (2, 2),
+        "wooden_bridge": (4, 1),
+    }
+
+    for object_type, (width, height) in object_shapes.items():
+        runtime_object = _runtime_object(object_type, width=width, height=height)
+        runtime_map = _build_runtime_map(width=8, height=8, runtime_objects=(runtime_object,))
+        raylib = FakeRaylib()
+        renderer = MapRenderer(raylib)
+
+        stats = renderer.draw(
+            runtime_map=runtime_map,
+            camera=_build_camera(target=WorldCoord(64.0, 64.0), zoom=1.0),
+            window_config=WindowConfig(title="Test", width=128, height=128, target_fps=60),
+        )
+
+        object_rectangle_count = len(raylib.rectangles) - stats.drawn_tiles
+        assert object_rectangle_count > len(runtime_object.footprint), object_type

@@ -873,3 +873,9 @@
 - Made large runtime objects use explicit `collision_footprint` data for movement, projectile, and vision blocking while keeping visual `footprint` indexing separate.
 - Added runtime object classification helpers for bunkers, firing ports, bridges, ramps, stairs, platforms, watchtowers, tall objects, and elevation connectors.
 - Added collision-mode object indexes and tests so visually large objects can occupy many tiles without falsely blocking their whole visual footprint.
+
+## v0.2.10 -> v0.2.11
+
+- Added dedicated 2D primitive placeholders for current structured-map runtime object types that were previously rendered through the generic square fallback.
+- Added readable placeholder shapes for bunkers, bridges, ramps, stairs, platforms, hills, pits, watchtowers, beacons, camp props, road debris, tech debris, wells, signs, graves, backpacks, and stone chunks.
+- Kept runtime object loading, collision footprints, gameplay behavior, AI, 3D rendering, and elevation rules unchanged while adding renderer tests for the new placeholder coverage.

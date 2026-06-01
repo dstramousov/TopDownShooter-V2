@@ -142,8 +142,32 @@ class MapRenderer:
             self._draw_runtime_object_disc(map_object, tile, tile_size, consumed=consumed)
             self._draw_warning_mark(tile, tile_size, consumed=consumed)
             return
+        if map_object.is_bunker:
+            self._draw_runtime_object_bunker(map_object, tile, tile_size)
+            return
+        if map_object.is_bridge:
+            self._draw_runtime_object_bridge(map_object, tile, tile_size)
+            return
+        if map_object.is_ramp:
+            self._draw_runtime_object_ramp(map_object, tile, tile_size)
+            return
+        if map_object.is_stairs:
+            self._draw_runtime_object_stairs(map_object, tile, tile_size)
+            return
+        if map_object.is_platform:
+            self._draw_runtime_object_platform(map_object, tile, tile_size)
+            return
         if object_type in {"big_dead_tree", "broken_radio_mast"}:
             self._draw_runtime_object_landmark(map_object, tile, tile_size)
+            return
+        if object_type == "watchtower":
+            self._draw_runtime_object_watchtower(map_object, tile, tile_size)
+            return
+        if object_type == "ancient_beacon":
+            self._draw_runtime_object_beacon(map_object, tile, tile_size)
+            return
+        if object_type == "old_checkpoint":
+            self._draw_runtime_object_checkpoint(map_object, tile, tile_size)
             return
         if object_type == "fallen_log":
             self._draw_runtime_object_log(map_object, tile, tile_size)
@@ -156,6 +180,48 @@ class MapRenderer:
             return
         if object_type == "bush_thicket":
             self._draw_runtime_object_bush(map_object, tile, tile_size)
+            return
+        if object_type == "stone_chunk":
+            self._draw_runtime_object_stone(map_object, tile, tile_size)
+            return
+        if object_type == "hill":
+            self._draw_runtime_object_hill(map_object, tile, tile_size)
+            return
+        if object_type == "earth_berm":
+            self._draw_runtime_object_earth_berm(map_object, tile, tile_size)
+            return
+        if object_type == "pit":
+            self._draw_runtime_object_pit(map_object, tile, tile_size)
+            return
+        if object_type == "car_wreck":
+            self._draw_runtime_object_car_wreck(map_object, tile, tile_size)
+            return
+        if object_type == "abandoned_cart":
+            self._draw_runtime_object_cart(map_object, tile, tile_size)
+            return
+        if object_type == "field_tent":
+            self._draw_runtime_object_tent(map_object, tile, tile_size)
+            return
+        if object_type == "dead_campfire":
+            self._draw_runtime_object_campfire(map_object, tile, tile_size)
+            return
+        if object_type == "broken_generator":
+            self._draw_runtime_object_generator(map_object, tile, tile_size)
+            return
+        if object_type == "cable_spool":
+            self._draw_runtime_object_spool(map_object, tile, tile_size)
+            return
+        if object_type == "warning_sign":
+            self._draw_runtime_object_sign(map_object, tile, tile_size)
+            return
+        if object_type == "old_grave_marker":
+            self._draw_runtime_object_grave_marker(map_object, tile, tile_size)
+            return
+        if object_type == "old_well":
+            self._draw_runtime_object_well(map_object, tile, tile_size)
+            return
+        if object_type == "abandoned_backpack":
+            self._draw_runtime_object_backpack(map_object, tile, tile_size)
             return
 
         color = self._runtime_object_color(map_object, consumed=consumed)
@@ -306,6 +372,485 @@ class MapRenderer:
         self._draw_circle_or_square(center_x + radius, center_y, radius, color)
         self._draw_circle_or_square(center_x, center_y - radius, radius, detail)
 
+    def _draw_runtime_object_bunker(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw a low concrete bunker tile with firing-port hints."""
+        raylib = self._raylib
+        base = raylib.Color(82, 88, 84, 245)
+        shadow = raylib.Color(34, 40, 38, 235)
+        port = raylib.Color(205, 210, 198, 245)
+        inset = max(1, tile_size // 10)
+        x = tile.x * tile_size + inset
+        y = tile.y * tile_size + inset
+        size = max(1, tile_size - inset * 2)
+        raylib.draw_rectangle(x, y, size, size, base)
+        raylib.draw_rectangle(x + 1, y + size // 2, max(1, size - 2), max(1, size // 5), shadow)
+        port_width = max(2, tile_size // 4)
+        port_height = max(1, tile_size // 9)
+        raylib.draw_rectangle(
+            tile.x * tile_size + (tile_size - port_width) // 2,
+            y + max(1, tile_size // 6),
+            port_width,
+            port_height,
+            port,
+        )
+        if map_object.interior_elevation is not None and map_object.interior_elevation < 0:
+            hole = max(2, tile_size // 5)
+            raylib.draw_rectangle(
+                tile.x * tile_size + (tile_size - hole) // 2,
+                tile.y * tile_size + (tile_size - hole) // 2,
+                hole,
+                hole,
+                shadow,
+            )
+        self._draw_runtime_object_outline(tile, tile_size, raylib.RAYWHITE)
+
+    def _draw_runtime_object_bridge(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw a wooden bridge segment with planks and rail hints."""
+        raylib = self._raylib
+        base = raylib.Color(124, 83, 45, 235)
+        rail = raylib.Color(70, 48, 28, 240)
+        plank = raylib.Color(176, 122, 68, 230)
+        horizontal = self._runtime_object_is_horizontal(map_object)
+        raylib.draw_rectangle(tile.x * tile_size, tile.y * tile_size, tile_size, tile_size, base)
+        if horizontal:
+            rail_height = max(1, tile_size // 8)
+            raylib.draw_rectangle(tile.x * tile_size, tile.y * tile_size + 1, tile_size, rail_height, rail)
+            raylib.draw_rectangle(
+                tile.x * tile_size,
+                tile.y * tile_size + tile_size - rail_height - 1,
+                tile_size,
+                rail_height,
+                rail,
+            )
+            plank_width = max(1, tile_size // 7)
+            raylib.draw_rectangle(
+                tile.x * tile_size + tile_size // 2,
+                tile.y * tile_size + 2,
+                plank_width,
+                max(1, tile_size - 4),
+                plank,
+            )
+            return
+        rail_width = max(1, tile_size // 8)
+        raylib.draw_rectangle(tile.x * tile_size + 1, tile.y * tile_size, rail_width, tile_size, rail)
+        raylib.draw_rectangle(
+            tile.x * tile_size + tile_size - rail_width - 1,
+            tile.y * tile_size,
+            rail_width,
+            tile_size,
+            rail,
+        )
+        plank_height = max(1, tile_size // 7)
+        raylib.draw_rectangle(
+            tile.x * tile_size + 2,
+            tile.y * tile_size + tile_size // 2,
+            max(1, tile_size - 4),
+            plank_height,
+            plank,
+        )
+
+    def _draw_runtime_object_ramp(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw an elevation ramp placeholder with a slope stripe."""
+        raylib = self._raylib
+        base = raylib.Color(118, 112, 96, 220)
+        stripe = raylib.Color(174, 164, 132, 230)
+        inset = max(1, tile_size // 8)
+        raylib.draw_rectangle(
+            tile.x * tile_size + inset,
+            tile.y * tile_size + inset,
+            max(1, tile_size - inset * 2),
+            max(1, tile_size - inset * 2),
+            base,
+        )
+        if self._runtime_object_is_horizontal(map_object):
+            stripe_width = max(2, tile_size // 5)
+            raylib.draw_rectangle(
+                tile.x * tile_size + (tile_size - stripe_width) // 2,
+                tile.y * tile_size + inset,
+                stripe_width,
+                max(1, tile_size - inset * 2),
+                stripe,
+            )
+            return
+        stripe_height = max(2, tile_size // 5)
+        raylib.draw_rectangle(
+            tile.x * tile_size + inset,
+            tile.y * tile_size + (tile_size - stripe_height) // 2,
+            max(1, tile_size - inset * 2),
+            stripe_height,
+            stripe,
+        )
+
+    def _draw_runtime_object_stairs(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw compact stone stairs using repeated step bars."""
+        raylib = self._raylib
+        base = raylib.Color(96, 96, 88, 230)
+        step = raylib.Color(170, 166, 150, 235)
+        raylib.draw_rectangle(tile.x * tile_size + 1, tile.y * tile_size + 1, tile_size - 2, tile_size - 2, base)
+        count = 4
+        if self._runtime_object_is_horizontal(map_object):
+            width = max(1, tile_size // 10)
+            for index in range(count):
+                x = tile.x * tile_size + 3 + index * max(1, tile_size // count)
+                raylib.draw_rectangle(x, tile.y * tile_size + 2, width, max(1, tile_size - 4), step)
+            return
+        height = max(1, tile_size // 10)
+        for index in range(count):
+            y = tile.y * tile_size + 3 + index * max(1, tile_size // count)
+            raylib.draw_rectangle(tile.x * tile_size + 2, y, max(1, tile_size - 4), height, step)
+
+    def _draw_runtime_object_platform(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw a raised ruin-platform tile with slab seams."""
+        raylib = self._raylib
+        base = raylib.Color(104, 102, 92, 230)
+        seam = raylib.Color(62, 62, 56, 220)
+        raylib.draw_rectangle(tile.x * tile_size + 1, tile.y * tile_size + 1, tile_size - 2, tile_size - 2, base)
+        raylib.draw_rectangle(tile.x * tile_size + tile_size // 2, tile.y * tile_size + 2, 1, tile_size - 4, seam)
+        raylib.draw_rectangle(tile.x * tile_size + 2, tile.y * tile_size + tile_size // 2, tile_size - 4, 1, seam)
+        self._draw_runtime_object_outline(tile, tile_size, raylib.RAYWHITE)
+
+    def _draw_runtime_object_watchtower(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw a high watchtower tile with supports and a platform center."""
+        raylib = self._raylib
+        wood = raylib.Color(96, 64, 38, 245)
+        top = raylib.Color(146, 100, 58, 240)
+        leg = max(2, tile_size // 7)
+        raylib.draw_rectangle(tile.x * tile_size + 2, tile.y * tile_size + 2, leg, leg, wood)
+        raylib.draw_rectangle(tile.x * tile_size + tile_size - leg - 2, tile.y * tile_size + 2, leg, leg, wood)
+        raylib.draw_rectangle(tile.x * tile_size + 2, tile.y * tile_size + tile_size - leg - 2, leg, leg, wood)
+        raylib.draw_rectangle(
+            tile.x * tile_size + tile_size - leg - 2,
+            tile.y * tile_size + tile_size - leg - 2,
+            leg,
+            leg,
+            wood,
+        )
+        inset = max(3, tile_size // 4)
+        raylib.draw_rectangle(
+            tile.x * tile_size + inset,
+            tile.y * tile_size + inset,
+            max(1, tile_size - inset * 2),
+            max(1, tile_size - inset * 2),
+            top,
+        )
+        self._draw_runtime_object_outline(tile, tile_size, raylib.RAYWHITE)
+
+    def _draw_runtime_object_beacon(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw an ancient beacon as a compact high landmark glyph."""
+        raylib = self._raylib
+        stone = raylib.Color(110, 108, 98, 245)
+        glow = raylib.Color(230, 186, 88, 230)
+        base = max(4, tile_size // 2)
+        x = tile.x * tile_size + (tile_size - base) // 2
+        y = tile.y * tile_size + tile_size - base - 2
+        raylib.draw_rectangle(x, y, base, base, stone)
+        flame = max(3, tile_size // 4)
+        raylib.draw_rectangle(
+            tile.x * tile_size + (tile_size - flame) // 2,
+            tile.y * tile_size + 2,
+            flame,
+            max(2, tile_size // 3),
+            glow,
+        )
+        self._draw_runtime_object_outline(tile, tile_size, raylib.RAYWHITE)
+
+    def _draw_runtime_object_checkpoint(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw an old checkpoint tile with wall and gate cues."""
+        raylib = self._raylib
+        base = raylib.Color(86, 86, 80, 240)
+        barrier = raylib.Color(150, 126, 82, 235)
+        raylib.draw_rectangle(tile.x * tile_size + 1, tile.y * tile_size + 1, tile_size - 2, tile_size - 2, base)
+        if self._runtime_object_is_horizontal(map_object):
+            raylib.draw_rectangle(tile.x * tile_size + 2, tile.y * tile_size + tile_size // 2, tile_size - 4, 2, barrier)
+        else:
+            raylib.draw_rectangle(tile.x * tile_size + tile_size // 2, tile.y * tile_size + 2, 2, tile_size - 4, barrier)
+        self._draw_runtime_object_outline(tile, tile_size, raylib.RAYWHITE)
+
+    def _draw_runtime_object_stone(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw a stone chunk with a small highlight."""
+        raylib = self._raylib
+        base = self._runtime_object_color(map_object)
+        highlight = raylib.Color(158, 158, 154, 230)
+        inset = max(2, tile_size // 4)
+        raylib.draw_rectangle(
+            tile.x * tile_size + inset,
+            tile.y * tile_size + inset,
+            max(1, tile_size - inset * 2),
+            max(1, tile_size - inset * 2),
+            base,
+        )
+        chip = max(2, tile_size // 5)
+        raylib.draw_rectangle(tile.x * tile_size + inset + 1, tile.y * tile_size + inset + 1, chip, chip, highlight)
+        self._draw_runtime_object_outline(tile, tile_size, raylib.Color(64, 64, 64, 220))
+
+    def _draw_runtime_object_hill(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw a raised-ground hill tile with a soft center highlight."""
+        raylib = self._raylib
+        base = raylib.Color(82, 116, 58, 160)
+        crown = raylib.Color(120, 148, 82, 170)
+        raylib.draw_rectangle(tile.x * tile_size + 1, tile.y * tile_size + 1, tile_size - 2, tile_size - 2, base)
+        inset = max(3, tile_size // 4)
+        raylib.draw_rectangle(
+            tile.x * tile_size + inset,
+            tile.y * tile_size + inset,
+            max(1, tile_size - inset * 2),
+            max(1, tile_size - inset * 2),
+            crown,
+        )
+
+    def _draw_runtime_object_earth_berm(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw a compact earthwork/berm segment."""
+        raylib = self._raylib
+        base = raylib.Color(94, 72, 46, 190)
+        crest = raylib.Color(142, 104, 64, 210)
+        horizontal = self._runtime_object_is_horizontal(map_object)
+        if horizontal:
+            y = tile.y * tile_size + tile_size // 3
+            raylib.draw_rectangle(tile.x * tile_size + 1, y, tile_size - 2, max(2, tile_size // 3), base)
+            raylib.draw_rectangle(tile.x * tile_size + 2, y + 1, tile_size - 4, max(1, tile_size // 8), crest)
+            return
+        x = tile.x * tile_size + tile_size // 3
+        raylib.draw_rectangle(x, tile.y * tile_size + 1, max(2, tile_size // 3), tile_size - 2, base)
+        raylib.draw_rectangle(x + 1, tile.y * tile_size + 2, max(1, tile_size // 8), tile_size - 4, crest)
+
+    def _draw_runtime_object_pit(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw a dark depression/pit placeholder."""
+        raylib = self._raylib
+        rim = raylib.Color(92, 74, 54, 180)
+        hole = raylib.Color(24, 20, 18, 230)
+        raylib.draw_rectangle(tile.x * tile_size + 1, tile.y * tile_size + 1, tile_size - 2, tile_size - 2, rim)
+        inset = max(3, tile_size // 4)
+        raylib.draw_rectangle(
+            tile.x * tile_size + inset,
+            tile.y * tile_size + inset,
+            max(1, tile_size - inset * 2),
+            max(1, tile_size - inset * 2),
+            hole,
+        )
+
+    def _draw_runtime_object_car_wreck(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw a compact wrecked vehicle segment."""
+        raylib = self._raylib
+        body = raylib.Color(70, 76, 78, 235)
+        rust = raylib.Color(148, 76, 42, 230)
+        window = raylib.Color(42, 52, 56, 235)
+        inset = max(2, tile_size // 6)
+        raylib.draw_rectangle(tile.x * tile_size + inset, tile.y * tile_size + inset, tile_size - inset * 2, tile_size - inset * 2, body)
+        raylib.draw_rectangle(tile.x * tile_size + inset + 1, tile.y * tile_size + inset + 1, max(2, tile_size // 3), max(2, tile_size // 4), window)
+        raylib.draw_rectangle(tile.x * tile_size + tile_size - inset - max(2, tile_size // 4), tile.y * tile_size + tile_size - inset - max(2, tile_size // 4), max(2, tile_size // 4), max(2, tile_size // 4), rust)
+        self._draw_runtime_object_outline(tile, tile_size, raylib.RAYWHITE)
+
+    def _draw_runtime_object_cart(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw an abandoned wooden cart segment."""
+        raylib = self._raylib
+        wood = raylib.Color(122, 82, 45, 230)
+        wheel = raylib.Color(44, 34, 26, 235)
+        inset = max(2, tile_size // 5)
+        raylib.draw_rectangle(tile.x * tile_size + inset, tile.y * tile_size + inset, tile_size - inset * 2, tile_size - inset * 2, wood)
+        radius = max(2, tile_size // 7)
+        self._draw_circle_or_square(tile.x * tile_size + inset, tile.y * tile_size + tile_size - inset, radius, wheel)
+        self._draw_circle_or_square(tile.x * tile_size + tile_size - inset, tile.y * tile_size + tile_size - inset, radius, wheel)
+
+    def _draw_runtime_object_tent(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw a field tent tile with a center ridge cue."""
+        raylib = self._raylib
+        fabric = raylib.Color(86, 104, 70, 235)
+        ridge = raylib.Color(152, 168, 120, 230)
+        shadow = raylib.Color(42, 54, 38, 220)
+        raylib.draw_rectangle(tile.x * tile_size + 1, tile.y * tile_size + 2, tile_size - 2, tile_size - 4, fabric)
+        if self._runtime_object_is_horizontal(map_object):
+            raylib.draw_rectangle(tile.x * tile_size + 2, tile.y * tile_size + tile_size // 2, tile_size - 4, 2, ridge)
+            raylib.draw_rectangle(tile.x * tile_size + tile_size // 2, tile.y * tile_size + tile_size // 2 + 2, 2, max(1, tile_size // 4), shadow)
+        else:
+            raylib.draw_rectangle(tile.x * tile_size + tile_size // 2, tile.y * tile_size + 2, 2, tile_size - 4, ridge)
+            raylib.draw_rectangle(tile.x * tile_size + tile_size // 2 + 2, tile.y * tile_size + tile_size // 2, max(1, tile_size // 4), 2, shadow)
+        self._draw_runtime_object_outline(tile, tile_size, raylib.RAYWHITE)
+
+    def _draw_runtime_object_campfire(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw a dead campfire with ash and crossed logs."""
+        raylib = self._raylib
+        ash = raylib.Color(62, 60, 56, 220)
+        log = raylib.Color(104, 68, 38, 230)
+        center = tile.x * tile_size + tile_size // 2
+        y = tile.y * tile_size + tile_size // 2
+        self._draw_circle_or_square(center, y, max(2, tile_size // 5), ash)
+        raylib.draw_rectangle(center - tile_size // 3, y - 1, max(1, tile_size * 2 // 3), 2, log)
+        raylib.draw_rectangle(center - 1, y - tile_size // 3, 2, max(1, tile_size * 2 // 3), log)
+
+    def _draw_runtime_object_generator(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw a broken generator with dark vents."""
+        raylib = self._raylib
+        body = raylib.Color(82, 88, 90, 235)
+        vent = raylib.Color(30, 34, 36, 235)
+        rust = raylib.Color(156, 82, 46, 230)
+        inset = max(2, tile_size // 5)
+        raylib.draw_rectangle(tile.x * tile_size + inset, tile.y * tile_size + inset, tile_size - inset * 2, tile_size - inset * 2, body)
+        raylib.draw_rectangle(tile.x * tile_size + inset + 1, tile.y * tile_size + inset + 2, max(2, tile_size // 3), max(1, tile_size // 8), vent)
+        raylib.draw_rectangle(tile.x * tile_size + inset + 1, tile.y * tile_size + inset + 5, max(2, tile_size // 3), max(1, tile_size // 8), vent)
+        raylib.draw_rectangle(tile.x * tile_size + tile_size - inset - max(2, tile_size // 5), tile.y * tile_size + tile_size - inset - max(2, tile_size // 5), max(2, tile_size // 5), max(2, tile_size // 5), rust)
+
+    def _draw_runtime_object_spool(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw a cable spool with a dark cable center."""
+        raylib = self._raylib
+        wood = raylib.Color(126, 90, 54, 235)
+        cable = raylib.Color(38, 38, 36, 235)
+        center_x = tile.x * tile_size + tile_size // 2
+        center_y = tile.y * tile_size + tile_size // 2
+        self._draw_circle_or_square(center_x, center_y, max(3, tile_size // 3), wood)
+        self._draw_circle_or_square(center_x, center_y, max(2, tile_size // 5), cable)
+
+    def _draw_runtime_object_sign(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw a warning sign with a post and plate."""
+        raylib = self._raylib
+        post = raylib.Color(92, 68, 42, 235)
+        plate = raylib.Color(210, 156, 48, 235)
+        mark = raylib.Color(60, 44, 26, 245)
+        x = tile.x * tile_size + tile_size // 2
+        raylib.draw_rectangle(x - 1, tile.y * tile_size + tile_size // 3, 2, tile_size // 2, post)
+        plate_size = max(5, tile_size // 2)
+        raylib.draw_rectangle(x - plate_size // 2, tile.y * tile_size + 2, plate_size, plate_size, plate)
+        raylib.draw_rectangle(x - 1, tile.y * tile_size + 4, 2, max(2, plate_size - 4), mark)
+
+    def _draw_runtime_object_grave_marker(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw an old grave marker with a compact stone cross."""
+        raylib = self._raylib
+        stone = raylib.Color(126, 124, 116, 230)
+        center_x = tile.x * tile_size + tile_size // 2
+        center_y = tile.y * tile_size + tile_size // 2
+        bar = max(2, tile_size // 7)
+        raylib.draw_rectangle(center_x - bar // 2, center_y - tile_size // 4, bar, tile_size // 2, stone)
+        raylib.draw_rectangle(center_x - tile_size // 5, center_y - tile_size // 8, max(2, tile_size * 2 // 5), bar, stone)
+
+    def _draw_runtime_object_well(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw an old well tile with stone rim and dark center."""
+        raylib = self._raylib
+        rim = raylib.Color(132, 128, 112, 240)
+        dark = raylib.Color(24, 24, 28, 240)
+        center_x = tile.x * tile_size + tile_size // 2
+        center_y = tile.y * tile_size + tile_size // 2
+        self._draw_circle_or_square(center_x, center_y, max(3, tile_size // 3), rim)
+        self._draw_circle_or_square(center_x, center_y, max(2, tile_size // 5), dark)
+        self._draw_runtime_object_outline(tile, tile_size, raylib.RAYWHITE)
+
+    def _draw_runtime_object_backpack(
+        self,
+        map_object: RuntimeMapObject,
+        tile: TileCoord,
+        tile_size: int,
+    ) -> None:
+        """Draw an abandoned backpack interest-point placeholder."""
+        raylib = self._raylib
+        cloth = raylib.Color(72, 88, 58, 235)
+        strap = raylib.Color(36, 44, 30, 235)
+        inset = max(3, tile_size // 4)
+        raylib.draw_rectangle(tile.x * tile_size + inset, tile.y * tile_size + inset, tile_size - inset * 2, tile_size - inset * 2, cloth)
+        raylib.draw_rectangle(tile.x * tile_size + tile_size // 2 - 1, tile.y * tile_size + inset + 1, 2, max(1, tile_size - inset * 2 - 2), strap)
+
     def _draw_circle_or_square(self, center_x: int, center_y: int, radius: int, color: object) -> None:
         """Draw a circle when available, otherwise draw a square fallback."""
         if hasattr(self._raylib, "draw_circle"):
@@ -409,6 +954,14 @@ class MapRenderer:
             color,
         )
 
+    def _runtime_object_is_horizontal(self, map_object: RuntimeMapObject) -> bool:
+        """Return whether object orientation or footprint reads as horizontal."""
+        if map_object.orientation == "east_west":
+            return True
+        if map_object.orientation == "north_south":
+            return False
+        return self._footprint_is_horizontal(map_object)
+
     def _footprint_is_horizontal(self, map_object: RuntimeMapObject) -> bool:
         """Return whether a footprint is wider than it is tall."""
         xs = {tile.x for tile in map_object.footprint}
@@ -466,8 +1019,12 @@ class MapRenderer:
             return raylib.Color(88, 92, 102, 235)
         if map_object.object_type == "rusted_barrel":
             return raylib.Color(130, 72, 36, 240)
-        if map_object.object_type == "old_checkpoint":
+        if map_object.is_bunker or map_object.object_type == "old_checkpoint":
             return raylib.Color(96, 96, 92, 240)
+        if map_object.is_bridge or map_object.object_type in {"abandoned_cart", "field_tent"}:
+            return raylib.Color(122, 82, 45, 230)
+        if map_object.is_elevation_connector or map_object.object_type in {"hill", "earth_berm", "pit"}:
+            return raylib.Color(118, 112, 96, 210)
         if map_object.blocks_projectiles or map_object.blocks_movement:
             return raylib.Color(105, 105, 105, 235)
         if map_object.role in {"landmark", "defensive_landmark"}:
