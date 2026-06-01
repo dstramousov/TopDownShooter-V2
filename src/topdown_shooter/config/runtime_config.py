@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from topdown_shooter.diagnostics.frame_profiler import FrameProfilerConfig
+
 
 class RuntimeConfigError(RuntimeError):
     """Raised when runtime configuration cannot be loaded."""
@@ -29,6 +31,22 @@ class WindowConfig:
     screen_margin_px: int = 100
     width: int = 0
     height: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class PresentationConfig:
+    """Presentation timing settings.
+
+    Attributes:
+        mode: Frame pacing mode: target_fps, uncapped, or vsync.
+        disable_driver_vsync: Whether to set common driver environment flags
+            that disable implicit OpenGL vblank synchronization.
+        max_queued_frames: Requested maximum queued frames for drivers that support it.
+    """
+
+    mode: str
+    disable_driver_vsync: bool
+    max_queued_frames: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -718,6 +736,7 @@ class RuntimeConfig:
     Attributes:
         window: Window settings.
         camera: Camera settings.
+        presentation: Presentation timing settings.
         player: Player display settings.
         aim_debug: Aim debug display settings.
         weapons: Weapon database settings.
@@ -728,11 +747,13 @@ class RuntimeConfig:
         ui: Shared UI display settings.
         hud: Player HUD display settings.
         render3d: Experimental 3D renderer settings.
+        frame_profiler: Interactive runtime frame profiler settings.
         controls: Control bindings.
     """
 
     window: WindowConfig
     camera: CameraConfig
+    presentation: PresentationConfig
     player: PlayerConfig
     aim_debug: AimDebugConfig
     weapons: WeaponsConfig
@@ -743,6 +764,7 @@ class RuntimeConfig:
     ui: UiConfig
     hud: HudConfig
     render3d: Render3DConfig
+    frame_profiler: FrameProfilerConfig
     controls: ControlsConfig
 
 
@@ -796,6 +818,7 @@ class RuntimeConfigLoader:
         """
         window = self._require_dict(raw_config, "window")
         camera = self._require_dict(raw_config, "camera")
+        presentation = self._require_dict(raw_config, "presentation")
         player = self._require_dict(raw_config, "player")
         aim_debug = self._require_dict(raw_config, "aim_debug")
         weapons = self._require_dict(raw_config, "weapons")
@@ -806,6 +829,7 @@ class RuntimeConfigLoader:
         ui = self._require_dict(raw_config, "ui")
         hud = self._require_dict(raw_config, "hud")
         render3d = self._require_dict(raw_config, "render3d")
+        frame_profiler = self._require_dict(raw_config, "frame_profiler")
         controls = self._require_dict(raw_config, "controls")
         return RuntimeConfig(
             window=WindowConfig(
@@ -817,6 +841,17 @@ class RuntimeConfigLoader:
                 ),
             ),
             camera=self._build_camera_config(camera),
+            presentation=PresentationConfig(
+                mode=self._require_presentation_mode(presentation, "mode"),
+                disable_driver_vsync=self._require_bool(
+                    presentation,
+                    "disable_driver_vsync",
+                ),
+                max_queued_frames=self._require_positive_int(
+                    presentation,
+                    "max_queued_frames",
+                ),
+            ),
             player=PlayerConfig(
                 marker_radius_px=self._require_positive_int(player, "marker_radius_px"),
                 movement_speed_px_per_second=self._require_positive_float(
@@ -1130,6 +1165,22 @@ class RuntimeConfigLoader:
                 background_alpha=self._require_alpha(hud, "background_alpha"),
             ),
             render3d=self._build_render3d_config(render3d),
+            frame_profiler=FrameProfilerConfig(
+                enabled=self._require_bool(frame_profiler, "enabled"),
+                log_interval_seconds=self._require_positive_float(
+                    frame_profiler,
+                    "log_interval_seconds",
+                ),
+                slow_frame_threshold_ms=self._require_positive_float(
+                    frame_profiler,
+                    "slow_frame_threshold_ms",
+                ),
+                draw_overlay=self._require_bool(frame_profiler, "draw_overlay"),
+                sample_window_size=self._require_positive_int(
+                    frame_profiler,
+                    "sample_window_size",
+                ),
+            ),
             controls=ControlsConfig(
                 quit=self._require_str(controls, "quit"),
                 help=self._require_str(controls, "help"),
@@ -1593,6 +1644,25 @@ class RuntimeConfigLoader:
             raise RuntimeConfigError(
                 "Runtime config field "
                 f"'{field}' must be less than or equal to 255.",
+            )
+        return value
+
+
+    def _require_presentation_mode(self, data: dict[str, Any], field: str) -> str:
+        """Return a validated presentation timing mode.
+
+        Args:
+            data: Source dictionary.
+            field: Field name.
+
+        Returns:
+            Presentation timing mode.
+        """
+        value = self._require_str(data, field)
+        allowed = {"target_fps", "uncapped", "vsync"}
+        if value not in allowed:
+            raise RuntimeConfigError(
+                f"Runtime config presentation mode is invalid: {field}",
             )
         return value
 

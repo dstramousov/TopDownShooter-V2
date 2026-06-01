@@ -117,6 +117,11 @@ class ProjectileRenderer:
         self._shells: list[_ShellCasingState] = []
         self._shell_sequence = 0
 
+    @property
+    def active_shell_count(self) -> int:
+        """Return the number of retained shell casing visuals."""
+        return len(self._shells)
+
     def add_events(self, events: tuple[ProjectileEvent, ...]) -> None:
         """Add projectile feedback events used by short-lived 2D visuals."""
         for event in events:

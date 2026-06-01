@@ -4,6 +4,11 @@
     "target_fps": 60,
     "screen_margin_px": 300
   },
+  "presentation": {
+    "mode": "target_fps",
+    "disable_driver_vsync": true,
+    "max_queued_frames": 1
+  },
   "ui": {
     "font_path": "res/fonts/PressStart2P-Regular.ttf",
     "font_spacing": 0.0,
@@ -371,6 +376,13 @@
       "alert_alpha": 105,
       "combat_alpha": 145
     }
+  },
+  "frame_profiler": {
+    "enabled": false,
+    "log_interval_seconds": 1.0,
+    "slow_frame_threshold_ms": 25.0,
+    "draw_overlay": false,
+    "sample_window_size": 120
   },
   "shell_ejection": {
     "enabled": true,
