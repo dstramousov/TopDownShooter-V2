@@ -891,3 +891,9 @@
 - Added zone-driven runtime candidate APIs for enemy spawn, loot, danger, safe, and extraction tiles using structured gameplay zones.
 - Filtered enemy spawn candidates to walkable non-safe/non-extraction tiles while preserving legacy tactical spawn fallback behavior for maps without zones.
 - Extended inspection output and tests so future spawn, loot, and mission systems can use gameplay zones without changing AI, balance, rendering, 3D, or elevation behavior.
+
+## v0.2.13 -> v0.2.14
+
+- Added `SpawnDirector` as a zone-driven enemy spawn point selector that returns valid tiles without creating enemies or changing current spawn behavior.
+- Added `enemy_spawn` runtime config for distance limits, line-of-sight avoidance, alive-enemy caps, cooldown, and future group size bounds.
+- Added tests for zone candidates, safe/extraction exclusion, occupied tiles, distance filters, line-of-sight filtering, legacy fallback candidates, and disabled/full-capacity behavior.

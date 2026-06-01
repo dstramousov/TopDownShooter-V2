@@ -143,6 +143,14 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.enemies.fire_primary_weapon_id == "ak47"
     assert config.enemies.fire_fallback_weapon_id == "pistol"
     assert config.enemies.fire_aim_error_degrees == 8.0
+    assert config.enemy_spawn.enabled is True
+    assert config.enemy_spawn.min_distance_from_player_tiles == 12.0
+    assert config.enemy_spawn.max_distance_from_player_tiles == 96.0
+    assert config.enemy_spawn.avoid_player_line_of_sight is True
+    assert config.enemy_spawn.max_alive_enemies == 24
+    assert config.enemy_spawn.spawn_cooldown_seconds == 8.0
+    assert config.enemy_spawn.group_size_min == 1
+    assert config.enemy_spawn.group_size_max == 3
     assert config.hud.position == "top"
     assert config.hud.margin_x == 12
     assert config.hud.margin_y == 12

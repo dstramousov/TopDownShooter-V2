@@ -345,6 +345,31 @@ class EnemyConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class EnemySpawnConfig:
+    """Zone-driven enemy spawn selection settings.
+
+    Attributes:
+        enabled: Whether zone-driven spawn selection may return candidates.
+        min_distance_from_player_tiles: Minimum spawn distance from player.
+        max_distance_from_player_tiles: Maximum spawn distance from player.
+        avoid_player_line_of_sight: Whether visible tiles are filtered out.
+        max_alive_enemies: Global alive-enemy cap used by spawn selection.
+        spawn_cooldown_seconds: Minimum time between future spawn attempts.
+        group_size_min: Minimum future spawn group size.
+        group_size_max: Maximum future spawn group size.
+    """
+
+    enabled: bool
+    min_distance_from_player_tiles: float
+    max_distance_from_player_tiles: float
+    avoid_player_line_of_sight: bool
+    max_alive_enemies: int
+    spawn_cooldown_seconds: float
+    group_size_min: int
+    group_size_max: int
+
+
+@dataclass(frozen=True, slots=True)
 class UiConfig:
     """Shared UI display settings.
 
@@ -676,6 +701,7 @@ class RuntimeConfig:
         projectile_impacts: Projectile impact marker settings.
         shell_ejection: Shell casing ejection visual settings.
         enemies: Enemy marker display settings.
+        enemy_spawn: Zone-driven enemy spawn selection settings.
         ui: Shared UI display settings.
         hud: Player HUD display settings.
         render3d: Experimental 3D renderer settings.
@@ -690,6 +716,7 @@ class RuntimeConfig:
     projectile_impacts: ProjectileImpactConfig
     shell_ejection: ShellEjectionConfig
     enemies: EnemyConfig
+    enemy_spawn: EnemySpawnConfig
     ui: UiConfig
     hud: HudConfig
     render3d: Render3DConfig
@@ -752,6 +779,7 @@ class RuntimeConfigLoader:
         projectile_impacts = self._require_dict(raw_config, "projectile_impacts")
         shell_ejection = self._require_dict(raw_config, "shell_ejection")
         enemies = self._require_dict(raw_config, "enemies")
+        enemy_spawn = self._require_dict(raw_config, "enemy_spawn")
         ui = self._require_dict(raw_config, "ui")
         hud = self._require_dict(raw_config, "hud")
         render3d = self._require_dict(raw_config, "render3d")
@@ -1053,6 +1081,7 @@ class RuntimeConfigLoader:
                     "fire_aim_error_degrees",
                 ),
             ),
+            enemy_spawn=self._build_enemy_spawn_config(enemy_spawn),
             ui=UiConfig(
                 font_path=self._require_str(ui, "font_path"),
                 font_spacing=self._require_non_negative_float(ui, "font_spacing"),
@@ -1101,6 +1130,53 @@ class RuntimeConfigLoader:
                 weapon_slot_3=self._require_str(controls, "weapon_slot_3"),
                 interact=self._require_str(controls, "interact"),
             ),
+        )
+
+    def _build_enemy_spawn_config(self, enemy_spawn: dict[str, Any]) -> EnemySpawnConfig:
+        """Build typed zone-driven spawn selection config from raw data.
+
+        Args:
+            enemy_spawn: Raw spawn selection configuration dictionary.
+
+        Returns:
+            Zone-driven enemy spawn selection configuration.
+        """
+        min_distance = self._require_non_negative_float(
+            enemy_spawn,
+            "min_distance_from_player_tiles",
+        )
+        max_distance = self._require_non_negative_float(
+            enemy_spawn,
+            "max_distance_from_player_tiles",
+        )
+        if max_distance > 0.0 and min_distance > max_distance:
+            raise RuntimeConfigError(
+                "Runtime config enemy spawn distance range is invalid.",
+            )
+        group_size_min = self._require_positive_int(enemy_spawn, "group_size_min")
+        group_size_max = self._require_positive_int(enemy_spawn, "group_size_max")
+        if group_size_min > group_size_max:
+            raise RuntimeConfigError(
+                "Runtime config enemy spawn group size range is invalid.",
+            )
+        return EnemySpawnConfig(
+            enabled=self._require_bool(enemy_spawn, "enabled"),
+            min_distance_from_player_tiles=min_distance,
+            max_distance_from_player_tiles=max_distance,
+            avoid_player_line_of_sight=self._require_bool(
+                enemy_spawn,
+                "avoid_player_line_of_sight",
+            ),
+            max_alive_enemies=self._require_non_negative_int(
+                enemy_spawn,
+                "max_alive_enemies",
+            ),
+            spawn_cooldown_seconds=self._require_non_negative_float(
+                enemy_spawn,
+                "spawn_cooldown_seconds",
+            ),
+            group_size_min=group_size_min,
+            group_size_max=group_size_max,
         )
 
     def _build_render3d_config(self, render3d: dict[str, Any]) -> Render3DConfig:
