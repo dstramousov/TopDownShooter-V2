@@ -879,3 +879,9 @@
 - Added dedicated 2D primitive placeholders for current structured-map runtime object types that were previously rendered through the generic square fallback.
 - Added readable placeholder shapes for bunkers, bridges, ramps, stairs, platforms, hills, pits, watchtowers, beacons, camp props, road debris, tech debris, wells, signs, graves, backpacks, and stone chunks.
 - Kept runtime object loading, collision footprints, gameplay behavior, AI, 3D rendering, and elevation rules unchanged while adding renderer tests for the new placeholder coverage.
+
+## v0.2.11 -> v0.2.12
+
+- Added typed gameplay-zone models with bounds, polygons, entry/exit points, linked ids, danger/loot levels, recommended encounters, elevation usage, and tags.
+- Added tile-indexed gameplay-zone query APIs: `zones_at_tile`, `zones_by_type`, `is_tile_in_zone`, `nearest_zone`, zone-type helpers, and zone coverage/count statistics.
+- Updated map inspection and structured map-package tests so gameplay zones are visible to future spawn, loot, mission, and AI systems without changing current gameplay behavior.

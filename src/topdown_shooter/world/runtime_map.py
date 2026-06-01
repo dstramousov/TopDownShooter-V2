@@ -122,18 +122,188 @@ class RuntimeGridSet:
 
 
 @dataclass(frozen=True, slots=True)
+class RuntimeGameplayZoneBounds:
+    """Inclusive tile bounds for a gameplay zone.
+
+    Attributes:
+        min_x: Leftmost covered tile.
+        min_y: Topmost covered tile.
+        max_x: Rightmost covered tile.
+        max_y: Bottommost covered tile.
+    """
+
+    min_x: int
+    min_y: int
+    max_x: int
+    max_y: int
+
+    @property
+    def tile_count(self) -> int:
+        """Return the inclusive rectangular tile count."""
+        return max(0, self.max_x - self.min_x + 1) * max(0, self.max_y - self.min_y + 1)
+
+    @property
+    def center_tile(self) -> TileCoord:
+        """Return the integer center tile for the bounds."""
+        return TileCoord(
+            x=(self.min_x + self.max_x) // 2,
+            y=(self.min_y + self.max_y) // 2,
+        )
+
+    def contains_tile(self, tile: TileCoord) -> bool:
+        """Return whether a tile is inside the inclusive bounds.
+
+        Args:
+            tile: Tile coordinate to query.
+
+        Returns:
+            ``True`` when the tile is inside the bounds.
+        """
+        return (
+            tile.x >= self.min_x
+            and tile.y >= self.min_y
+            and tile.x <= self.max_x
+            and tile.y <= self.max_y
+        )
+
+    def distance_to_tile(self, tile: TileCoord) -> int:
+        """Return Manhattan distance from the tile to these bounds.
+
+        Args:
+            tile: Tile coordinate to query.
+
+        Returns:
+            Zero for tiles inside the bounds, otherwise Manhattan distance to
+            the closest tile inside the bounds.
+        """
+        dx = 0
+        if tile.x < self.min_x:
+            dx = self.min_x - tile.x
+        elif tile.x > self.max_x:
+            dx = tile.x - self.max_x
+
+        dy = 0
+        if tile.y < self.min_y:
+            dy = self.min_y - tile.y
+        elif tile.y > self.max_y:
+            dy = tile.y - self.max_y
+        return dx + dy
+
+
+@dataclass(frozen=True, slots=True)
 class RuntimeGameplayZone:
     """Gameplay zone exported by the structured map package.
 
     Attributes:
         zone_id: Stable zone id.
         zone_type: Gameplay zone type.
+        bounds: Inclusive tile bounds when exported by the generator.
+        polygon: Optional polygon vertices in tile coordinates.
+        entry_points: Suggested entry points in tile coordinates.
+        exit_points: Suggested exit points in tile coordinates.
+        linked_places: Related place ids.
+        linked_routes: Related route ids.
+        linked_markers: Related marker ids.
+        danger_level: Normalized danger score.
+        loot_level: Normalized loot score.
+        recommended_enemy_types: Suggested enemy archetypes.
+        recommended_encounter: Suggested encounter type.
+        elevation_usage: Elevation usage hint.
+        tags: Generator tags used by future gameplay systems.
         raw: Original zone dictionary.
     """
 
     zone_id: str
     zone_type: str
+    bounds: RuntimeGameplayZoneBounds | None = None
+    polygon: tuple[TileCoord, ...] = ()
+    entry_points: tuple[TileCoord, ...] = ()
+    exit_points: tuple[TileCoord, ...] = ()
+    linked_places: tuple[str, ...] = ()
+    linked_routes: tuple[str, ...] = ()
+    linked_markers: tuple[str, ...] = ()
+    danger_level: float = 0.0
+    loot_level: float = 0.0
+    recommended_enemy_types: tuple[str, ...] = ()
+    recommended_encounter: str = ""
+    elevation_usage: str = ""
+    tags: tuple[str, ...] = ()
     raw: Mapping[str, Any] = field(default_factory=dict)
+
+    @property
+    def tile_count_estimate(self) -> int:
+        """Return estimated zone coverage in tiles."""
+        if self.bounds is None:
+            return 0
+        return self.bounds.tile_count
+
+    @property
+    def center_tile(self) -> TileCoord | None:
+        """Return the zone center tile when bounds are available."""
+        if self.bounds is None:
+            return None
+        return self.bounds.center_tile
+
+    def contains_tile(self, tile: TileCoord) -> bool:
+        """Return whether the zone contains a tile.
+
+        Args:
+            tile: Tile coordinate to query.
+
+        Returns:
+            ``True`` when the tile belongs to this zone.
+        """
+        if self.bounds is None:
+            return False
+        if not self.bounds.contains_tile(tile):
+            return False
+        if len(self.polygon) < 3 or self._polygon_is_bounds_rectangle():
+            return True
+        return self._polygon_contains_tile_center(tile)
+
+    def distance_to_tile(self, tile: TileCoord) -> int:
+        """Return Manhattan distance from a tile to this zone.
+
+        Args:
+            tile: Tile coordinate to query.
+
+        Returns:
+            Distance to bounds, or a large value when the zone has no bounds.
+        """
+        if self.contains_tile(tile):
+            return 0
+        if self.bounds is None:
+            return 1_000_000
+        return self.bounds.distance_to_tile(tile)
+
+    def _polygon_is_bounds_rectangle(self) -> bool:
+        """Return whether the polygon exactly describes the zone bounds."""
+        if self.bounds is None or len(self.polygon) != 4:
+            return False
+        expected = {
+            (self.bounds.min_x, self.bounds.min_y),
+            (self.bounds.max_x, self.bounds.min_y),
+            (self.bounds.max_x, self.bounds.max_y),
+            (self.bounds.min_x, self.bounds.max_y),
+        }
+        return {(point.x, point.y) for point in self.polygon} == expected
+
+    def _polygon_contains_tile_center(self, tile: TileCoord) -> bool:
+        """Return whether the polygon contains a tile center point."""
+        point_x = tile.x + 0.5
+        point_y = tile.y + 0.5
+        inside = False
+        previous = self.polygon[-1]
+        for current in self.polygon:
+            current_y = current.y
+            previous_y = previous.y
+            if (current_y > point_y) != (previous_y > point_y):
+                slope_x = (previous.x - current.x) * (point_y - current_y) / (previous_y - current_y)
+                intersect_x = slope_x + current.x
+                if point_x < intersect_x:
+                    inside = not inside
+            previous = current
+        return inside
 
 
 @dataclass(frozen=True, slots=True)
@@ -534,6 +704,9 @@ class RuntimeMap:
     elevation: RuntimeElevationMap = field(default_factory=RuntimeElevationMap)
     runtime_grids: RuntimeGridSet = field(default_factory=RuntimeGridSet)
     gameplay_zones: tuple[RuntimeGameplayZone, ...] = ()
+    gameplay_zones_by_tile: Mapping[TileCoord, tuple[RuntimeGameplayZone, ...]] = field(
+        default_factory=dict,
+    )
     elevation_features: tuple[RuntimeElevationFeature, ...] = ()
     elevation_transitions: tuple[RuntimeElevationTransition, ...] = ()
     movement_blocked_tiles: frozenset[TileCoord] = frozenset()
@@ -610,6 +783,125 @@ class RuntimeMap:
     def height_grid(self) -> RuntimeGridLayer | None:
         """Return the integer height grid layer when available."""
         return self.runtime_grids.height_grid
+
+    @property
+    def gameplay_zone_types(self) -> tuple[str, ...]:
+        """Return unique gameplay zone types in stable first-seen order."""
+        zone_types: list[str] = []
+        seen: set[str] = set()
+        for zone in self.gameplay_zones:
+            if not zone.zone_type or zone.zone_type in seen:
+                continue
+            seen.add(zone.zone_type)
+            zone_types.append(zone.zone_type)
+        return tuple(zone_types)
+
+    @property
+    def gameplay_zone_counts_by_type(self) -> Mapping[str, int]:
+        """Return gameplay zone counts grouped by zone type."""
+        counts: dict[str, int] = {}
+        for zone in self.gameplay_zones:
+            zone_type = zone.zone_type or "unknown"
+            counts[zone_type] = counts.get(zone_type, 0) + 1
+        return MappingProxyType(counts)
+
+    @property
+    def gameplay_zone_coverage_tiles(self) -> int:
+        """Return number of unique tiles covered by indexed gameplay zones."""
+        return len(self.gameplay_zones_by_tile)
+
+    @property
+    def safe_zones(self) -> tuple[RuntimeGameplayZone, ...]:
+        """Return safe-area gameplay zones."""
+        return self.zones_by_type("safe_area")
+
+    @property
+    def danger_zones(self) -> tuple[RuntimeGameplayZone, ...]:
+        """Return danger-area gameplay zones."""
+        return self.zones_by_type("danger_area")
+
+    @property
+    def loot_zones(self) -> tuple[RuntimeGameplayZone, ...]:
+        """Return loot-area gameplay zones."""
+        return self.zones_by_type("loot_area")
+
+    @property
+    def story_zones(self) -> tuple[RuntimeGameplayZone, ...]:
+        """Return story-area gameplay zones."""
+        return self.zones_by_type("story_area")
+
+    @property
+    def traversal_zones(self) -> tuple[RuntimeGameplayZone, ...]:
+        """Return traversal-area gameplay zones."""
+        return self.zones_by_type("traversal_area")
+
+    @property
+    def extraction_zones(self) -> tuple[RuntimeGameplayZone, ...]:
+        """Return extraction-area gameplay zones."""
+        return self.zones_by_type("extraction_area")
+
+    def zones_at_tile(self, tile: TileCoord) -> tuple[RuntimeGameplayZone, ...]:
+        """Return gameplay zones covering a tile.
+
+        Args:
+            tile: Tile coordinate to query.
+
+        Returns:
+            Gameplay zones covering the tile, or an empty tuple.
+        """
+        return self.gameplay_zones_by_tile.get(tile, ())
+
+    def zones_by_type(self, zone_type: str) -> tuple[RuntimeGameplayZone, ...]:
+        """Return gameplay zones matching a type.
+
+        Args:
+            zone_type: Zone type to match exactly.
+
+        Returns:
+            Matching gameplay zones in package order.
+        """
+        return tuple(zone for zone in self.gameplay_zones if zone.zone_type == zone_type)
+
+    def is_tile_in_zone(self, tile: TileCoord, zone_type: str) -> bool:
+        """Return whether a tile belongs to a zone type.
+
+        Args:
+            tile: Tile coordinate to query.
+            zone_type: Zone type to match exactly.
+
+        Returns:
+            ``True`` when any matching zone covers the tile.
+        """
+        return any(zone.zone_type == zone_type for zone in self.zones_at_tile(tile))
+
+    def nearest_zone(
+        self,
+        tile: TileCoord,
+        *,
+        zone_type: str | None = None,
+    ) -> RuntimeGameplayZone | None:
+        """Return the nearest gameplay zone to a tile.
+
+        Args:
+            tile: Tile coordinate to search from.
+            zone_type: Optional exact zone type filter.
+
+        Returns:
+            Nearest matching zone, or ``None`` when no matching zone exists.
+        """
+        candidates = (
+            self.zones_by_type(zone_type)
+            if zone_type is not None
+            else self.gameplay_zones
+        )
+        best_zone: RuntimeGameplayZone | None = None
+        best_distance: int | None = None
+        for zone in candidates:
+            distance = zone.distance_to_tile(tile)
+            if best_distance is None or distance < best_distance:
+                best_zone = zone
+                best_distance = distance
+        return best_zone
 
     @property
     def interactive_runtime_objects(self) -> tuple[RuntimeMapObject, ...]:

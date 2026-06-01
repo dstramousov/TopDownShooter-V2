@@ -1,0 +1,647 @@
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' a/pyproject.toml b/pyproject.toml
+--- a/pyproject.toml	2026-06-01 03:55:53.000000000 +0000
++++ b/pyproject.toml	2026-06-01 04:02:22.481835123 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "topdown-shooter"
+-version = "0.2.11"
++version = "0.2.12"
+ description = "Runtime foundation for TopDownShooter V.2."
+ readme = "README.md"
+ requires-python = ">=3.12"
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' a/src/topdown_shooter/__init__.py b/src/topdown_shooter/__init__.py
+--- a/src/topdown_shooter/__init__.py	2026-06-01 03:55:53.000000000 +0000
++++ b/src/topdown_shooter/__init__.py	2026-06-01 04:02:22.482487689 +0000
+@@ -1,3 +1,3 @@
+ """TopDownShooter V.2 runtime package."""
+ 
+-__version__ = "0.2.11"
++__version__ = "0.2.12"
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' a/src/topdown_shooter/diagnostics/summary.py b/src/topdown_shooter/diagnostics/summary.py
+--- a/src/topdown_shooter/diagnostics/summary.py	2026-05-31 14:24:13.000000000 +0000
++++ b/src/topdown_shooter/diagnostics/summary.py	2026-06-01 04:01:48.401314872 +0000
+@@ -26,6 +26,8 @@
+         structured_map.package_schema_version if structured_map is not None else "not loaded"
+     )
+ 
++    gameplay_zone_types = dict(runtime_map.gameplay_zone_counts_by_type)
++
+     return "\n".join(
+         [
+             "Map package loaded",
+@@ -70,6 +72,8 @@
+             "Structured data:",
+             f"- runtime grids: {runtime_map.runtime_grids.grid_names}",
+             f"- gameplay zones: {len(runtime_map.gameplay_zones)}",
++            f"- gameplay zone types: {gameplay_zone_types}",
++            f"- gameplay zone coverage tiles: {runtime_map.gameplay_zone_coverage_tiles}",
+             f"- elevation features: {len(runtime_map.elevation_features)}",
+             f"- elevation transitions: {len(runtime_map.elevation_transitions)}",
+             "",
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' a/src/topdown_shooter/world/runtime_map.py b/src/topdown_shooter/world/runtime_map.py
+--- a/src/topdown_shooter/world/runtime_map.py	2026-05-31 14:33:19.000000000 +0000
++++ b/src/topdown_shooter/world/runtime_map.py	2026-06-01 04:01:21.825329472 +0000
+@@ -122,19 +122,189 @@
+ 
+ 
+ @dataclass(frozen=True, slots=True)
++class RuntimeGameplayZoneBounds:
++    """Inclusive tile bounds for a gameplay zone.
++
++    Attributes:
++        min_x: Leftmost covered tile.
++        min_y: Topmost covered tile.
++        max_x: Rightmost covered tile.
++        max_y: Bottommost covered tile.
++    """
++
++    min_x: int
++    min_y: int
++    max_x: int
++    max_y: int
++
++    @property
++    def tile_count(self) -> int:
++        """Return the inclusive rectangular tile count."""
++        return max(0, self.max_x - self.min_x + 1) * max(0, self.max_y - self.min_y + 1)
++
++    @property
++    def center_tile(self) -> TileCoord:
++        """Return the integer center tile for the bounds."""
++        return TileCoord(
++            x=(self.min_x + self.max_x) // 2,
++            y=(self.min_y + self.max_y) // 2,
++        )
++
++    def contains_tile(self, tile: TileCoord) -> bool:
++        """Return whether a tile is inside the inclusive bounds.
++
++        Args:
++            tile: Tile coordinate to query.
++
++        Returns:
++            ``True`` when the tile is inside the bounds.
++        """
++        return (
++            tile.x >= self.min_x
++            and tile.y >= self.min_y
++            and tile.x <= self.max_x
++            and tile.y <= self.max_y
++        )
++
++    def distance_to_tile(self, tile: TileCoord) -> int:
++        """Return Manhattan distance from the tile to these bounds.
++
++        Args:
++            tile: Tile coordinate to query.
++
++        Returns:
++            Zero for tiles inside the bounds, otherwise Manhattan distance to
++            the closest tile inside the bounds.
++        """
++        dx = 0
++        if tile.x < self.min_x:
++            dx = self.min_x - tile.x
++        elif tile.x > self.max_x:
++            dx = tile.x - self.max_x
++
++        dy = 0
++        if tile.y < self.min_y:
++            dy = self.min_y - tile.y
++        elif tile.y > self.max_y:
++            dy = tile.y - self.max_y
++        return dx + dy
++
++
++@dataclass(frozen=True, slots=True)
+ class RuntimeGameplayZone:
+     """Gameplay zone exported by the structured map package.
+ 
+     Attributes:
+         zone_id: Stable zone id.
+         zone_type: Gameplay zone type.
++        bounds: Inclusive tile bounds when exported by the generator.
++        polygon: Optional polygon vertices in tile coordinates.
++        entry_points: Suggested entry points in tile coordinates.
++        exit_points: Suggested exit points in tile coordinates.
++        linked_places: Related place ids.
++        linked_routes: Related route ids.
++        linked_markers: Related marker ids.
++        danger_level: Normalized danger score.
++        loot_level: Normalized loot score.
++        recommended_enemy_types: Suggested enemy archetypes.
++        recommended_encounter: Suggested encounter type.
++        elevation_usage: Elevation usage hint.
++        tags: Generator tags used by future gameplay systems.
+         raw: Original zone dictionary.
+     """
+ 
+     zone_id: str
+     zone_type: str
++    bounds: RuntimeGameplayZoneBounds | None = None
++    polygon: tuple[TileCoord, ...] = ()
++    entry_points: tuple[TileCoord, ...] = ()
++    exit_points: tuple[TileCoord, ...] = ()
++    linked_places: tuple[str, ...] = ()
++    linked_routes: tuple[str, ...] = ()
++    linked_markers: tuple[str, ...] = ()
++    danger_level: float = 0.0
++    loot_level: float = 0.0
++    recommended_enemy_types: tuple[str, ...] = ()
++    recommended_encounter: str = ""
++    elevation_usage: str = ""
++    tags: tuple[str, ...] = ()
+     raw: Mapping[str, Any] = field(default_factory=dict)
+ 
++    @property
++    def tile_count_estimate(self) -> int:
++        """Return estimated zone coverage in tiles."""
++        if self.bounds is None:
++            return 0
++        return self.bounds.tile_count
++
++    @property
++    def center_tile(self) -> TileCoord | None:
++        """Return the zone center tile when bounds are available."""
++        if self.bounds is None:
++            return None
++        return self.bounds.center_tile
++
++    def contains_tile(self, tile: TileCoord) -> bool:
++        """Return whether the zone contains a tile.
++
++        Args:
++            tile: Tile coordinate to query.
++
++        Returns:
++            ``True`` when the tile belongs to this zone.
++        """
++        if self.bounds is None:
++            return False
++        if not self.bounds.contains_tile(tile):
++            return False
++        if len(self.polygon) < 3 or self._polygon_is_bounds_rectangle():
++            return True
++        return self._polygon_contains_tile_center(tile)
++
++    def distance_to_tile(self, tile: TileCoord) -> int:
++        """Return Manhattan distance from a tile to this zone.
++
++        Args:
++            tile: Tile coordinate to query.
++
++        Returns:
++            Distance to bounds, or a large value when the zone has no bounds.
++        """
++        if self.contains_tile(tile):
++            return 0
++        if self.bounds is None:
++            return 1_000_000
++        return self.bounds.distance_to_tile(tile)
++
++    def _polygon_is_bounds_rectangle(self) -> bool:
++        """Return whether the polygon exactly describes the zone bounds."""
++        if self.bounds is None or len(self.polygon) != 4:
++            return False
++        expected = {
++            (self.bounds.min_x, self.bounds.min_y),
++            (self.bounds.max_x, self.bounds.min_y),
++            (self.bounds.max_x, self.bounds.max_y),
++            (self.bounds.min_x, self.bounds.max_y),
++        }
++        return {(point.x, point.y) for point in self.polygon} == expected
++
++    def _polygon_contains_tile_center(self, tile: TileCoord) -> bool:
++        """Return whether the polygon contains a tile center point."""
++        point_x = tile.x + 0.5
++        point_y = tile.y + 0.5
++        inside = False
++        previous = self.polygon[-1]
++        for current in self.polygon:
++            current_y = current.y
++            previous_y = previous.y
++            if (current_y > point_y) != (previous_y > point_y):
++                slope_x = (previous.x - current.x) * (point_y - current_y) / (previous_y - current_y)
++                intersect_x = slope_x + current.x
++                if point_x < intersect_x:
++                    inside = not inside
++            previous = current
++        return inside
++
+ 
+ @dataclass(frozen=True, slots=True)
+ class RuntimeElevationFeature:
+@@ -534,6 +704,9 @@
+     elevation: RuntimeElevationMap = field(default_factory=RuntimeElevationMap)
+     runtime_grids: RuntimeGridSet = field(default_factory=RuntimeGridSet)
+     gameplay_zones: tuple[RuntimeGameplayZone, ...] = ()
++    gameplay_zones_by_tile: Mapping[TileCoord, tuple[RuntimeGameplayZone, ...]] = field(
++        default_factory=dict,
++    )
+     elevation_features: tuple[RuntimeElevationFeature, ...] = ()
+     elevation_transitions: tuple[RuntimeElevationTransition, ...] = ()
+     movement_blocked_tiles: frozenset[TileCoord] = frozenset()
+@@ -612,6 +785,125 @@
+         return self.runtime_grids.height_grid
+ 
+     @property
++    def gameplay_zone_types(self) -> tuple[str, ...]:
++        """Return unique gameplay zone types in stable first-seen order."""
++        zone_types: list[str] = []
++        seen: set[str] = set()
++        for zone in self.gameplay_zones:
++            if not zone.zone_type or zone.zone_type in seen:
++                continue
++            seen.add(zone.zone_type)
++            zone_types.append(zone.zone_type)
++        return tuple(zone_types)
++
++    @property
++    def gameplay_zone_counts_by_type(self) -> Mapping[str, int]:
++        """Return gameplay zone counts grouped by zone type."""
++        counts: dict[str, int] = {}
++        for zone in self.gameplay_zones:
++            zone_type = zone.zone_type or "unknown"
++            counts[zone_type] = counts.get(zone_type, 0) + 1
++        return MappingProxyType(counts)
++
++    @property
++    def gameplay_zone_coverage_tiles(self) -> int:
++        """Return number of unique tiles covered by indexed gameplay zones."""
++        return len(self.gameplay_zones_by_tile)
++
++    @property
++    def safe_zones(self) -> tuple[RuntimeGameplayZone, ...]:
++        """Return safe-area gameplay zones."""
++        return self.zones_by_type("safe_area")
++
++    @property
++    def danger_zones(self) -> tuple[RuntimeGameplayZone, ...]:
++        """Return danger-area gameplay zones."""
++        return self.zones_by_type("danger_area")
++
++    @property
++    def loot_zones(self) -> tuple[RuntimeGameplayZone, ...]:
++        """Return loot-area gameplay zones."""
++        return self.zones_by_type("loot_area")
++
++    @property
++    def story_zones(self) -> tuple[RuntimeGameplayZone, ...]:
++        """Return story-area gameplay zones."""
++        return self.zones_by_type("story_area")
++
++    @property
++    def traversal_zones(self) -> tuple[RuntimeGameplayZone, ...]:
++        """Return traversal-area gameplay zones."""
++        return self.zones_by_type("traversal_area")
++
++    @property
++    def extraction_zones(self) -> tuple[RuntimeGameplayZone, ...]:
++        """Return extraction-area gameplay zones."""
++        return self.zones_by_type("extraction_area")
++
++    def zones_at_tile(self, tile: TileCoord) -> tuple[RuntimeGameplayZone, ...]:
++        """Return gameplay zones covering a tile.
++
++        Args:
++            tile: Tile coordinate to query.
++
++        Returns:
++            Gameplay zones covering the tile, or an empty tuple.
++        """
++        return self.gameplay_zones_by_tile.get(tile, ())
++
++    def zones_by_type(self, zone_type: str) -> tuple[RuntimeGameplayZone, ...]:
++        """Return gameplay zones matching a type.
++
++        Args:
++            zone_type: Zone type to match exactly.
++
++        Returns:
++            Matching gameplay zones in package order.
++        """
++        return tuple(zone for zone in self.gameplay_zones if zone.zone_type == zone_type)
++
++    def is_tile_in_zone(self, tile: TileCoord, zone_type: str) -> bool:
++        """Return whether a tile belongs to a zone type.
++
++        Args:
++            tile: Tile coordinate to query.
++            zone_type: Zone type to match exactly.
++
++        Returns:
++            ``True`` when any matching zone covers the tile.
++        """
++        return any(zone.zone_type == zone_type for zone in self.zones_at_tile(tile))
++
++    def nearest_zone(
++        self,
++        tile: TileCoord,
++        *,
++        zone_type: str | None = None,
++    ) -> RuntimeGameplayZone | None:
++        """Return the nearest gameplay zone to a tile.
++
++        Args:
++            tile: Tile coordinate to search from.
++            zone_type: Optional exact zone type filter.
++
++        Returns:
++            Nearest matching zone, or ``None`` when no matching zone exists.
++        """
++        candidates = (
++            self.zones_by_type(zone_type)
++            if zone_type is not None
++            else self.gameplay_zones
++        )
++        best_zone: RuntimeGameplayZone | None = None
++        best_distance: int | None = None
++        for zone in candidates:
++            distance = zone.distance_to_tile(tile)
++            if best_distance is None or distance < best_distance:
++                best_zone = zone
++                best_distance = distance
++        return best_zone
++
++    @property
+     def interactive_runtime_objects(self) -> tuple[RuntimeMapObject, ...]:
+         """Return runtime objects that are player interaction candidates."""
+         return tuple(map_object for map_object in self.runtime_objects if map_object.interactive)
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' a/src/topdown_shooter/world/runtime_map_builder.py b/src/topdown_shooter/world/runtime_map_builder.py
+--- a/src/topdown_shooter/world/runtime_map_builder.py	2026-05-31 14:33:19.000000000 +0000
++++ b/src/topdown_shooter/world/runtime_map_builder.py	2026-06-01 04:01:39.470630492 +0000
+@@ -16,6 +16,7 @@
+     RuntimeElevationMap,
+     RuntimeElevationTransition,
+     RuntimeGameplayZone,
++    RuntimeGameplayZoneBounds,
+     RuntimeGridLayer,
+     RuntimeGridSet,
+     RuntimeMap,
+@@ -207,6 +208,11 @@
+             runtime_objects,
+             blocking_attribute="vision_blocking_tiles",
+         )
++        gameplay_zones_by_tile = self._index_gameplay_zones_by_tile(
++            build_input.gameplay_zones,
++            width=build_input.width,
++            height=build_input.height,
++        )
+ 
+         return RuntimeMap(
+             width_tiles=build_input.width,
+@@ -225,6 +231,7 @@
+             ),
+             runtime_grids=build_input.runtime_grids,
+             gameplay_zones=build_input.gameplay_zones,
++            gameplay_zones_by_tile=gameplay_zones_by_tile,
+             elevation_features=build_input.elevation_features,
+             elevation_transitions=build_input.elevation_transitions,
+             movement_blocked_tiles=movement_blocked_tiles,
+@@ -487,15 +494,123 @@
+         Returns:
+             Runtime gameplay zones.
+         """
+-        return tuple(
+-            RuntimeGameplayZone(
+-                zone_id=self._optional_string(item.get("id"), default=""),
+-                zone_type=self._optional_string(item.get("type"), default=""),
+-                raw=self._parse_any_mapping(item),
++        zones: list[RuntimeGameplayZone] = []
++        for item in self._iter_item_dicts(gameplay_zones, context="gameplay_zones"):
++            polygon = self._parse_tile_coord_tuple(item.get("polygon"), context="gameplay_zones.polygon")
++            bounds = self._parse_zone_bounds(item.get("bounds"), polygon=polygon)
++            zones.append(
++                RuntimeGameplayZone(
++                    zone_id=self._optional_string(item.get("id"), default=""),
++                    zone_type=self._optional_string(item.get("type"), default=""),
++                    bounds=bounds,
++                    polygon=polygon,
++                    entry_points=self._parse_zone_point_list(item.get("entry_points")),
++                    exit_points=self._parse_zone_point_list(item.get("exit_points")),
++                    linked_places=self._parse_string_tuple(item.get("linked_places")),
++                    linked_routes=self._parse_string_tuple(item.get("linked_routes")),
++                    linked_markers=self._parse_string_tuple(item.get("linked_markers")),
++                    danger_level=self._clamp_unit_float(item.get("danger_level"), default=0.0),
++                    loot_level=self._clamp_unit_float(item.get("loot_level"), default=0.0),
++                    recommended_enemy_types=self._parse_string_tuple(
++                        item.get("recommended_enemy_types"),
++                    ),
++                    recommended_encounter=self._optional_string(
++                        item.get("recommended_encounter"),
++                        default="",
++                    ),
++                    elevation_usage=self._optional_string(item.get("elevation_usage"), default=""),
++                    tags=self._parse_string_tuple(item.get("tags")),
++                    raw=self._parse_any_mapping(item),
++                ),
+             )
+-            for item in self._iter_item_dicts(gameplay_zones, context="gameplay_zones")
++        return tuple(zones)
++
++    def _index_gameplay_zones_by_tile(
++        self,
++        gameplay_zones: tuple[RuntimeGameplayZone, ...],
++        *,
++        width: int,
++        height: int,
++    ) -> Mapping[TileCoord, tuple[RuntimeGameplayZone, ...]]:
++        """Index gameplay zones by covered tile.
++
++        Args:
++            gameplay_zones: Parsed gameplay zones.
++            width: Map width in tiles.
++            height: Map height in tiles.
++
++        Returns:
++            Immutable mapping from tile coordinates to covering zones.
++        """
++        zones_by_tile: dict[TileCoord, list[RuntimeGameplayZone]] = {}
++        for zone in gameplay_zones:
++            if zone.bounds is None:
++                continue
++            min_x = max(0, zone.bounds.min_x)
++            min_y = max(0, zone.bounds.min_y)
++            max_x = min(width - 1, zone.bounds.max_x)
++            max_y = min(height - 1, zone.bounds.max_y)
++            for y in range(min_y, max_y + 1):
++                for x in range(min_x, max_x + 1):
++                    tile = TileCoord(x=x, y=y)
++                    if zone.contains_tile(tile):
++                        zones_by_tile.setdefault(tile, []).append(zone)
++        return MappingProxyType(
++            {
++                tile: tuple(zones)
++                for tile, zones in zones_by_tile.items()
++            },
+         )
+ 
++    def _parse_zone_bounds(
++        self,
++        value: Any,
++        *,
++        polygon: tuple[TileCoord, ...],
++    ) -> RuntimeGameplayZoneBounds | None:
++        """Parse gameplay zone bounds from JSON data or polygon vertices."""
++        if isinstance(value, dict):
++            min_x = self._coerce_int(value.get("min_x"), key="min_x", context="gameplay_zones.bounds")
++            min_y = self._coerce_int(value.get("min_y"), key="min_y", context="gameplay_zones.bounds")
++            max_x = self._coerce_int(value.get("max_x"), key="max_x", context="gameplay_zones.bounds")
++            max_y = self._coerce_int(value.get("max_y"), key="max_y", context="gameplay_zones.bounds")
++            return RuntimeGameplayZoneBounds(
++                min_x=min(min_x, max_x),
++                min_y=min(min_y, max_y),
++                max_x=max(min_x, max_x),
++                max_y=max(min_y, max_y),
++            )
++        if polygon:
++            xs = [point.x for point in polygon]
++            ys = [point.y for point in polygon]
++            return RuntimeGameplayZoneBounds(
++                min_x=min(xs),
++                min_y=min(ys),
++                max_x=max(xs),
++                max_y=max(ys),
++            )
++        return None
++
++    def _parse_zone_point_list(self, value: Any) -> tuple[TileCoord, ...]:
++        """Parse gameplay zone entry/exit point lists."""
++        if not isinstance(value, list):
++            return ()
++        points: list[TileCoord] = []
++        for item in value:
++            if not isinstance(item, dict):
++                continue
++            position = item.get("position")
++            if position is None:
++                continue
++            points.append(self._parse_tile_coord(position, context="gameplay_zones.point"))
++        return tuple(points)
++
++    def _parse_tile_coord_tuple(self, value: Any, *, context: str) -> tuple[TileCoord, ...]:
++        """Parse a list of tile coordinates."""
++        if not isinstance(value, list):
++            return ()
++        return tuple(self._parse_tile_coord(item, context=context) for item in value)
++
+     def _build_elevation_features(
+         self,
+         elevation_features: dict[str, Any] | None,
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' a/tests/test_runtime_map_builder.py b/tests/test_runtime_map_builder.py
+--- a/tests/test_runtime_map_builder.py	2026-05-31 14:33:19.000000000 +0000
++++ b/tests/test_runtime_map_builder.py	2026-06-01 04:02:03.106670020 +0000
+@@ -77,6 +77,8 @@
+     assert runtime_map.tiles[0][1].movement_speed_multiplier == 1.0
+     assert runtime_map.walkable_tile_count == 4
+     assert runtime_map.blocked_tile_count == 2
++    assert runtime_map.gameplay_zones == ()
++    assert runtime_map.zones_at_tile(TileCoord(0, 0)) == ()
+ 
+ 
+ def test_runtime_map_builder_loads_runtime_objects_and_elevation(tmp_path: Path) -> None:
+@@ -363,7 +365,58 @@
+         {
+             "schema_version": "gameplay-zones-v1",
+             "kind": "gameplay_zones",
+-            "items": [{"id": "zone_000", "type": "safe_area"}],
++            "items": [
++                {
++                    "id": "zone_000",
++                    "type": "safe_area",
++                    "bounds": {"min_x": 0, "min_y": 0, "max_x": 1, "max_y": 1},
++                    "polygon": [
++                        {"x": 0, "y": 0},
++                        {"x": 1, "y": 0},
++                        {"x": 1, "y": 1},
++                        {"x": 0, "y": 1},
++                    ],
++                    "entry_points": [
++                        {"id": "entry_center", "position": {"x": 0, "y": 0}},
++                    ],
++                    "exit_points": [
++                        {"id": "exit_center", "position": {"x": 1, "y": 1}},
++                    ],
++                    "linked_places": ["place_start"],
++                    "linked_routes": ["route_main"],
++                    "linked_markers": ["start"],
++                    "danger_level": 0.0,
++                    "loot_level": 0.15,
++                    "recommended_enemy_types": [],
++                    "recommended_encounter": "none",
++                    "elevation_usage": "normal_ground",
++                    "tags": ["primary", "safe_area", "start"],
++                },
++                {
++                    "id": "zone_001",
++                    "type": "loot_area",
++                    "bounds": {"min_x": 2, "min_y": 1, "max_x": 3, "max_y": 2},
++                    "polygon": [
++                        {"x": 2, "y": 1},
++                        {"x": 3, "y": 1},
++                        {"x": 3, "y": 2},
++                        {"x": 2, "y": 2},
++                    ],
++                    "entry_points": [
++                        {"id": "entry_center", "position": [2, 1]},
++                    ],
++                    "exit_points": [],
++                    "linked_places": [],
++                    "linked_routes": [],
++                    "linked_markers": ["marker_loot_000"],
++                    "danger_level": 0.25,
++                    "loot_level": 0.75,
++                    "recommended_enemy_types": ["scout"],
++                    "recommended_encounter": "reward_pickup",
++                    "elevation_usage": "normal_ground",
++                    "tags": ["loot", "loot_area"],
++                },
++            ],
+         },
+     )
+     _write_json(
+@@ -481,8 +534,29 @@
+     assert runtime_map.is_tile_vision_blocked(TileCoord(3, 1)) is True
+     assert runtime_map.cover_value_at(TileCoord(0, 2)) == 0.45
+     assert runtime_map.concealment_value_at(TileCoord(0, 2)) == 0.25
+-    assert len(runtime_map.gameplay_zones) == 1
++    assert len(runtime_map.gameplay_zones) == 2
+     assert runtime_map.gameplay_zones[0].zone_type == "safe_area"
++    assert runtime_map.gameplay_zones[0].bounds is not None
++    assert runtime_map.gameplay_zones[0].bounds.tile_count == 4
++    assert runtime_map.gameplay_zones[0].entry_points == (TileCoord(0, 0),)
++    assert runtime_map.gameplay_zones[0].exit_points == (TileCoord(1, 1),)
++    assert runtime_map.gameplay_zones[0].linked_markers == ("start",)
++    assert runtime_map.gameplay_zones[0].tags == ("primary", "safe_area", "start")
++    assert runtime_map.gameplay_zones[1].zone_type == "loot_area"
++    assert runtime_map.gameplay_zones[1].danger_level == 0.25
++    assert runtime_map.gameplay_zones[1].loot_level == 0.75
++    assert runtime_map.gameplay_zones[1].recommended_enemy_types == ("scout",)
++    assert runtime_map.gameplay_zones[1].recommended_encounter == "reward_pickup"
++    assert runtime_map.zones_at_tile(TileCoord(0, 0)) == (runtime_map.gameplay_zones[0],)
++    assert runtime_map.zones_at_tile(TileCoord(3, 2)) == (runtime_map.gameplay_zones[1],)
++    assert runtime_map.is_tile_in_zone(TileCoord(1, 1), "safe_area") is True
++    assert runtime_map.is_tile_in_zone(TileCoord(1, 1), "loot_area") is False
++    assert runtime_map.zones_by_type("safe_area") == (runtime_map.gameplay_zones[0],)
++    assert runtime_map.safe_zones == (runtime_map.gameplay_zones[0],)
++    assert runtime_map.loot_zones == (runtime_map.gameplay_zones[1],)
++    assert runtime_map.nearest_zone(TileCoord(3, 0), zone_type="loot_area") is runtime_map.gameplay_zones[1]
++    assert runtime_map.gameplay_zone_counts_by_type == {"safe_area": 1, "loot_area": 1}
++    assert runtime_map.gameplay_zone_coverage_tiles == 8
+     assert len(runtime_map.elevation_features) == 1
+     assert runtime_map.elevation_features[0].feature_type == "bridge"
+     assert len(runtime_map.elevation_transitions) == 1
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' a/versions.md b/versions.md
+--- a/versions.md	2026-06-01 03:55:53.000000000 +0000
++++ b/versions.md	2026-06-01 04:02:22.484117555 +0000
+@@ -879,3 +879,9 @@
+ - Added dedicated 2D primitive placeholders for current structured-map runtime object types that were previously rendered through the generic square fallback.
+ - Added readable placeholder shapes for bunkers, bridges, ramps, stairs, platforms, hills, pits, watchtowers, beacons, camp props, road debris, tech debris, wells, signs, graves, backpacks, and stone chunks.
+ - Kept runtime object loading, collision footprints, gameplay behavior, AI, 3D rendering, and elevation rules unchanged while adding renderer tests for the new placeholder coverage.
++
++## v0.2.11 -> v0.2.12
++
++- Added typed gameplay-zone models with bounds, polygons, entry/exit points, linked ids, danger/loot levels, recommended encounters, elevation usage, and tags.
++- Added tile-indexed gameplay-zone query APIs: `zones_at_tile`, `zones_by_type`, `is_tile_in_zone`, `nearest_zone`, zone-type helpers, and zone coverage/count statistics.
++- Updated map inspection and structured map-package tests so gameplay zones are visible to future spawn, loot, mission, and AI systems without changing current gameplay behavior.

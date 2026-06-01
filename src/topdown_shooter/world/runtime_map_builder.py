@@ -16,6 +16,7 @@ from topdown_shooter.world.runtime_map import (
     RuntimeElevationMap,
     RuntimeElevationTransition,
     RuntimeGameplayZone,
+    RuntimeGameplayZoneBounds,
     RuntimeGridLayer,
     RuntimeGridSet,
     RuntimeMap,
@@ -207,6 +208,11 @@ class RuntimeMapBuilder:
             runtime_objects,
             blocking_attribute="vision_blocking_tiles",
         )
+        gameplay_zones_by_tile = self._index_gameplay_zones_by_tile(
+            build_input.gameplay_zones,
+            width=build_input.width,
+            height=build_input.height,
+        )
 
         return RuntimeMap(
             width_tiles=build_input.width,
@@ -225,6 +231,7 @@ class RuntimeMapBuilder:
             ),
             runtime_grids=build_input.runtime_grids,
             gameplay_zones=build_input.gameplay_zones,
+            gameplay_zones_by_tile=gameplay_zones_by_tile,
             elevation_features=build_input.elevation_features,
             elevation_transitions=build_input.elevation_transitions,
             movement_blocked_tiles=movement_blocked_tiles,
@@ -487,14 +494,122 @@ class RuntimeMapBuilder:
         Returns:
             Runtime gameplay zones.
         """
-        return tuple(
-            RuntimeGameplayZone(
-                zone_id=self._optional_string(item.get("id"), default=""),
-                zone_type=self._optional_string(item.get("type"), default=""),
-                raw=self._parse_any_mapping(item),
+        zones: list[RuntimeGameplayZone] = []
+        for item in self._iter_item_dicts(gameplay_zones, context="gameplay_zones"):
+            polygon = self._parse_tile_coord_tuple(item.get("polygon"), context="gameplay_zones.polygon")
+            bounds = self._parse_zone_bounds(item.get("bounds"), polygon=polygon)
+            zones.append(
+                RuntimeGameplayZone(
+                    zone_id=self._optional_string(item.get("id"), default=""),
+                    zone_type=self._optional_string(item.get("type"), default=""),
+                    bounds=bounds,
+                    polygon=polygon,
+                    entry_points=self._parse_zone_point_list(item.get("entry_points")),
+                    exit_points=self._parse_zone_point_list(item.get("exit_points")),
+                    linked_places=self._parse_string_tuple(item.get("linked_places")),
+                    linked_routes=self._parse_string_tuple(item.get("linked_routes")),
+                    linked_markers=self._parse_string_tuple(item.get("linked_markers")),
+                    danger_level=self._clamp_unit_float(item.get("danger_level"), default=0.0),
+                    loot_level=self._clamp_unit_float(item.get("loot_level"), default=0.0),
+                    recommended_enemy_types=self._parse_string_tuple(
+                        item.get("recommended_enemy_types"),
+                    ),
+                    recommended_encounter=self._optional_string(
+                        item.get("recommended_encounter"),
+                        default="",
+                    ),
+                    elevation_usage=self._optional_string(item.get("elevation_usage"), default=""),
+                    tags=self._parse_string_tuple(item.get("tags")),
+                    raw=self._parse_any_mapping(item),
+                ),
             )
-            for item in self._iter_item_dicts(gameplay_zones, context="gameplay_zones")
+        return tuple(zones)
+
+    def _index_gameplay_zones_by_tile(
+        self,
+        gameplay_zones: tuple[RuntimeGameplayZone, ...],
+        *,
+        width: int,
+        height: int,
+    ) -> Mapping[TileCoord, tuple[RuntimeGameplayZone, ...]]:
+        """Index gameplay zones by covered tile.
+
+        Args:
+            gameplay_zones: Parsed gameplay zones.
+            width: Map width in tiles.
+            height: Map height in tiles.
+
+        Returns:
+            Immutable mapping from tile coordinates to covering zones.
+        """
+        zones_by_tile: dict[TileCoord, list[RuntimeGameplayZone]] = {}
+        for zone in gameplay_zones:
+            if zone.bounds is None:
+                continue
+            min_x = max(0, zone.bounds.min_x)
+            min_y = max(0, zone.bounds.min_y)
+            max_x = min(width - 1, zone.bounds.max_x)
+            max_y = min(height - 1, zone.bounds.max_y)
+            for y in range(min_y, max_y + 1):
+                for x in range(min_x, max_x + 1):
+                    tile = TileCoord(x=x, y=y)
+                    if zone.contains_tile(tile):
+                        zones_by_tile.setdefault(tile, []).append(zone)
+        return MappingProxyType(
+            {
+                tile: tuple(zones)
+                for tile, zones in zones_by_tile.items()
+            },
         )
+
+    def _parse_zone_bounds(
+        self,
+        value: Any,
+        *,
+        polygon: tuple[TileCoord, ...],
+    ) -> RuntimeGameplayZoneBounds | None:
+        """Parse gameplay zone bounds from JSON data or polygon vertices."""
+        if isinstance(value, dict):
+            min_x = self._coerce_int(value.get("min_x"), key="min_x", context="gameplay_zones.bounds")
+            min_y = self._coerce_int(value.get("min_y"), key="min_y", context="gameplay_zones.bounds")
+            max_x = self._coerce_int(value.get("max_x"), key="max_x", context="gameplay_zones.bounds")
+            max_y = self._coerce_int(value.get("max_y"), key="max_y", context="gameplay_zones.bounds")
+            return RuntimeGameplayZoneBounds(
+                min_x=min(min_x, max_x),
+                min_y=min(min_y, max_y),
+                max_x=max(min_x, max_x),
+                max_y=max(min_y, max_y),
+            )
+        if polygon:
+            xs = [point.x for point in polygon]
+            ys = [point.y for point in polygon]
+            return RuntimeGameplayZoneBounds(
+                min_x=min(xs),
+                min_y=min(ys),
+                max_x=max(xs),
+                max_y=max(ys),
+            )
+        return None
+
+    def _parse_zone_point_list(self, value: Any) -> tuple[TileCoord, ...]:
+        """Parse gameplay zone entry/exit point lists."""
+        if not isinstance(value, list):
+            return ()
+        points: list[TileCoord] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            position = item.get("position")
+            if position is None:
+                continue
+            points.append(self._parse_tile_coord(position, context="gameplay_zones.point"))
+        return tuple(points)
+
+    def _parse_tile_coord_tuple(self, value: Any, *, context: str) -> tuple[TileCoord, ...]:
+        """Parse a list of tile coordinates."""
+        if not isinstance(value, list):
+            return ()
+        return tuple(self._parse_tile_coord(item, context=context) for item in value)
 
     def _build_elevation_features(
         self,

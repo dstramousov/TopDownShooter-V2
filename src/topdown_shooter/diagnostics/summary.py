@@ -26,6 +26,8 @@ def build_inspection_summary(package: GeneratedMapPackage, runtime_map: RuntimeM
         structured_map.package_schema_version if structured_map is not None else "not loaded"
     )
 
+    gameplay_zone_types = dict(runtime_map.gameplay_zone_counts_by_type)
+
     return "\n".join(
         [
             "Map package loaded",
@@ -70,6 +72,8 @@ def build_inspection_summary(package: GeneratedMapPackage, runtime_map: RuntimeM
             "Structured data:",
             f"- runtime grids: {runtime_map.runtime_grids.grid_names}",
             f"- gameplay zones: {len(runtime_map.gameplay_zones)}",
+            f"- gameplay zone types: {gameplay_zone_types}",
+            f"- gameplay zone coverage tiles: {runtime_map.gameplay_zone_coverage_tiles}",
             f"- elevation features: {len(runtime_map.elevation_features)}",
             f"- elevation transitions: {len(runtime_map.elevation_transitions)}",
             "",
