@@ -270,7 +270,27 @@
     "initial_spawn_count": 12,
     "spawn_cooldown_seconds": 8.0,
     "group_size_min": 1,
-    "group_size_max": 3
+    "group_size_max": 3,
+    "enemy_types": [
+      {
+        "type_id": "rifleman",
+        "role": "rifleman",
+        "weapon_id": "ak47",
+        "weight": 7.0
+      },
+      {
+        "type_id": "scout",
+        "role": "scout",
+        "weapon_id": "pistol",
+        "weight": 2.0
+      },
+      {
+        "type_id": "heavy",
+        "role": "heavy",
+        "weapon_id": "minigun_m134",
+        "weight": 1.0
+      }
+    ]
   },
   "render3d": {
     "enabled": false,

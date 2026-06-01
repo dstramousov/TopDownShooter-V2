@@ -210,3 +210,32 @@ def test_spawn_director_returns_empty_when_disabled_or_capacity_is_full() -> Non
         2,
         alive_enemy_count=2,
     ) == ()
+
+
+def test_spawn_director_selects_local_groups_without_duplicate_tiles() -> None:
+    """Spawn director should group nearby valid candidates deterministically."""
+    runtime_map = _build_runtime_map(
+        zones=(_zone("danger", "danger_area", 1, 1, 6, 2),),
+    )
+    config = _spawn_config(min_distance=1.0)
+    config = EnemySpawnConfig(
+        enabled=config.enabled,
+        min_distance_from_player_tiles=config.min_distance_from_player_tiles,
+        max_distance_from_player_tiles=config.max_distance_from_player_tiles,
+        avoid_player_line_of_sight=config.avoid_player_line_of_sight,
+        max_alive_enemies=config.max_alive_enemies,
+        initial_spawn_count=config.initial_spawn_count,
+        spawn_cooldown_seconds=config.spawn_cooldown_seconds,
+        group_size_min=2,
+        group_size_max=2,
+    )
+    director = SpawnDirector(runtime_map, config)
+
+    groups = director.select_spawn_groups(TileCoord(0, 0), 4)
+    selected_tiles = tuple(tile for group in groups for tile in group.member_tiles)
+
+    assert len(groups) == 2
+    assert len(selected_tiles) == 4
+    assert len(set(selected_tiles)) == 4
+    assert all(runtime_map.is_tile_walkable(tile) for tile in selected_tiles)
+    assert all(len(group.member_tiles) == 2 for group in groups)

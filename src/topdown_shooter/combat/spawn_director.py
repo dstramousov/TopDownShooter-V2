@@ -26,12 +26,47 @@ class SpawnSelectionResult:
     scanned_candidates: int
 
 
+@dataclass(frozen=True, slots=True)
+class SpawnGroup:
+    """Selected startup spawn group.
+
+    Attributes:
+        group_id: Stable group identifier for diagnostics and spawn ids.
+        anchor_tile: Candidate tile used as the group anchor.
+        member_tiles: Valid selected tiles for group members.
+    """
+
+    group_id: str
+    anchor_tile: TileCoord
+    member_tiles: tuple[TileCoord, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SpawnGroupSelectionResult:
+    """Result of a grouped spawn selection query.
+
+    Attributes:
+        groups: Selected spawn groups.
+        requested_count: Requested maximum number of spawned enemies.
+        scanned_candidates: Number of candidate tiles considered before filtering.
+    """
+
+    groups: tuple[SpawnGroup, ...]
+    requested_count: int
+    scanned_candidates: int
+
+    @property
+    def selected_tiles(self) -> tuple[TileCoord, ...]:
+        """Return selected group member tiles in group order."""
+        return tuple(tile for group in self.groups for tile in group.member_tiles)
+
+
 class SpawnDirector:
     """Select valid enemy spawn tiles without creating enemies.
 
-    The director is deliberately limited to point selection. Enemy creation,
-    wave timing, enemy type budgeting, and triggered encounters remain owned by
-    future gameplay systems.
+    The director is deliberately limited to point and group selection. Enemy
+    creation, wave timing, enemy type budgeting, and triggered encounters remain
+    owned by gameplay systems.
     """
 
     def __init__(
@@ -137,6 +172,105 @@ class SpawnDirector:
             scanned_candidates=len(candidate_tiles),
         )
 
+    def select_spawn_groups(
+        self,
+        player_tile: TileCoord,
+        count: int,
+        *,
+        occupied_tiles: Iterable[TileCoord] = (),
+        alive_enemy_count: int = 0,
+    ) -> tuple[SpawnGroup, ...]:
+        """Select valid grouped spawn tiles.
+
+        Args:
+            player_tile: Current player tile used for distance and sight filters.
+            count: Maximum number of group member tiles to return.
+            occupied_tiles: Tiles already occupied by player, enemies, or reserved
+                future spawns.
+            alive_enemy_count: Current alive enemy count used with the configured
+                global cap.
+
+        Returns:
+            Valid spawn groups in deterministic order.
+        """
+        return self.select_spawn_groups_with_stats(
+            player_tile,
+            count,
+            occupied_tiles=occupied_tiles,
+            alive_enemy_count=alive_enemy_count,
+        ).groups
+
+    def select_spawn_groups_with_stats(
+        self,
+        player_tile: TileCoord,
+        count: int,
+        *,
+        occupied_tiles: Iterable[TileCoord] = (),
+        alive_enemy_count: int = 0,
+    ) -> SpawnGroupSelectionResult:
+        """Select valid grouped spawn tiles with selection diagnostics.
+
+        Args:
+            player_tile: Current player tile used for distance and sight filters.
+            count: Maximum number of group member tiles to return.
+            occupied_tiles: Tiles already occupied by player, enemies, or reserved
+                future spawns.
+            alive_enemy_count: Current alive enemy count used with the configured
+                global cap.
+
+        Returns:
+            Group selection result with returned groups and candidate count.
+        """
+        if not self._config.enabled or count <= 0:
+            return SpawnGroupSelectionResult(
+                groups=(),
+                requested_count=max(0, count),
+                scanned_candidates=0,
+            )
+
+        candidate_tiles = self._candidate_tiles()
+        max_count = self._available_spawn_count(count, alive_enemy_count)
+        if max_count <= 0:
+            return SpawnGroupSelectionResult(
+                groups=(),
+                requested_count=max(0, count),
+                scanned_candidates=len(candidate_tiles),
+            )
+
+        occupied = set(occupied_tiles)
+        occupied.add(player_tile)
+        reserved = set(occupied)
+        candidate_set = set(candidate_tiles)
+        groups: list[SpawnGroup] = []
+        selected_count = 0
+        for anchor_tile in self._ordered_candidates(candidate_tiles, player_tile):
+            if selected_count >= max_count:
+                break
+            remaining = max_count - selected_count
+            group_size = self._desired_group_size(anchor_tile, remaining)
+            member_tiles = self._select_group_member_tiles(
+                anchor_tile=anchor_tile,
+                player_tile=player_tile,
+                candidate_set=candidate_set,
+                reserved_tiles=reserved,
+                desired_count=group_size,
+            )
+            if not member_tiles:
+                continue
+            group = SpawnGroup(
+                group_id=f"spawn_group_{len(groups)}",
+                anchor_tile=anchor_tile,
+                member_tiles=member_tiles,
+            )
+            groups.append(group)
+            reserved.update(member_tiles)
+            selected_count += len(member_tiles)
+        return SpawnGroupSelectionResult(
+            groups=tuple(groups),
+            requested_count=max(0, count),
+            scanned_candidates=len(candidate_tiles),
+        )
+
     def _available_spawn_count(self, requested_count: int, alive_enemy_count: int) -> int:
         """Return count still allowed by request and alive-enemy cap."""
         requested = max(0, requested_count)
@@ -167,6 +301,70 @@ class SpawnDirector:
                 ),
             )
         )
+
+    def _desired_group_size(self, anchor_tile: TileCoord, remaining_count: int) -> int:
+        """Return deterministic group size for one anchor tile."""
+        remaining = max(0, remaining_count)
+        if remaining <= 0:
+            return 0
+        min_size = max(1, self._config.group_size_min)
+        max_size = max(min_size, self._config.group_size_max)
+        capped_max = min(max_size, remaining)
+        if capped_max <= min_size:
+            return capped_max
+        span = capped_max - min_size + 1
+        stable_value = self._stable_hash(f"{anchor_tile.x}:{anchor_tile.y}:group_size")
+        return min_size + stable_value % span
+
+    def _select_group_member_tiles(
+        self,
+        *,
+        anchor_tile: TileCoord,
+        player_tile: TileCoord,
+        candidate_set: set[TileCoord],
+        reserved_tiles: set[TileCoord],
+        desired_count: int,
+    ) -> tuple[TileCoord, ...]:
+        """Return valid member tiles near an anchor."""
+        if desired_count <= 0:
+            return ()
+        selected: list[TileCoord] = []
+        for tile in self._local_group_candidates(anchor_tile):
+            if tile not in candidate_set:
+                continue
+            if tile in reserved_tiles:
+                continue
+            if not self._is_valid_spawn_tile(tile, player_tile):
+                continue
+            selected.append(tile)
+            if len(selected) >= desired_count:
+                break
+        return tuple(selected)
+
+    def _local_group_candidates(self, anchor_tile: TileCoord) -> tuple[TileCoord, ...]:
+        """Return stable nearby tiles used to assemble a spawn group."""
+        candidates = [anchor_tile]
+        for radius in (1, 2):
+            ring: list[TileCoord] = []
+            for y in range(anchor_tile.y - radius, anchor_tile.y + radius + 1):
+                for x in range(anchor_tile.x - radius, anchor_tile.x + radius + 1):
+                    tile = TileCoord(x=x, y=y)
+                    if tile == anchor_tile:
+                        continue
+                    if max(abs(tile.x - anchor_tile.x), abs(tile.y - anchor_tile.y)) != radius:
+                        continue
+                    ring.append(tile)
+            candidates.extend(
+                sorted(
+                    ring,
+                    key=lambda tile: (
+                        self._tile_distance(anchor_tile, tile),
+                        tile.y,
+                        tile.x,
+                    ),
+                ),
+            )
+        return tuple(candidates)
 
     def _is_valid_spawn_tile(self, tile: TileCoord, player_tile: TileCoord) -> bool:
         """Return whether a candidate survives all spawn filters."""
@@ -216,3 +414,12 @@ class SpawnDirector:
     def _tile_distance(first: TileCoord, second: TileCoord) -> float:
         """Return Euclidean tile distance between two coordinates."""
         return math.hypot(second.x - first.x, second.y - first.y)
+
+    @staticmethod
+    def _stable_hash(text: str) -> int:
+        """Return a stable FNV-1a hash for deterministic selection."""
+        value = 2166136261
+        for character in text:
+            value ^= ord(character)
+            value = (value * 16777619) & 0xFFFFFFFF
+        return value

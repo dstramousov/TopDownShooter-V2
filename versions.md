@@ -903,3 +903,9 @@
 - Added zone-driven initial enemy creation through `SpawnDirector` for structured maps with gameplay spawn candidates.
 - Added `enemy_spawn.initial_spawn_count` runtime config and wired 2D/3D startup enemy creation through the shared runtime spawn-source selector.
 - Preserved legacy `enemy_spawn_zones` startup behavior for maps without structured gameplay zones and added tests for zone-driven spawn, zero-count disable, and legacy fallback.
+
+## v0.2.15 -> v0.2.16
+
+- Added grouped zone-driven initial spawn using `enemy_spawn.group_size_min` / `group_size_max` while keeping legacy tactical-map spawning unchanged.
+- Added weighted `enemy_spawn.enemy_types` entries with type id, runtime role, starting weapon id, and selection weight for zone-driven startup enemies.
+- Preserved spawn safety filters, alive-enemy caps, and duplicate-tile prevention while adding tests for grouped spawn, enemy type assignment, and default runtime config parsing.

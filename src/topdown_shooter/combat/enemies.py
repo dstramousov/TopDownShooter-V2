@@ -20,8 +20,8 @@ from topdown_shooter.combat.weapons import (
     WeaponDatabase,
     WeaponDefinition,
 )
-from topdown_shooter.combat.spawn_director import SpawnDirector
-from topdown_shooter.config.runtime_config import EnemySpawnConfig
+from topdown_shooter.combat.spawn_director import SpawnDirector, SpawnGroup
+from topdown_shooter.config.runtime_config import EnemySpawnConfig, EnemyTypeSpawnConfig
 from topdown_shooter.world.collision import TileCollisionService
 from topdown_shooter.world.coordinates import (
     TileCoord,
@@ -43,6 +43,7 @@ class EnemyState:
         zone_id: Source tactical combat zone identifier.
         spawn_type: Source tactical spawn type.
         role: Preferred tactical role selected for the marker.
+        enemy_type: Spawn-selected enemy type identifier.
         tile: Enemy tile coordinate.
         world_position: Enemy world position in pixels.
         max_health: Maximum enemy health points.
@@ -82,6 +83,7 @@ class EnemyState:
     max_health: float
     health: float
     facing_angle_degrees: float
+    enemy_type: str = "rifleman"
     home_facing_angle_degrees: float | None = None
     alerted: bool = False
     awareness_state: str = "idle"
@@ -455,6 +457,7 @@ class EnemySystem:
                 runtime_map=runtime_map,
                 player_tile=player_tile,
                 initial_spawn_count=enemy_spawn_config.initial_spawn_count,
+                enemy_spawn_config=enemy_spawn_config,
                 enemy_max_health=enemy_max_health,
                 hit_marker_lifetime_seconds=hit_marker_lifetime_seconds,
                 hit_marker_radius_px=hit_marker_radius_px,
@@ -492,6 +495,7 @@ class EnemySystem:
         runtime_map: RuntimeMap,
         player_tile: TileCoord,
         initial_spawn_count: int,
+        enemy_spawn_config: EnemySpawnConfig | None = None,
         enemy_max_health: float = 100.0,
         hit_marker_lifetime_seconds: float = 0.14,
         hit_marker_radius_px: float = 8.0,
@@ -501,75 +505,85 @@ class EnemySystem:
         facing_wall_penalty_distance_px: float = 48.0,
         facing_probe_step_px: float = 8.0,
     ) -> EnemySystem:
-        """Create startup enemies from zone-driven spawn selection.
+        """Create startup enemies from zone-driven grouped spawn selection.
 
         Args:
             spawn_director: Spawn selector configured for the current map.
             runtime_map: Runtime map used for tile-size conversion and metadata.
             player_tile: Current player tile used by spawn filters.
             initial_spawn_count: Maximum number of enemies to create at startup.
+            enemy_spawn_config: Optional spawn tuning with enemy type weights.
             enemy_max_health: Initial and maximum health for spawned enemies.
             hit_marker_lifetime_seconds: Enemy hit marker lifetime in seconds.
             hit_marker_radius_px: Enemy hit marker radius in world pixels.
             smart_facing_enabled: Whether missing spawn facing uses map-aware scoring.
             facing_candidate_step_degrees: Angle step for candidate facing directions.
-            facing_probe_side_angle_degrees: Side probe angle from the candidate center ray.
+            facing_probe_side_angle_degrees: Side probe angle from candidate center ray.
             facing_wall_penalty_distance_px: Distance used to penalize near-wall facing.
-            facing_probe_step_px: Sampling step for facing probe rays.
+            facing_probe_step_px: Probe ray sample step.
 
         Returns:
             Enemy system populated with initial zone-driven enemies.
         """
-        selected_tiles = spawn_director.select_spawn_tiles(
+        groups = spawn_director.select_spawn_groups(
             player_tile,
             max(0, initial_spawn_count),
         )
         enemies: list[EnemyState] = []
         collision_service = TileCollisionService(runtime_map)
-        for spawn_index, tile in enumerate(selected_tiles):
-            world_position = tile_to_world_center(tile, runtime_map.tile_size_px)
-            zone = cls._select_spawn_metadata_zone(runtime_map, tile)
-            raw_spawn = {
-                "id": f"zone_spawn_{spawn_index}",
-                "zone_id": zone.zone_id if zone is not None else "zone_driven",
-                "spawn_type": "zone_initial",
-                "position": [tile.x, tile.y],
-                "preferred_roles": ["rifleman"],
-            }
-            facing_angle_degrees = cls._resolve_initial_facing_angle(
-                raw_spawn=raw_spawn,
-                spawn_index=spawn_index,
-                world_position=world_position,
-                collision_service=collision_service,
-                vision_range_px=runtime_map.tile_size_px * 10.0,
-                smart_facing_enabled=smart_facing_enabled,
-                facing_candidate_step_degrees=facing_candidate_step_degrees,
-                facing_probe_side_angle_degrees=facing_probe_side_angle_degrees,
-                facing_wall_penalty_distance_px=facing_wall_penalty_distance_px,
-                facing_probe_step_px=facing_probe_step_px,
-            )
-            enemies.append(
-                EnemyState(
-                    enemy_id=f"enemy_{len(enemies)}",
-                    spawn_id=str(raw_spawn["id"]),
-                    zone_id=str(raw_spawn["zone_id"]),
-                    spawn_type=str(raw_spawn["spawn_type"]),
-                    role="rifleman",
-                    tile=tile,
+        type_mix = cls._effective_enemy_type_mix(enemy_spawn_config)
+        for group_index, group in enumerate(groups):
+            for member_index, tile in enumerate(group.member_tiles):
+                world_position = tile_to_world_center(tile, runtime_map.tile_size_px)
+                zone = cls._select_spawn_metadata_zone(runtime_map, tile)
+                enemy_type = cls._select_enemy_type(
+                    type_mix,
+                    group=group,
+                    member_index=member_index,
+                )
+                raw_spawn = {
+                    "id": f"{group.group_id}_{member_index}",
+                    "zone_id": zone.zone_id if zone is not None else "zone_driven",
+                    "spawn_type": "zone_initial_group",
+                    "position": [tile.x, tile.y],
+                    "preferred_roles": [enemy_type.role],
+                }
+                facing_angle_degrees = cls._resolve_initial_facing_angle(
+                    raw_spawn=raw_spawn,
+                    spawn_index=len(enemies),
                     world_position=world_position,
-                    home_position=world_position,
-                    max_health=enemy_max_health,
-                    health=enemy_max_health,
-                    facing_angle_degrees=facing_angle_degrees,
-                    home_facing_angle_degrees=facing_angle_degrees,
-                ),
-            )
+                    collision_service=collision_service,
+                    vision_range_px=runtime_map.tile_size_px * 10.0,
+                    smart_facing_enabled=smart_facing_enabled,
+                    facing_candidate_step_degrees=facing_candidate_step_degrees,
+                    facing_probe_side_angle_degrees=facing_probe_side_angle_degrees,
+                    facing_wall_penalty_distance_px=facing_wall_penalty_distance_px,
+                    facing_probe_step_px=facing_probe_step_px,
+                )
+                enemies.append(
+                    EnemyState(
+                        enemy_id=f"enemy_{len(enemies)}",
+                        spawn_id=str(raw_spawn["id"]),
+                        zone_id=str(raw_spawn["zone_id"]),
+                        spawn_type=str(raw_spawn["spawn_type"]),
+                        role=enemy_type.role,
+                        tile=tile,
+                        world_position=world_position,
+                        home_position=world_position,
+                        max_health=enemy_max_health,
+                        health=enemy_max_health,
+                        facing_angle_degrees=facing_angle_degrees,
+                        home_facing_angle_degrees=facing_angle_degrees,
+                        enemy_type=enemy_type.type_id,
+                        current_weapon_id=enemy_type.weapon_id,
+                    ),
+                )
         return cls(
             enemies=tuple(enemies),
             source_spawn_zones=cls._count_zone_spawn_sources(runtime_map),
             hit_marker_lifetime_seconds=hit_marker_lifetime_seconds,
             hit_marker_radius_px=hit_marker_radius_px,
-            spawned_squads=len(enemies),
+            spawned_squads=len(groups),
         )
 
     @property
@@ -2419,8 +2433,13 @@ class EnemySystem:
         """Initialize per-enemy ammo counters from the shared weapon database."""
         safe_primary_weapon = weapon_database.get(primary_weapon_id)
         safe_fallback_weapon = weapon_database.get(fallback_weapon_id)
-        weapon_ids = (safe_primary_weapon.weapon_id, safe_fallback_weapon.weapon_id)
-        for weapon_id in weapon_ids:
+        current_weapon = weapon_database.get(enemy.current_weapon_id)
+        weapon_ids = (
+            current_weapon.weapon_id,
+            safe_primary_weapon.weapon_id,
+            safe_fallback_weapon.weapon_id,
+        )
+        for weapon_id in dict.fromkeys(weapon_ids):
             if weapon_id in enemy.ammo_by_weapon_id:
                 continue
             weapon = weapon_database.get(weapon_id)
@@ -3189,6 +3208,53 @@ class EnemySystem:
         return math.cos(angle), math.sin(angle)
 
     @staticmethod
+    def _effective_enemy_type_mix(
+        enemy_spawn_config: EnemySpawnConfig | None,
+    ) -> tuple[EnemyTypeSpawnConfig, ...]:
+        """Return configured enemy type mix with a rifleman fallback."""
+        if enemy_spawn_config is not None and enemy_spawn_config.enemy_types:
+            return enemy_spawn_config.enemy_types
+        return (
+            EnemyTypeSpawnConfig(
+                type_id="rifleman",
+                role="rifleman",
+                weapon_id="ak47",
+                weight=1.0,
+            ),
+        )
+
+    @staticmethod
+    def _select_enemy_type(
+        type_mix: tuple[EnemyTypeSpawnConfig, ...],
+        *,
+        group: SpawnGroup,
+        member_index: int,
+    ) -> EnemyTypeSpawnConfig:
+        """Select one enemy type from a weighted mix deterministically."""
+        total_weight = sum(max(0.0, enemy_type.weight) for enemy_type in type_mix)
+        if total_weight <= 0.0:
+            return type_mix[0]
+        seed_text = (
+            f"{group.group_id}:{group.anchor_tile.x}:{group.anchor_tile.y}:"
+            f"{member_index}:enemy_type"
+        )
+        roll = (EnemySystem._stable_hash(seed_text) / 0xFFFFFFFF) * total_weight
+        cumulative = 0.0
+        for enemy_type in type_mix:
+            cumulative += max(0.0, enemy_type.weight)
+            if roll <= cumulative:
+                return enemy_type
+        return type_mix[-1]
+
+    @staticmethod
+    def _stable_hash(text: str) -> int:
+        """Return a stable FNV-1a hash for deterministic selection."""
+        value = 2166136261
+        for character in text:
+            value ^= ord(character)
+            value = (value * 16777619) & 0xFFFFFFFF
+        return value
+
     @staticmethod
     def _select_spawn_metadata_zone(runtime_map: RuntimeMap, tile: TileCoord) -> object | None:
         """Return the most specific gameplay zone metadata for a spawn tile."""

@@ -152,6 +152,21 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.enemy_spawn.spawn_cooldown_seconds == 8.0
     assert config.enemy_spawn.group_size_min == 1
     assert config.enemy_spawn.group_size_max == 3
+    assert [enemy_type.type_id for enemy_type in config.enemy_spawn.enemy_types] == [
+        "rifleman",
+        "scout",
+        "heavy",
+    ]
+    assert [enemy_type.weapon_id for enemy_type in config.enemy_spawn.enemy_types] == [
+        "ak47",
+        "pistol",
+        "minigun_m134",
+    ]
+    assert [enemy_type.weight for enemy_type in config.enemy_spawn.enemy_types] == [
+        7.0,
+        2.0,
+        1.0,
+    ]
     assert config.hud.position == "top"
     assert config.hud.margin_x == 12
     assert config.hud.margin_y == 12

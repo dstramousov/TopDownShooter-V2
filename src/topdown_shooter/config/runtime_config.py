@@ -345,6 +345,23 @@ class EnemyConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class EnemyTypeSpawnConfig:
+    """Weighted enemy type entry for zone-driven spawn.
+
+    Attributes:
+        type_id: Stable enemy type identifier used for diagnostics.
+        role: Runtime tactical role assigned to spawned enemies.
+        weapon_id: Initial weapon id assigned to this enemy type.
+        weight: Relative deterministic selection weight.
+    """
+
+    type_id: str
+    role: str
+    weapon_id: str
+    weight: float
+
+
+@dataclass(frozen=True, slots=True)
 class EnemySpawnConfig:
     """Zone-driven enemy spawn selection settings.
 
@@ -356,8 +373,9 @@ class EnemySpawnConfig:
         max_alive_enemies: Global alive-enemy cap used by spawn selection.
         initial_spawn_count: Number of enemies created at map startup from zones.
         spawn_cooldown_seconds: Minimum time between future spawn attempts.
-        group_size_min: Minimum future spawn group size.
-        group_size_max: Maximum future spawn group size.
+        group_size_min: Minimum zone-driven startup group size.
+        group_size_max: Maximum zone-driven startup group size.
+        enemy_types: Weighted type mix used by zone-driven startup spawn.
     """
 
     enabled: bool
@@ -369,6 +387,7 @@ class EnemySpawnConfig:
     spawn_cooldown_seconds: float
     group_size_min: int
     group_size_max: int
+    enemy_types: tuple[EnemyTypeSpawnConfig, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1183,7 +1202,52 @@ class RuntimeConfigLoader:
             ),
             group_size_min=group_size_min,
             group_size_max=group_size_max,
+            enemy_types=self._build_enemy_type_spawn_configs(enemy_spawn),
         )
+
+    def _build_enemy_type_spawn_configs(
+        self,
+        enemy_spawn: dict[str, Any],
+    ) -> tuple[EnemyTypeSpawnConfig, ...]:
+        """Build weighted zone-driven enemy type entries.
+
+        Args:
+            enemy_spawn: Raw spawn selection configuration dictionary.
+
+        Returns:
+            Non-empty tuple of weighted enemy type entries.
+        """
+        raw_types = enemy_spawn.get("enemy_types")
+        if raw_types is None:
+            return (
+                EnemyTypeSpawnConfig(
+                    type_id="rifleman",
+                    role="rifleman",
+                    weapon_id="ak47",
+                    weight=1.0,
+                ),
+            )
+        if not isinstance(raw_types, list) or not raw_types:
+            raise RuntimeConfigError(
+                "Runtime config enemy_spawn.enemy_types must be a non-empty list.",
+            )
+
+        result: list[EnemyTypeSpawnConfig] = []
+        for index, raw_type in enumerate(raw_types):
+            if not isinstance(raw_type, dict):
+                raise RuntimeConfigError(
+                    "Runtime config enemy_spawn.enemy_types entries must be objects.",
+                )
+            result.append(
+                EnemyTypeSpawnConfig(
+                    type_id=self._require_str(raw_type, "type_id"),
+                    role=self._require_str(raw_type, "role"),
+                    weapon_id=self._require_str(raw_type, "weapon_id"),
+                    weight=self._require_positive_float(raw_type, "weight"),
+                ),
+            )
+        return tuple(result)
+
 
     def _build_render3d_config(self, render3d: dict[str, Any]) -> Render3DConfig:
         """Build typed experimental 3D renderer config from raw data.

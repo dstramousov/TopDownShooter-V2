@@ -6,7 +6,7 @@ from topdown_shooter.combat.enemies import EnemyState, EnemySystem
 from topdown_shooter.combat.projectiles import ProjectileState
 from topdown_shooter.combat.spawn_director import SpawnDirector
 from topdown_shooter.combat.weapons import WeaponConfigLoader
-from topdown_shooter.config.runtime_config import EnemySpawnConfig
+from topdown_shooter.config.runtime_config import EnemySpawnConfig, EnemyTypeSpawnConfig
 from topdown_shooter.world.coordinates import TileCoord, WorldCoord, world_to_tile
 from topdown_shooter.world.runtime_map import (
     RuntimeGameplayZone,
@@ -84,7 +84,13 @@ def _build_zone_spawn_runtime_map() -> RuntimeMap:
     )
 
 
-def _enemy_spawn_config(*, initial_spawn_count: int = 2) -> EnemySpawnConfig:
+def _enemy_spawn_config(
+    *,
+    initial_spawn_count: int = 2,
+    group_size_min: int = 1,
+    group_size_max: int = 3,
+    enemy_types: tuple[EnemyTypeSpawnConfig, ...] = (),
+) -> EnemySpawnConfig:
     """Build enemy spawn config for initial spawn tests."""
     return EnemySpawnConfig(
         enabled=True,
@@ -94,8 +100,9 @@ def _enemy_spawn_config(*, initial_spawn_count: int = 2) -> EnemySpawnConfig:
         max_alive_enemies=10,
         initial_spawn_count=initial_spawn_count,
         spawn_cooldown_seconds=0.0,
-        group_size_min=1,
-        group_size_max=3,
+        group_size_min=group_size_min,
+        group_size_max=group_size_max,
+        enemy_types=enemy_types,
     )
 
 
@@ -123,9 +130,9 @@ def test_enemy_system_spawns_initial_enemies_from_spawn_director() -> None:
         TileCoord(x=5, y=1),
         TileCoord(x=4, y=1),
     ]
-    assert system.enemies[0].spawn_id == "zone_spawn_0"
+    assert system.enemies[0].spawn_id == "spawn_group_0_0"
     assert system.enemies[0].zone_id == "danger_zone"
-    assert system.enemies[0].spawn_type == "zone_initial"
+    assert system.enemies[0].spawn_type == "zone_initial_group"
     assert system.enemies[0].role == "rifleman"
     assert system.enemies[0].health == 75.0
     assert system.enemies[0].home_position == system.enemies[0].world_position
@@ -151,8 +158,8 @@ def test_enemy_system_runtime_spawn_sources_prefers_zone_candidates() -> None:
     )
 
     assert system.stats.active_enemies == 1
-    assert system.enemies[0].spawn_id == "zone_spawn_0"
-    assert system.enemies[0].spawn_type == "zone_initial"
+    assert system.enemies[0].spawn_id == "spawn_group_0_0"
+    assert system.enemies[0].spawn_type == "zone_initial_group"
     assert system.enemies[0].tile == TileCoord(x=5, y=1)
 
 
@@ -179,6 +186,60 @@ def test_enemy_system_runtime_spawn_sources_keeps_legacy_fallback() -> None:
     assert system.enemies[0].spawn_id == "legacy_spawn"
     assert system.enemies[0].spawn_type == "unknown"
     assert system.enemies[0].tile == TileCoord(x=1, y=1)
+
+
+def test_enemy_system_spawn_director_uses_group_size_range() -> None:
+    """Zone-driven startup spawn should create local groups from configured size."""
+    runtime_map = _build_zone_spawn_runtime_map()
+    spawn_config = _enemy_spawn_config(
+        initial_spawn_count=4,
+        group_size_min=2,
+        group_size_max=2,
+    )
+
+    system = EnemySystem.from_spawn_director(
+        spawn_director=SpawnDirector(runtime_map, spawn_config),
+        runtime_map=runtime_map,
+        player_tile=runtime_map.start_tile,
+        initial_spawn_count=spawn_config.initial_spawn_count,
+        enemy_spawn_config=spawn_config,
+        smart_facing_enabled=False,
+    )
+
+    assert system.stats.active_enemies == 4
+    assert system.stats.spawned_squads == 2
+    assert len({enemy.tile for enemy in system.enemies}) == 4
+    assert system.enemies[0].spawn_id.startswith("spawn_group_0_")
+    assert system.enemies[1].spawn_id.startswith("spawn_group_0_")
+
+
+def test_enemy_system_spawn_director_applies_configured_enemy_type_mix() -> None:
+    """Zone-driven startup spawn should assign configured type, role and weapon."""
+    runtime_map = _build_zone_spawn_runtime_map()
+    spawn_config = _enemy_spawn_config(
+        initial_spawn_count=2,
+        enemy_types=(
+            EnemyTypeSpawnConfig(
+                type_id="scout",
+                role="scout",
+                weapon_id="pistol",
+                weight=1.0,
+            ),
+        ),
+    )
+
+    system = EnemySystem.from_spawn_director(
+        spawn_director=SpawnDirector(runtime_map, spawn_config),
+        runtime_map=runtime_map,
+        player_tile=runtime_map.start_tile,
+        initial_spawn_count=spawn_config.initial_spawn_count,
+        enemy_spawn_config=spawn_config,
+        smart_facing_enabled=False,
+    )
+
+    assert {enemy.enemy_type for enemy in system.enemies} == {"scout"}
+    assert {enemy.role for enemy in system.enemies} == {"scout"}
+    assert {enemy.current_weapon_id for enemy in system.enemies} == {"pistol"}
 
 
 def test_enemy_system_spawn_director_respects_zero_initial_count() -> None:
