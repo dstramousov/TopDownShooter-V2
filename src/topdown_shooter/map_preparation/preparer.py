@@ -11,6 +11,10 @@ from typing import Any
 from topdown_shooter import __version__
 from topdown_shooter.map_loading.errors import InvalidMapPackageError
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage, MapPackageLoader
+from topdown_shooter.map_preparation.prepared_visual_preview import (
+    PreparedVisualPreviewRenderer,
+    PreparedVisualPreviewResult,
+)
 from topdown_shooter.map_preparation.scene_quality import (
     VisualQualityAnalyzer,
     VisualQualityResult,
@@ -22,6 +26,14 @@ from topdown_shooter.map_preparation.visual_context import (
 from topdown_shooter.map_preparation.visual_object_family import (
     VisualObjectFamilyResolver,
     VisualObjectFamilyResult,
+)
+from topdown_shooter.map_preparation.visual_object_normalization import (
+    VisualObjectNormalizationResult,
+    VisualObjectNormalizer,
+)
+from topdown_shooter.map_preparation.visual_scene_dressing import (
+    VisualSceneDressingGenerator,
+    VisualSceneDressingResult,
 )
 from topdown_shooter.map_preparation.visual_scene_preset import (
     VisualScenePresetAssigner,
@@ -74,9 +86,20 @@ class MapPreparationService:
     VISUAL_OBJECT_FAMILIES_FILE = "visual_object_families.json"
     VISUAL_OBJECT_FAMILY_REPORT_FILE = "visual_object_family_report.json"
     VISUAL_OBJECT_FAMILY_SUMMARY_FILE = "visual_object_family_summary.txt"
+    VISUAL_OBJECTS_NORMALIZED_FILE = "visual_objects_normalized.json"
+    VISUAL_OBJECT_NORMALIZATION_REPORT_FILE = "visual_object_normalization_report.json"
+    VISUAL_OBJECT_NORMALIZATION_SUMMARY_FILE = "visual_object_normalization_summary.txt"
     VISUAL_SCENE_PRESETS_FILE = "visual_scene_presets.json"
     VISUAL_SCENE_PRESET_REPORT_FILE = "visual_scene_preset_report.json"
     VISUAL_SCENE_PRESET_SUMMARY_FILE = "visual_scene_preset_summary.txt"
+    VISUAL_SCENE_DRESSING_FILE = "visual_scene_dressing.json"
+    VISUAL_OBJECTS_DRESSED_FILE = "visual_objects_dressed.json"
+    VISUAL_SCENE_DRESSING_REPORT_FILE = "visual_scene_dressing_report.json"
+    VISUAL_SCENE_DRESSING_SUMMARY_FILE = "visual_scene_dressing_summary.txt"
+    PREPARED_PREVIEW_FILE = "prepared_preview.png"
+    PREPARED_PREVIEW_LEGEND_FILE = "prepared_preview_legend.json"
+    PREPARED_VISUAL_PREVIEW_REPORT_FILE = "prepared_visual_preview_report.json"
+    PREPARED_VISUAL_PREVIEW_SUMMARY_FILE = "prepared_visual_preview_summary.txt"
 
     def __init__(
         self,
@@ -86,7 +109,10 @@ class MapPreparationService:
         visual_context_analyzer: VisualContextAnalyzer | None = None,
         visual_quality_analyzer: VisualQualityAnalyzer | None = None,
         visual_object_family_resolver: VisualObjectFamilyResolver | None = None,
+        visual_object_normalizer: VisualObjectNormalizer | None = None,
         visual_scene_preset_assigner: VisualScenePresetAssigner | None = None,
+        visual_scene_dressing_generator: VisualSceneDressingGenerator | None = None,
+        prepared_visual_preview_renderer: PreparedVisualPreviewRenderer | None = None,
     ) -> None:
         """Initialize the preparation service.
 
@@ -95,8 +121,14 @@ class MapPreparationService:
             runtime_builder: Optional runtime map builder override for tests.
             visual_context_analyzer: Optional visual context analyzer override for tests.
             visual_quality_analyzer: Optional visual quality analyzer override for tests.
-            visual_object_family_resolver: Optional visual object family resolver override for tests.
+            visual_object_family_resolver: Optional visual object family resolver override
+                for tests.
+            visual_object_normalizer: Optional visual object normalizer override for tests.
             visual_scene_preset_assigner: Optional visual scene preset assigner override for tests.
+            visual_scene_dressing_generator: Optional visual scene dressing generator override
+                for tests.
+            prepared_visual_preview_renderer: Optional prepared visual preview renderer
+                override for tests.
         """
         self._loader = loader or MapPackageLoader()
         self._runtime_builder = runtime_builder or RuntimeMapBuilder()
@@ -105,8 +137,15 @@ class MapPreparationService:
         self._visual_object_family_resolver = (
             visual_object_family_resolver or VisualObjectFamilyResolver()
         )
+        self._visual_object_normalizer = visual_object_normalizer or VisualObjectNormalizer()
         self._visual_scene_preset_assigner = (
             visual_scene_preset_assigner or VisualScenePresetAssigner()
+        )
+        self._visual_scene_dressing_generator = (
+            visual_scene_dressing_generator or VisualSceneDressingGenerator()
+        )
+        self._prepared_visual_preview_renderer = (
+            prepared_visual_preview_renderer or PreparedVisualPreviewRenderer()
         )
 
     def prepare(self, source_dir: Path, output_dir: Path) -> PreparedMapResult:
@@ -140,15 +179,36 @@ class MapPreparationService:
         visual_object_family_result = self._visual_object_family_resolver.resolve(
             visual_map_source.get("visual_objects"),
         )
+        visual_object_normalization_result = self._visual_object_normalizer.normalize(
+            visual_objects=visual_map_source.get("visual_objects"),
+            family_index=visual_object_family_result.family_index,
+        )
+        normalized_visual_summary = self._build_visual_map_summary(
+            self._with_normalized_visual_objects(
+                visual_map_source,
+                visual_object_normalization_result.normalized_visual_objects,
+            ),
+        )
         visual_context_result = self._visual_context_analyzer.analyze(runtime_map)
         visual_quality_result = self._visual_quality_analyzer.analyze(
-            visual_summary=visual_summary,
+            visual_summary=normalized_visual_summary,
             scene_candidates=visual_context_result.scene_candidates,
         )
         visual_scene_preset_result = self._visual_scene_preset_assigner.assign(
             profile=package.manifest.profile,
             scene_ranking=visual_quality_result.scene_ranking,
             object_families=visual_object_family_result.family_index,
+        )
+        visual_scene_dressing_result = self._visual_scene_dressing_generator.generate(
+            scene_presets=visual_scene_preset_result.scene_presets,
+            visual_context=visual_context_result.context,
+            normalized_visual_objects=visual_object_normalization_result.normalized_visual_objects,
+        )
+        prepared_visual_preview_result = self._prepared_visual_preview_renderer.render(
+            visual_context=visual_context_result.context,
+            scene_ranking=visual_quality_result.scene_ranking,
+            scene_dressing=visual_scene_dressing_result.scene_dressing,
+            dressed_visual_objects=visual_scene_dressing_result.dressed_visual_objects,
         )
         generated_artifacts = self._write_visual_context_artifacts(
             output_dir=resolved_output_dir,
@@ -158,6 +218,12 @@ class MapPreparationService:
             self._write_visual_object_family_artifacts(
                 output_dir=resolved_output_dir,
                 result=visual_object_family_result,
+            ),
+        )
+        generated_artifacts.extend(
+            self._write_visual_object_normalization_artifacts(
+                output_dir=resolved_output_dir,
+                result=visual_object_normalization_result,
             ),
         )
         generated_artifacts.extend(
@@ -172,6 +238,18 @@ class MapPreparationService:
                 result=visual_scene_preset_result,
             ),
         )
+        generated_artifacts.extend(
+            self._write_visual_scene_dressing_artifacts(
+                output_dir=resolved_output_dir,
+                result=visual_scene_dressing_result,
+            ),
+        )
+        generated_artifacts.extend(
+            self._write_prepared_visual_preview_artifacts(
+                output_dir=resolved_output_dir,
+                result=prepared_visual_preview_result,
+            ),
+        )
         report = self._build_preparation_report(
             package=package,
             runtime_map=runtime_map,
@@ -181,8 +259,13 @@ class MapPreparationService:
             visual_summary=visual_summary,
             visual_context_report=visual_context_result.report,
             visual_object_family_report=visual_object_family_result.family_report,
+            visual_object_normalization_report=(
+                visual_object_normalization_result.normalization_report
+            ),
             visual_quality_report=visual_quality_result.quality_report,
             visual_scene_preset_report=visual_scene_preset_result.preset_report,
+            visual_scene_dressing_report=visual_scene_dressing_result.dressing_report,
+            prepared_visual_preview_report=prepared_visual_preview_result.preview_report,
         )
         manifest = self._build_prepared_manifest(
             package=package,
@@ -233,11 +316,26 @@ class MapPreparationService:
         context_scenes = self._require_report_dict(visual_context, "scene_candidates")
         visual_quality = self._require_report_dict(report, "visual_quality")
         visual_families = self._require_report_dict(report, "visual_object_families")
+        visual_object_normalization = self._require_report_dict(
+            report,
+            "visual_object_normalization",
+        )
         visual_scene_presets = self._require_report_dict(report, "visual_scene_presets")
+        visual_scene_dressing = self._require_report_dict(report, "visual_scene_dressing")
+        prepared_visual_preview = self._require_report_dict(report, "prepared_visual_preview")
+        preview_rendered = self._require_report_dict(prepared_visual_preview, "rendered")
         quality_scenes = self._require_report_dict(visual_quality, "scene_ranking")
         quality_generic = self._require_report_dict(visual_quality, "generic_objects")
         family_generic = self._require_report_dict(visual_families, "generic_objects")
+        normalization_counts = self._require_report_dict(
+            visual_object_normalization,
+            "counts",
+        )
         preset_coverage = self._require_report_dict(visual_scene_presets, "preset_coverage")
+        dressing_coverage = self._require_report_dict(
+            visual_scene_dressing,
+            "dressing_coverage",
+        )
         copied_artifacts = output.get("copied_artifacts", [])
         copied_count = len(copied_artifacts) if isinstance(copied_artifacts, list) else 0
         visual_state = "present" if visual.get("present") is True else "missing"
@@ -279,11 +377,36 @@ class MapPreparationService:
                     f"{family_generic.get('resolved_generic_objects', 'unknown')}"
                     f"/{family_generic.get('generic_objects', 'unknown')}"
                 ),
+                f"- object normalization: {visual_object_normalization.get('status', 'unknown')}",
+                (
+                    "- remaining generic objects: "
+                    f"{normalization_counts.get('remaining_generic_objects', 'unknown')}"
+                    f"/{normalization_counts.get('total_objects', 'unknown')}"
+                ),
                 f"- scene presets: {visual_scene_presets.get('status', 'unknown')}",
                 (
                     "- assigned scene presets: "
                     f"{preset_coverage.get('assigned_scenes', 'unknown')}"
                     f"/{preset_coverage.get('total_scenes', 'unknown')}"
+                ),
+                f"- scene dressing: {visual_scene_dressing.get('status', 'unknown')}",
+                (
+                    "- dressed scenes: "
+                    f"{dressing_coverage.get('dressed_scenes', 'unknown')}"
+                    f"/{dressing_coverage.get('assigned_scenes', 'unknown')}"
+                ),
+                (
+                    "- dressing objects: "
+                    f"{dressing_coverage.get('generated_objects', 'unknown')}"
+                ),
+                f"- prepared preview: {prepared_visual_preview.get('status', 'unknown')}",
+                (
+                    "- rendered normalized objects: "
+                    f"{preview_rendered.get('normalized_objects', 'unknown')}"
+                ),
+                (
+                    "- rendered dressing objects: "
+                    f"{preview_rendered.get('dressing_objects', 'unknown')}"
                 ),
                 f"- copied artifacts: {copied_count}",
                 f"- output: {output.get('path', 'unknown')}",
@@ -445,6 +568,42 @@ class MapPreparationService:
         )
         return artifacts
 
+    def _write_visual_object_normalization_artifacts(
+        self,
+        *,
+        output_dir: Path,
+        result: VisualObjectNormalizationResult,
+    ) -> list[str]:
+        """Write generated normalized visual object artifacts.
+
+        Args:
+            output_dir: Destination prepared-map directory.
+            result: Visual object normalization result.
+
+        Returns:
+            Generated relative artifact paths.
+        """
+        visual_dir = output_dir / self.VISUAL_MAP_DIR
+        reports_dir = output_dir / self.REPORTS_DIR
+        artifacts = [
+            f"{self.VISUAL_MAP_DIR}/{self.VISUAL_OBJECTS_NORMALIZED_FILE}",
+            f"{self.REPORTS_DIR}/{self.VISUAL_OBJECT_NORMALIZATION_REPORT_FILE}",
+            f"{self.REPORTS_DIR}/{self.VISUAL_OBJECT_NORMALIZATION_SUMMARY_FILE}",
+        ]
+        self._write_json(
+            visual_dir / self.VISUAL_OBJECTS_NORMALIZED_FILE,
+            result.normalized_visual_objects,
+        )
+        self._write_json(
+            reports_dir / self.VISUAL_OBJECT_NORMALIZATION_REPORT_FILE,
+            result.normalization_report,
+        )
+        self._write_text(
+            reports_dir / self.VISUAL_OBJECT_NORMALIZATION_SUMMARY_FILE,
+            result.normalization_summary,
+        )
+        return artifacts
+
     def _write_visual_scene_preset_artifacts(
         self,
         *,
@@ -470,6 +629,79 @@ class MapPreparationService:
         self._write_json(visual_dir / self.VISUAL_SCENE_PRESETS_FILE, result.scene_presets)
         self._write_json(reports_dir / self.VISUAL_SCENE_PRESET_REPORT_FILE, result.preset_report)
         self._write_text(reports_dir / self.VISUAL_SCENE_PRESET_SUMMARY_FILE, result.preset_summary)
+        return artifacts
+
+    def _write_visual_scene_dressing_artifacts(
+        self,
+        *,
+        output_dir: Path,
+        result: VisualSceneDressingResult,
+    ) -> list[str]:
+        """Write generated visual scene dressing artifacts.
+
+        Args:
+            output_dir: Destination prepared-map directory.
+            result: Visual scene dressing result.
+
+        Returns:
+            Generated relative artifact paths.
+        """
+        visual_dir = output_dir / self.VISUAL_MAP_DIR
+        reports_dir = output_dir / self.REPORTS_DIR
+        artifacts = [
+            f"{self.VISUAL_MAP_DIR}/{self.VISUAL_SCENE_DRESSING_FILE}",
+            f"{self.VISUAL_MAP_DIR}/{self.VISUAL_OBJECTS_DRESSED_FILE}",
+            f"{self.REPORTS_DIR}/{self.VISUAL_SCENE_DRESSING_REPORT_FILE}",
+            f"{self.REPORTS_DIR}/{self.VISUAL_SCENE_DRESSING_SUMMARY_FILE}",
+        ]
+        self._write_json(visual_dir / self.VISUAL_SCENE_DRESSING_FILE, result.scene_dressing)
+        self._write_json(
+            visual_dir / self.VISUAL_OBJECTS_DRESSED_FILE,
+            result.dressed_visual_objects,
+        )
+        self._write_json(
+            reports_dir / self.VISUAL_SCENE_DRESSING_REPORT_FILE,
+            result.dressing_report,
+        )
+        self._write_text(
+            reports_dir / self.VISUAL_SCENE_DRESSING_SUMMARY_FILE,
+            result.dressing_summary,
+        )
+        return artifacts
+
+    def _write_prepared_visual_preview_artifacts(
+        self,
+        *,
+        output_dir: Path,
+        result: PreparedVisualPreviewResult,
+    ) -> list[str]:
+        """Write generated prepared visual preview artifacts.
+
+        Args:
+            output_dir: Destination prepared-map directory.
+            result: Prepared visual preview renderer result.
+
+        Returns:
+            Generated relative artifact paths.
+        """
+        visual_dir = output_dir / self.VISUAL_MAP_DIR
+        reports_dir = output_dir / self.REPORTS_DIR
+        artifacts = [
+            f"{self.VISUAL_MAP_DIR}/{self.PREPARED_PREVIEW_FILE}",
+            f"{self.VISUAL_MAP_DIR}/{self.PREPARED_PREVIEW_LEGEND_FILE}",
+            f"{self.REPORTS_DIR}/{self.PREPARED_VISUAL_PREVIEW_REPORT_FILE}",
+            f"{self.REPORTS_DIR}/{self.PREPARED_VISUAL_PREVIEW_SUMMARY_FILE}",
+        ]
+        self._write_bytes(visual_dir / self.PREPARED_PREVIEW_FILE, result.preview_png)
+        self._write_json(visual_dir / self.PREPARED_PREVIEW_LEGEND_FILE, result.legend)
+        self._write_json(
+            reports_dir / self.PREPARED_VISUAL_PREVIEW_REPORT_FILE,
+            result.preview_report,
+        )
+        self._write_text(
+            reports_dir / self.PREPARED_VISUAL_PREVIEW_SUMMARY_FILE,
+            result.preview_summary,
+        )
         return artifacts
 
     def _write_visual_quality_artifacts(
@@ -516,6 +748,24 @@ class MapPreparationService:
             "visual_objects": self._try_read_json(visual_dir / "visual_objects.json"),
             "visual_chunks": self._try_read_json(visual_dir / "visual_chunks.json"),
         }
+
+    def _with_normalized_visual_objects(
+        self,
+        visual_map_source: dict[str, Any],
+        normalized_visual_objects: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Return a visual map source copy with normalized visual objects.
+
+        Args:
+            visual_map_source: Source visual map artifacts.
+            normalized_visual_objects: Normalized visual objects artifact.
+
+        Returns:
+            Visual map source dictionary for quality checks.
+        """
+        updated = dict(visual_map_source)
+        updated["visual_objects"] = normalized_visual_objects
+        return updated
 
     def _build_visual_map_summary(self, visual_map_source: dict[str, Any]) -> dict[str, Any]:
         """Build a lightweight summary for an optional visual map export.
@@ -610,8 +860,11 @@ class MapPreparationService:
         visual_summary: dict[str, Any],
         visual_context_report: dict[str, Any],
         visual_object_family_report: dict[str, Any],
+        visual_object_normalization_report: dict[str, Any],
         visual_quality_report: dict[str, Any],
         visual_scene_preset_report: dict[str, Any],
+        visual_scene_dressing_report: dict[str, Any],
+        prepared_visual_preview_report: dict[str, Any],
     ) -> dict[str, Any]:
         """Build the preparation report dictionary.
 
@@ -624,8 +877,11 @@ class MapPreparationService:
             visual_summary: Optional visual map summary.
             visual_context_report: Visual context analyzer report.
             visual_object_family_report: Visual object family resolver report.
+            visual_object_normalization_report: Visual object normalization report.
             visual_quality_report: Visual quality gates report.
             visual_scene_preset_report: Visual scene preset assignment report.
+            visual_scene_dressing_report: Visual scene dressing generation report.
+            prepared_visual_preview_report: Prepared visual preview renderer report.
 
         Returns:
             Preparation report dictionary.
@@ -669,6 +925,11 @@ class MapPreparationService:
                 "Visual object family resolver must diagnose generic sprite usage.",
             ),
             self._check(
+                "visual_object_normalization_built",
+                "passed",
+                "Visual object normalization must produce render-ready object families.",
+            ),
+            self._check(
                 "visual_quality_built",
                 "passed",
                 "Visual quality gates must rank scenes and report non-blocking art readiness.",
@@ -677,6 +938,16 @@ class MapPreparationService:
                 "visual_scene_presets_built",
                 "passed",
                 "Visual scene presets must be assigned to accepted ranked scenes.",
+            ),
+            self._check(
+                "visual_scene_dressing_built",
+                "passed",
+                "Visual scene dressing must generate visual-only objects for assigned scenes.",
+            ),
+            self._check(
+                "prepared_visual_preview_built",
+                str(prepared_visual_preview_report.get("status", "failed")),
+                "Prepared visual preview must render normalizer artifacts for review.",
             ),
         ]
         status = self._build_overall_status(checks)
@@ -714,8 +985,11 @@ class MapPreparationService:
             "visual_map": visual_summary,
             "visual_context": visual_context_report,
             "visual_object_families": visual_object_family_report,
+            "visual_object_normalization": visual_object_normalization_report,
             "visual_quality": visual_quality_report,
             "visual_scene_presets": visual_scene_preset_report,
+            "visual_scene_dressing": visual_scene_dressing_report,
+            "prepared_visual_preview": prepared_visual_preview_report,
             "checks": checks,
             "output": {
                 "path": str(output_dir),
@@ -979,6 +1253,22 @@ class MapPreparationService:
             )
         except OSError as exc:
             raise InvalidMapPackageError(f"Failed to write JSON file: {path}: {exc}") from exc
+
+    def _write_bytes(self, path: Path, data: bytes) -> None:
+        """Write binary data.
+
+        Args:
+            path: Destination path.
+            data: Binary content.
+
+        Raises:
+            InvalidMapPackageError: If writing fails.
+        """
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        except OSError as exc:
+            raise InvalidMapPackageError(f"Failed to write binary file: {path}: {exc}") from exc
 
     def _write_text(self, path: Path, text: str) -> None:
         """Write UTF-8 text.

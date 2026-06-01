@@ -975,3 +975,22 @@
 - Added visual scene preset assignment during map preparation to turn accepted ranked scenes into deterministic scene dressing intents.
 - `--prepare-map` now writes `visual_scene_presets.json`, `visual_scene_preset_report.json`, and `visual_scene_preset_summary.txt`.
 - Extended preparation summary and reports with scene preset coverage while keeping gameplay geometry, collision, and renderers unchanged.
+
+## v0.2.27 -> v0.2.28
+
+- Added visual object normalization during map preparation to produce `visual_objects_normalized.json` with resolved concrete object sprites.
+- Visual quality gates now evaluate normalized visual objects, so resolved `object.generic` placeholders no longer keep prepared maps in `needs_work`.
+- Added normalization reports and CLI summary fields for replaced and remaining generic objects while keeping gameplay geometry, collision, and renderers unchanged.
+
+
+## v0.2.28 -> v0.2.29
+
+- Added deterministic visual scene dressing generation during map preparation for accepted scene presets.
+- `--prepare-map` now writes `visual_scene_dressing.json`, `visual_objects_dressed.json`, `visual_scene_dressing_report.json`, and `visual_scene_dressing_summary.txt`.
+- Extended preparation reports and CLI summary with dressed-scene and dressing-object counts while keeping gameplay geometry, collision, and renderers unchanged.
+
+## v0.2.29 -> v0.2.30
+
+- Added a deterministic prepared visual preview renderer for map preparation output.
+- `--prepare-map` now writes `prepared_preview.png`, `prepared_preview_legend.json`, `prepared_visual_preview_report.json`, and `prepared_visual_preview_summary.txt`.
+- Extended preparation reports and CLI summary with rendered normalized-object and dressing-object counts while keeping gameplay geometry, collision, and game renderers unchanged.

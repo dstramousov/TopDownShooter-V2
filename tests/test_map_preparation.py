@@ -204,6 +204,14 @@ def test_map_preparation_copies_structured_and_visual_artifacts(tmp_path: Path) 
     assert "visual_map" in result.copied_artifacts
     assert (output_dir / "map_package/map.json").is_file()
     assert (output_dir / "visual_map/final_render.png").is_file()
+    assert (output_dir / "visual_map/prepared_preview.png").is_file()
+    assert (output_dir / "visual_map/prepared_preview_legend.json").is_file()
+    assert (
+        output_dir / "reports/prepared_visual_preview_report.json"
+    ).is_file()
+    assert (
+        output_dir / "visual_map/prepared_preview.png"
+    ).read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
 
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
     report = json.loads(result.report_path.read_text(encoding="utf-8"))
@@ -215,6 +223,8 @@ def test_map_preparation_copies_structured_and_visual_artifacts(tmp_path: Path) 
     assert report["visual_map"]["generic_objects_count"] == 2
     assert report["visual_map"]["chunks_count"] == 1
     assert report["visual_map"]["contract_status"] == "passed"
+    assert report["prepared_visual_preview"]["status"] == "ok"
+    assert "visual_map/prepared_preview.png" in report["output"]["generated_artifacts"]
 
     copied_package = MapPackageLoader().load(output_dir)
     assert copied_package.structured_map is not None
@@ -314,9 +324,16 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
     object_families_path = output_dir / "visual_map/visual_object_families.json"
     object_family_report_path = output_dir / "reports/visual_object_family_report.json"
     object_family_summary_path = output_dir / "reports/visual_object_family_summary.txt"
+    normalized_objects_path = output_dir / "visual_map/visual_objects_normalized.json"
+    normalization_report_path = output_dir / "reports/visual_object_normalization_report.json"
+    normalization_summary_path = output_dir / "reports/visual_object_normalization_summary.txt"
     scene_presets_path = output_dir / "visual_map/visual_scene_presets.json"
     scene_preset_report_path = output_dir / "reports/visual_scene_preset_report.json"
     scene_preset_summary_path = output_dir / "reports/visual_scene_preset_summary.txt"
+    scene_dressing_path = output_dir / "visual_map/visual_scene_dressing.json"
+    dressed_objects_path = output_dir / "visual_map/visual_objects_dressed.json"
+    scene_dressing_report_path = output_dir / "reports/visual_scene_dressing_report.json"
+    scene_dressing_summary_path = output_dir / "reports/visual_scene_dressing_summary.txt"
     assert result.status == "passed"
     assert context_path.is_file()
     assert regions_path.is_file()
@@ -328,9 +345,16 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
     assert object_families_path.is_file()
     assert object_family_report_path.is_file()
     assert object_family_summary_path.is_file()
+    assert normalized_objects_path.is_file()
+    assert normalization_report_path.is_file()
+    assert normalization_summary_path.is_file()
     assert scene_presets_path.is_file()
     assert scene_preset_report_path.is_file()
     assert scene_preset_summary_path.is_file()
+    assert scene_dressing_path.is_file()
+    assert dressed_objects_path.is_file()
+    assert scene_dressing_report_path.is_file()
+    assert scene_dressing_summary_path.is_file()
 
     context = json.loads(context_path.read_text(encoding="utf-8"))
     regions = json.loads(regions_path.read_text(encoding="utf-8"))
@@ -341,9 +365,16 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
     object_families = json.loads(object_families_path.read_text(encoding="utf-8"))
     object_family_report = json.loads(object_family_report_path.read_text(encoding="utf-8"))
     object_family_summary = object_family_summary_path.read_text(encoding="utf-8")
+    normalized_objects = json.loads(normalized_objects_path.read_text(encoding="utf-8"))
+    normalization_report = json.loads(normalization_report_path.read_text(encoding="utf-8"))
+    normalization_summary = normalization_summary_path.read_text(encoding="utf-8")
     scene_presets = json.loads(scene_presets_path.read_text(encoding="utf-8"))
     scene_preset_report = json.loads(scene_preset_report_path.read_text(encoding="utf-8"))
     scene_preset_summary = scene_preset_summary_path.read_text(encoding="utf-8")
+    scene_dressing = json.loads(scene_dressing_path.read_text(encoding="utf-8"))
+    dressed_objects = json.loads(dressed_objects_path.read_text(encoding="utf-8"))
+    scene_dressing_report = json.loads(scene_dressing_report_path.read_text(encoding="utf-8"))
+    scene_dressing_summary = scene_dressing_summary_path.read_text(encoding="utf-8")
     preparation_report = json.loads(result.report_path.read_text(encoding="utf-8"))
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
 
@@ -371,8 +402,24 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
         "fallen_log": 1,
         "mystery_relic": 1,
     }
+    assert normalized_objects["schema_version"] == "visual-objects-normalized-v1"
+    normalized_items = normalized_objects["items"]
+    resolved_item = next(item for item in normalized_items if item["id"] == "generic_000")
+    unresolved_item = next(item for item in normalized_items if item["id"] == "generic_unknown")
+    assert resolved_item["sprite_id"] == "object.fallen_log"
+    assert resolved_item["normalization_status"] == "generic_replaced"
+    assert resolved_item["normalized_family"] == "fallen_log"
+    assert unresolved_item["asset_family"] == "object.generic"
+    assert unresolved_item["normalization_status"] == "generic_unresolved"
+    assert normalization_report["schema_version"] == "visual-object-normalization-report-v1"
+    assert normalization_report["status"] == "needs_work"
+    assert normalization_report["counts"]["source_generic_objects"] == 2
+    assert normalization_report["counts"]["replaced_generic_objects"] == 1
+    assert normalization_report["counts"]["remaining_generic_objects"] == 1
+    assert normalization_report["unresolved_by_source_type"] == {"mystery_relic": 1}
     assert "Visual quality gates" in quality_summary
     assert "Visual object families" in object_family_summary
+    assert "Visual object normalization" in normalization_summary
     assert scene_presets["schema_version"] == "visual-scene-presets-v1"
     assert scene_presets["summary"]["total_scenes"] >= 1
     assert scene_presets["summary"]["assigned_scenes"] >= 1
@@ -380,20 +427,38 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
     assert scene_preset_report["status"] == "ok"
     assert scene_preset_report["preset_coverage"]["assigned_scenes"] >= 1
     assert "Visual scene presets" in scene_preset_summary
+    assert scene_dressing["schema_version"] == "visual-scene-dressing-v1"
+    assert scene_dressing["summary"]["generated_objects"] >= 1
+    assert scene_dressing_report["schema_version"] == "visual-scene-dressing-report-v1"
+    assert scene_dressing_report["status"] == "ok"
+    assert scene_dressing_report["dressing_coverage"]["dressed_scenes"] >= 1
+    assert "Visual scene dressing" in scene_dressing_summary
+    assert dressed_objects["schema_version"] == "visual-objects-dressed-v1"
+    assert dressed_objects["scene_dressing"]["dressing_objects"] >= 1
     assert preparation_report["visual_context"]["status"] == "passed"
     assert preparation_report["visual_context"]["regions"]["forest_regions"] == 1
     assert preparation_report["visual_object_families"]["status"] == "needs_work"
+    assert preparation_report["visual_object_normalization"]["status"] == "needs_work"
     assert preparation_report["visual_quality"]["status"] == "needs_work"
+    assert preparation_report["visual_quality"]["generic_objects"]["generic_objects"] == 1
     assert preparation_report["visual_scene_presets"]["status"] == "ok"
+    assert preparation_report["visual_scene_dressing"]["status"] == "ok"
     check_codes = {check["code"] for check in preparation_report["checks"]}
     assert "visual_context_built" in check_codes
     assert "visual_object_families_built" in check_codes
+    assert "visual_object_normalization_built" in check_codes
     assert "visual_quality_built" in check_codes
     assert "visual_scene_presets_built" in check_codes
+    assert "visual_scene_dressing_built" in check_codes
     assert "visual_map/visual_context.json" in manifest["artifacts"]["generated"]
     assert "visual_map/visual_scene_ranking.json" in manifest["artifacts"]["generated"]
     assert "visual_map/visual_object_families.json" in manifest["artifacts"]["generated"]
+    assert "visual_map/visual_objects_normalized.json" in manifest["artifacts"]["generated"]
     assert "reports/visual_object_family_report.json" in manifest["artifacts"]["generated"]
+    assert "reports/visual_object_normalization_report.json" in manifest["artifacts"]["generated"]
     assert "reports/visual_quality_report.json" in manifest["artifacts"]["generated"]
     assert "visual_map/visual_scene_presets.json" in manifest["artifacts"]["generated"]
     assert "reports/visual_scene_preset_report.json" in manifest["artifacts"]["generated"]
+    assert "visual_map/visual_scene_dressing.json" in manifest["artifacts"]["generated"]
+    assert "visual_map/visual_objects_dressed.json" in manifest["artifacts"]["generated"]
+    assert "reports/visual_scene_dressing_report.json" in manifest["artifacts"]["generated"]
