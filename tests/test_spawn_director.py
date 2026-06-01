@@ -29,6 +29,7 @@ def _spawn_config(
         max_distance_from_player_tiles=max_distance,
         avoid_player_line_of_sight=avoid_los,
         max_alive_enemies=max_alive,
+        initial_spawn_count=4,
         spawn_cooldown_seconds=0.0,
         group_size_min=1,
         group_size_max=3,

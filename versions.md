@@ -897,3 +897,9 @@
 - Added `SpawnDirector` as a zone-driven enemy spawn point selector that returns valid tiles without creating enemies or changing current spawn behavior.
 - Added `enemy_spawn` runtime config for distance limits, line-of-sight avoidance, alive-enemy caps, cooldown, and future group size bounds.
 - Added tests for zone candidates, safe/extraction exclusion, occupied tiles, distance filters, line-of-sight filtering, legacy fallback candidates, and disabled/full-capacity behavior.
+
+## v0.2.14 -> v0.2.15
+
+- Added zone-driven initial enemy creation through `SpawnDirector` for structured maps with gameplay spawn candidates.
+- Added `enemy_spawn.initial_spawn_count` runtime config and wired 2D/3D startup enemy creation through the shared runtime spawn-source selector.
+- Preserved legacy `enemy_spawn_zones` startup behavior for maps without structured gameplay zones and added tests for zone-driven spawn, zero-count disable, and legacy fallback.

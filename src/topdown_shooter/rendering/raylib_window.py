@@ -144,9 +144,11 @@ class RaylibWindow:
             projectile_system=self._projectile_system,
             state=WeaponState.from_database(weapon_database),
         )
-        self._enemy_system = EnemySystem.from_tactical_map(
+        self._enemy_system = EnemySystem.from_runtime_spawn_sources(
             tactical_map=package.tactical_map,
             runtime_map=runtime_map,
+            player_tile=self._player.tile,
+            enemy_spawn_config=config.enemy_spawn,
             enemy_max_health=config.enemies.max_health,
             hit_marker_lifetime_seconds=config.enemies.hit_marker_lifetime_seconds,
             hit_marker_radius_px=config.enemies.hit_marker_radius_px,

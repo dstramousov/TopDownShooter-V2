@@ -69,9 +69,11 @@ class ExperimentalRender3DRuntime:
             projectile_system=projectile_system,
             state=WeaponState.from_database(weapon_database),
         )
-        enemy_system = EnemySystem.from_tactical_map(
+        enemy_system = EnemySystem.from_runtime_spawn_sources(
             tactical_map=self._package.tactical_map,
             runtime_map=self._runtime_map,
+            player_tile=player.tile,
+            enemy_spawn_config=self._config.enemy_spawn,
             enemy_max_health=self._config.enemies.max_health,
             hit_marker_lifetime_seconds=self._config.enemies.hit_marker_lifetime_seconds,
             hit_marker_radius_px=self._config.enemies.hit_marker_radius_px,

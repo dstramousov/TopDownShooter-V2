@@ -148,6 +148,7 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.enemy_spawn.max_distance_from_player_tiles == 96.0
     assert config.enemy_spawn.avoid_player_line_of_sight is True
     assert config.enemy_spawn.max_alive_enemies == 24
+    assert config.enemy_spawn.initial_spawn_count == 12
     assert config.enemy_spawn.spawn_cooldown_seconds == 8.0
     assert config.enemy_spawn.group_size_min == 1
     assert config.enemy_spawn.group_size_max == 3

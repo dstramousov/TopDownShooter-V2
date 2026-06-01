@@ -354,6 +354,7 @@ class EnemySpawnConfig:
         max_distance_from_player_tiles: Maximum spawn distance from player.
         avoid_player_line_of_sight: Whether visible tiles are filtered out.
         max_alive_enemies: Global alive-enemy cap used by spawn selection.
+        initial_spawn_count: Number of enemies created at map startup from zones.
         spawn_cooldown_seconds: Minimum time between future spawn attempts.
         group_size_min: Minimum future spawn group size.
         group_size_max: Maximum future spawn group size.
@@ -364,6 +365,7 @@ class EnemySpawnConfig:
     max_distance_from_player_tiles: float
     avoid_player_line_of_sight: bool
     max_alive_enemies: int
+    initial_spawn_count: int
     spawn_cooldown_seconds: float
     group_size_min: int
     group_size_max: int
@@ -1170,6 +1172,10 @@ class RuntimeConfigLoader:
             max_alive_enemies=self._require_non_negative_int(
                 enemy_spawn,
                 "max_alive_enemies",
+            ),
+            initial_spawn_count=self._require_non_negative_int(
+                enemy_spawn,
+                "initial_spawn_count",
             ),
             spawn_cooldown_seconds=self._require_non_negative_float(
                 enemy_spawn,

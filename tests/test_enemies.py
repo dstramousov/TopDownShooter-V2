@@ -4,9 +4,16 @@ import random
 
 from topdown_shooter.combat.enemies import EnemyState, EnemySystem
 from topdown_shooter.combat.projectiles import ProjectileState
+from topdown_shooter.combat.spawn_director import SpawnDirector
 from topdown_shooter.combat.weapons import WeaponConfigLoader
+from topdown_shooter.config.runtime_config import EnemySpawnConfig
 from topdown_shooter.world.coordinates import TileCoord, WorldCoord, world_to_tile
-from topdown_shooter.world.runtime_map import RuntimeMap, TacticalRuntimeSummary
+from topdown_shooter.world.runtime_map import (
+    RuntimeGameplayZone,
+    RuntimeGameplayZoneBounds,
+    RuntimeMap,
+    TacticalRuntimeSummary,
+)
 from topdown_shooter.world.tile import RuntimeTile
 
 
@@ -32,6 +39,162 @@ def _build_runtime_map() -> RuntimeMap:
             fallback_positions=0,
         ),
     )
+
+
+
+def _build_zone_spawn_runtime_map() -> RuntimeMap:
+    """Build a small runtime map with one danger zone for initial spawn tests."""
+    width = 6
+    height = 3
+    tiles = tuple(
+        tuple(RuntimeTile(symbol="+", walkable=True, movement_cost=1) for _x in range(width))
+        for _y in range(height)
+    )
+    zone = RuntimeGameplayZone(
+        zone_id="danger_zone",
+        zone_type="danger_area",
+        bounds=RuntimeGameplayZoneBounds(
+            min_x=2,
+            min_y=1,
+            max_x=5,
+            max_y=1,
+        ),
+    )
+    gameplay_zones_by_tile = {
+        TileCoord(x=x, y=1): (zone,)
+        for x in range(2, 6)
+    }
+    return RuntimeMap(
+        width_tiles=width,
+        height_tiles=height,
+        tile_size_px=16,
+        tiles=tiles,
+        start_tile=TileCoord(0, 0),
+        goal_tile=TileCoord(width - 1, height - 1),
+        tactical_summary=TacticalRuntimeSummary(
+            combat_zones=0,
+            cover_points=0,
+            choke_points=0,
+            flank_routes=0,
+            enemy_spawn_zones=0,
+            fallback_positions=0,
+        ),
+        gameplay_zones=(zone,),
+        gameplay_zones_by_tile=gameplay_zones_by_tile,
+    )
+
+
+def _enemy_spawn_config(*, initial_spawn_count: int = 2) -> EnemySpawnConfig:
+    """Build enemy spawn config for initial spawn tests."""
+    return EnemySpawnConfig(
+        enabled=True,
+        min_distance_from_player_tiles=1.0,
+        max_distance_from_player_tiles=0.0,
+        avoid_player_line_of_sight=False,
+        max_alive_enemies=10,
+        initial_spawn_count=initial_spawn_count,
+        spawn_cooldown_seconds=0.0,
+        group_size_min=1,
+        group_size_max=3,
+    )
+
+
+
+def test_enemy_system_spawns_initial_enemies_from_spawn_director() -> None:
+    """Enemy system should create startup enemies from zone-driven spawn tiles."""
+    runtime_map = _build_zone_spawn_runtime_map()
+    spawn_config = _enemy_spawn_config(initial_spawn_count=2)
+    director = SpawnDirector(runtime_map, spawn_config)
+
+    system = EnemySystem.from_spawn_director(
+        spawn_director=director,
+        runtime_map=runtime_map,
+        player_tile=runtime_map.start_tile,
+        initial_spawn_count=spawn_config.initial_spawn_count,
+        enemy_max_health=75.0,
+        smart_facing_enabled=False,
+    )
+
+    assert system.stats.active_enemies == 2
+    assert system.stats.spawned_enemies == 2
+    assert system.stats.source_spawn_zones == 1
+    assert system.stats.spawned_squads == 2
+    assert [enemy.tile for enemy in system.enemies] == [
+        TileCoord(x=5, y=1),
+        TileCoord(x=4, y=1),
+    ]
+    assert system.enemies[0].spawn_id == "zone_spawn_0"
+    assert system.enemies[0].zone_id == "danger_zone"
+    assert system.enemies[0].spawn_type == "zone_initial"
+    assert system.enemies[0].role == "rifleman"
+    assert system.enemies[0].health == 75.0
+    assert system.enemies[0].home_position == system.enemies[0].world_position
+
+
+def test_enemy_system_runtime_spawn_sources_prefers_zone_candidates() -> None:
+    """Runtime spawn source selection should prefer structured zone candidates."""
+    runtime_map = _build_zone_spawn_runtime_map()
+
+    system = EnemySystem.from_runtime_spawn_sources(
+        tactical_map={
+            "enemy_spawn_zones": [
+                {
+                    "id": "legacy_spawn",
+                    "position": [1, 1],
+                },
+            ],
+        },
+        runtime_map=runtime_map,
+        player_tile=runtime_map.start_tile,
+        enemy_spawn_config=_enemy_spawn_config(initial_spawn_count=1),
+        smart_facing_enabled=False,
+    )
+
+    assert system.stats.active_enemies == 1
+    assert system.enemies[0].spawn_id == "zone_spawn_0"
+    assert system.enemies[0].spawn_type == "zone_initial"
+    assert system.enemies[0].tile == TileCoord(x=5, y=1)
+
+
+def test_enemy_system_runtime_spawn_sources_keeps_legacy_fallback() -> None:
+    """Runtime spawn source selection should keep legacy maps unchanged."""
+    runtime_map = _build_runtime_map()
+
+    system = EnemySystem.from_runtime_spawn_sources(
+        tactical_map={
+            "enemy_spawn_zones": [
+                {
+                    "id": "legacy_spawn",
+                    "position": [1, 1],
+                },
+            ],
+        },
+        runtime_map=runtime_map,
+        player_tile=runtime_map.start_tile,
+        enemy_spawn_config=_enemy_spawn_config(initial_spawn_count=2),
+        smart_facing_enabled=False,
+    )
+
+    assert system.stats.active_enemies == 1
+    assert system.enemies[0].spawn_id == "legacy_spawn"
+    assert system.enemies[0].spawn_type == "unknown"
+    assert system.enemies[0].tile == TileCoord(x=1, y=1)
+
+
+def test_enemy_system_spawn_director_respects_zero_initial_count() -> None:
+    """Zone-driven startup spawn should support disabling initial creation."""
+    runtime_map = _build_zone_spawn_runtime_map()
+    spawn_config = _enemy_spawn_config(initial_spawn_count=0)
+
+    system = EnemySystem.from_spawn_director(
+        spawn_director=SpawnDirector(runtime_map, spawn_config),
+        runtime_map=runtime_map,
+        player_tile=runtime_map.start_tile,
+        initial_spawn_count=spawn_config.initial_spawn_count,
+    )
+
+    assert system.stats.active_enemies == 0
+    assert system.stats.spawned_enemies == 0
 
 
 def test_enemy_system_spawns_markers_from_tactical_spawn_zones() -> None:
