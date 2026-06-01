@@ -3111,8 +3111,10 @@ class EnemySystem:
         steps = max(1, int(math.ceil(distance / safe_step)))
         for index in range(1, steps + 1):
             ratio = index / steps
-            point = WorldCoord(x=start.x + dx * ratio, y=start.y + dy * ratio)
-            if not collision_service.is_point_walkable(point):
+            if not collision_service.is_world_xy_walkable(
+                start.x + dx * ratio,
+                start.y + dy * ratio,
+            ):
                 return False
         return True
 

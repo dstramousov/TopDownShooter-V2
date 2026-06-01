@@ -927,3 +927,9 @@
 - Added a render-texture cache for immutable 2D terrain tiles so the main loop no longer redraws thousands of static tile rectangles every frame.
 - Kept runtime objects, projectiles, enemies, player, UI, and combat feedback dynamic while caching only the base terrain layer.
 - Added safe cache unload/fallback behavior so tests and environments without render-texture support keep the existing primitive renderer path.
+
+## v0.2.19 -> v0.2.20
+
+- Добавлен cached tile snapshot в `TileCollisionService` для walkability, movement speed и projectile blocking.
+- Enemy line-of-sight теперь использует allocation-free world XY checks вместо создания `WorldCoord` на каждом sample.
+- 2D static terrain cache больше не пересчитывает hash всех tile symbols каждый кадр.

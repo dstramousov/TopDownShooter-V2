@@ -38,21 +38,14 @@ class _StaticTerrainCacheKey:
     width_tiles: int
     height_tiles: int
     tile_size_px: int
-    tile_symbols_hash: int
 
     @classmethod
     def from_runtime_map(cls, runtime_map: RuntimeMap) -> "_StaticTerrainCacheKey":
-        """Build a cache key from immutable terrain properties."""
+        """Build a cache key from immutable terrain dimensions."""
         return cls(
             width_tiles=runtime_map.width_tiles,
             height_tiles=runtime_map.height_tiles,
             tile_size_px=runtime_map.tile_size_px,
-            tile_symbols_hash=hash(
-                tuple(
-                    tuple(tile.symbol for tile in row)
-                    for row in runtime_map.tiles
-                ),
-            ),
         )
 
 
@@ -172,7 +165,6 @@ class MapRenderer:
         Returns:
             Per-frame rendering statistics.
         """
-        tile_size = runtime_map.tile_size_px
         min_x, max_x, min_y, max_y = self._calculate_visible_tile_bounds(
             runtime_map=runtime_map,
             camera=camera,
