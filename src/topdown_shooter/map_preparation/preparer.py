@@ -23,6 +23,10 @@ from topdown_shooter.map_preparation.scene_quality import (
     VisualQualityAnalyzer,
     VisualQualityResult,
 )
+from topdown_shooter.map_preparation.visual_art_layers import (
+    VisualArtLayerBuilder,
+    VisualArtLayerResult,
+)
 from topdown_shooter.map_preparation.visual_context import (
     VisualContextAnalyzer,
     VisualContextResult,
@@ -108,6 +112,11 @@ class MapPreparationService:
     PILOT_ART_PREVIEW_LEGEND_FILE = "pilot_art_preview_legend.json"
     PILOT_ART_PREVIEW_REPORT_FILE = "pilot_art_preview_report.json"
     PILOT_ART_PREVIEW_SUMMARY_FILE = "pilot_art_preview_summary.txt"
+    VISUAL_ART_LAYERS_FILE = "visual_art_layers.json"
+    VISUAL_ART_OBJECTS_FILE = "visual_art_objects.json"
+    VISUAL_ART_CHUNKS_FILE = "visual_art_chunks.json"
+    VISUAL_ART_LAYERS_REPORT_FILE = "visual_art_layers_report.json"
+    VISUAL_ART_LAYERS_SUMMARY_FILE = "visual_art_layers_summary.txt"
 
     def __init__(
         self,
@@ -122,6 +131,7 @@ class MapPreparationService:
         visual_scene_dressing_generator: VisualSceneDressingGenerator | None = None,
         prepared_visual_preview_renderer: PreparedVisualPreviewRenderer | None = None,
         pilot_art_preview_renderer: PilotArtPreviewRenderer | None = None,
+        visual_art_layer_builder: VisualArtLayerBuilder | None = None,
     ) -> None:
         """Initialize the preparation service.
 
@@ -139,6 +149,7 @@ class MapPreparationService:
             prepared_visual_preview_renderer: Optional prepared visual preview renderer
                 override for tests.
             pilot_art_preview_renderer: Optional pilot art preview renderer override for tests.
+            visual_art_layer_builder: Optional visual art layer builder override for tests.
         """
         self._loader = loader or MapPackageLoader()
         self._runtime_builder = runtime_builder or RuntimeMapBuilder()
@@ -158,6 +169,7 @@ class MapPreparationService:
             prepared_visual_preview_renderer or PreparedVisualPreviewRenderer()
         )
         self._pilot_art_preview_renderer = pilot_art_preview_renderer or PilotArtPreviewRenderer()
+        self._visual_art_layer_builder = visual_art_layer_builder or VisualArtLayerBuilder()
 
     def prepare(self, source_dir: Path, output_dir: Path) -> PreparedMapResult:
         """Prepare a generated map package for runtime consumption.
@@ -226,6 +238,11 @@ class MapPreparationService:
             scene_dressing=visual_scene_dressing_result.scene_dressing,
             dressed_visual_objects=visual_scene_dressing_result.dressed_visual_objects,
         )
+        visual_art_layer_result = self._visual_art_layer_builder.build(
+            visual_context=visual_context_result.context,
+            scene_dressing=visual_scene_dressing_result.scene_dressing,
+            dressed_visual_objects=visual_scene_dressing_result.dressed_visual_objects,
+        )
         generated_artifacts = self._write_visual_context_artifacts(
             output_dir=resolved_output_dir,
             result=visual_context_result,
@@ -272,6 +289,12 @@ class MapPreparationService:
                 result=pilot_art_preview_result,
             ),
         )
+        generated_artifacts.extend(
+            self._write_visual_art_layer_artifacts(
+                output_dir=resolved_output_dir,
+                result=visual_art_layer_result,
+            ),
+        )
         report = self._build_preparation_report(
             package=package,
             runtime_map=runtime_map,
@@ -289,6 +312,7 @@ class MapPreparationService:
             visual_scene_dressing_report=visual_scene_dressing_result.dressing_report,
             prepared_visual_preview_report=prepared_visual_preview_result.preview_report,
             pilot_art_preview_report=pilot_art_preview_result.preview_report,
+            visual_art_layers_report=visual_art_layer_result.art_report,
         )
         manifest = self._build_prepared_manifest(
             package=package,
@@ -349,6 +373,8 @@ class MapPreparationService:
         preview_rendered = self._require_report_dict(prepared_visual_preview, "rendered")
         pilot_art_preview = self._require_report_dict(report, "pilot_art_preview")
         pilot_rendered = self._require_report_dict(pilot_art_preview, "rendered")
+        visual_art_layers = self._require_report_dict(report, "visual_art_layers")
+        visual_art_counts = self._require_report_dict(visual_art_layers, "counts")
         quality_scenes = self._require_report_dict(visual_quality, "scene_ranking")
         quality_generic = self._require_report_dict(visual_quality, "generic_objects")
         family_generic = self._require_report_dict(visual_families, "generic_objects")
@@ -454,6 +480,13 @@ class MapPreparationService:
                     "- pilot rendered dressing: "
                     f"{pilot_rendered.get('dressing_objects', 'unknown')}"
                 ),
+                f"- visual art layers: {visual_art_layers.get('status', 'unknown')}",
+                (
+                    "- visual art elements: "
+                    f"{visual_art_counts.get('layer_elements', 'unknown')} layers / "
+                    f"{visual_art_counts.get('object_elements', 'unknown')} objects"
+                ),
+                f"- visual art chunks: {visual_art_counts.get('chunks', 'unknown')}",
                 f"- copied artifacts: {copied_count}",
                 f"- output: {output.get('path', 'unknown')}",
                 f"- report: {output.get('report_path', 'unknown')}",
@@ -785,6 +818,37 @@ class MapPreparationService:
         )
         return artifacts
 
+    def _write_visual_art_layer_artifacts(
+        self,
+        *,
+        output_dir: Path,
+        result: VisualArtLayerResult,
+    ) -> list[str]:
+        """Write generated visual art layer artifacts.
+
+        Args:
+            output_dir: Destination prepared-map directory.
+            result: Visual art layer export result.
+
+        Returns:
+            Generated relative artifact paths.
+        """
+        visual_dir = output_dir / self.VISUAL_MAP_DIR
+        reports_dir = output_dir / self.REPORTS_DIR
+        artifacts = [
+            f"{self.VISUAL_MAP_DIR}/{self.VISUAL_ART_LAYERS_FILE}",
+            f"{self.VISUAL_MAP_DIR}/{self.VISUAL_ART_OBJECTS_FILE}",
+            f"{self.VISUAL_MAP_DIR}/{self.VISUAL_ART_CHUNKS_FILE}",
+            f"{self.REPORTS_DIR}/{self.VISUAL_ART_LAYERS_REPORT_FILE}",
+            f"{self.REPORTS_DIR}/{self.VISUAL_ART_LAYERS_SUMMARY_FILE}",
+        ]
+        self._write_json(visual_dir / self.VISUAL_ART_LAYERS_FILE, result.visual_art_layers)
+        self._write_json(visual_dir / self.VISUAL_ART_OBJECTS_FILE, result.visual_art_objects)
+        self._write_json(visual_dir / self.VISUAL_ART_CHUNKS_FILE, result.visual_art_chunks)
+        self._write_json(reports_dir / self.VISUAL_ART_LAYERS_REPORT_FILE, result.art_report)
+        self._write_text(reports_dir / self.VISUAL_ART_LAYERS_SUMMARY_FILE, result.art_summary)
+        return artifacts
+
     def _write_visual_quality_artifacts(
         self,
         *,
@@ -947,6 +1011,7 @@ class MapPreparationService:
         visual_scene_dressing_report: dict[str, Any],
         prepared_visual_preview_report: dict[str, Any],
         pilot_art_preview_report: dict[str, Any],
+        visual_art_layers_report: dict[str, Any],
     ) -> dict[str, Any]:
         """Build the preparation report dictionary.
 
@@ -965,6 +1030,7 @@ class MapPreparationService:
             visual_scene_dressing_report: Visual scene dressing generation report.
             prepared_visual_preview_report: Prepared visual preview renderer report.
             pilot_art_preview_report: Pilot art preview renderer report.
+            visual_art_layers_report: Visual art layer export report.
 
         Returns:
             Preparation report dictionary.
@@ -1037,6 +1103,11 @@ class MapPreparationService:
                 str(pilot_art_preview_report.get("status", "failed")),
                 "Pilot art preview must render a non-debug painter-style map preview.",
             ),
+            self._check(
+                "visual_art_layers_built",
+                str(visual_art_layers_report.get("status", "failed")),
+                "Visual art layer export must turn painter decisions into prepared render data.",
+            ),
         ]
         status = self._build_overall_status(checks)
         report_path = output_dir / self.REPORTS_DIR / self.PREPARATION_REPORT_FILE
@@ -1079,6 +1150,7 @@ class MapPreparationService:
             "visual_scene_dressing": visual_scene_dressing_report,
             "prepared_visual_preview": prepared_visual_preview_report,
             "pilot_art_preview": pilot_art_preview_report,
+            "visual_art_layers": visual_art_layers_report,
             "checks": checks,
             "output": {
                 "path": str(output_dir),

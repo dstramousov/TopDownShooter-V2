@@ -208,11 +208,17 @@ def test_map_preparation_copies_structured_and_visual_artifacts(tmp_path: Path) 
     assert (output_dir / "visual_map/prepared_preview_legend.json").is_file()
     assert (output_dir / "visual_map/pilot_art_preview.png").is_file()
     assert (output_dir / "visual_map/pilot_art_preview_legend.json").is_file()
+    assert (output_dir / "visual_map/visual_art_layers.json").is_file()
+    assert (output_dir / "visual_map/visual_art_objects.json").is_file()
+    assert (output_dir / "visual_map/visual_art_chunks.json").is_file()
     assert (
         output_dir / "reports/prepared_visual_preview_report.json"
     ).is_file()
     assert (
         output_dir / "reports/pilot_art_preview_report.json"
+    ).is_file()
+    assert (
+        output_dir / "reports/visual_art_layers_report.json"
     ).is_file()
     assert (
         output_dir / "visual_map/prepared_preview.png"
@@ -233,8 +239,22 @@ def test_map_preparation_copies_structured_and_visual_artifacts(tmp_path: Path) 
     assert report["visual_map"]["contract_status"] == "passed"
     assert report["prepared_visual_preview"]["status"] == "ok"
     assert report["pilot_art_preview"]["status"] == "ok"
+    assert report["visual_art_layers"]["status"] == "ok"
     assert "visual_map/prepared_preview.png" in report["output"]["generated_artifacts"]
     assert "visual_map/pilot_art_preview.png" in report["output"]["generated_artifacts"]
+    assert "visual_map/visual_art_layers.json" in report["output"]["generated_artifacts"]
+    assert "visual_map/visual_art_objects.json" in report["output"]["generated_artifacts"]
+    assert "visual_map/visual_art_chunks.json" in report["output"]["generated_artifacts"]
+
+    art_layers = json.loads((output_dir / "visual_map/visual_art_layers.json").read_text(encoding="utf-8"))
+    art_objects = json.loads((output_dir / "visual_map/visual_art_objects.json").read_text(encoding="utf-8"))
+    art_chunks = json.loads((output_dir / "visual_map/visual_art_chunks.json").read_text(encoding="utf-8"))
+    assert art_layers["schema_version"] == "visual-art-layers-v1"
+    assert art_objects["schema_version"] == "visual-art-objects-v1"
+    assert art_chunks["schema_version"] == "visual-art-chunks-v1"
+    assert art_layers["contract"]["changes_gameplay"] is False
+    assert len(art_layers["layers"]) > 0
+    assert len(art_chunks["chunks"]) > 0
 
     copied_package = MapPackageLoader().load(output_dir)
     assert copied_package.structured_map is not None

@@ -32,6 +32,10 @@ from topdown_shooter.map_preparation.visual_object_normalization import (
     VisualObjectNormalizationResult,
     VisualObjectNormalizer,
 )
+from topdown_shooter.map_preparation.visual_art_layers import (
+    VisualArtLayerBuilder,
+    VisualArtLayerResult,
+)
 from topdown_shooter.map_preparation.visual_context import (
     VisualContextAnalyzer,
     VisualContextResult,
@@ -44,6 +48,8 @@ __all__ = [
     "PreparedVisualPreviewRenderer",
     "PreparedVisualPreviewResult",
     "PreparedMapResult",
+    "VisualArtLayerBuilder",
+    "VisualArtLayerResult",
     "VisualContextAnalyzer",
     "VisualContextResult",
     "VisualObjectFamilyResolver",

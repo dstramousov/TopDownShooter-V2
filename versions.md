@@ -1037,3 +1037,9 @@
 - Tuned the pilot water painter to reduce blue speckle noise and keep puddles as calmer connected wet patches.
 - Strengthened soft muddy banks around water without changing logical water, movement, collision, or gameplay geometry.
 - Reworked reed clusters as sparse readable green-brown vegetation near water edges.
+
+## v0.2.37 -> v0.2.38
+
+- Added `VisualArtLayerBuilder` to export pilot painter decisions as prepared visual art JSON.
+- `--prepare-map` now writes `visual_art_layers.json`, `visual_art_objects.json`, `visual_art_chunks.json`, and matching reports.
+- Extended preparation reports and CLI summary with visual art layer/object/chunk counts without changing gameplay geometry or runtime renderers.
