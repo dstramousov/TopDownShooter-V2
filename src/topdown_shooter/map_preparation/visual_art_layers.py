@@ -168,6 +168,8 @@ class VisualArtLayerBuilder:
                 f"- road elements: {counts.get('road_elements', 'unknown')}",
                 f"- water elements: {counts.get('water_elements', 'unknown')}",
                 f"- ruin elements: {counts.get('ruin_elements', 'unknown')}",
+                f"- ruin rubble: {counts.get('ruin_rubble', 'unknown')}",
+                f"- ruin moss: {counts.get('ruin_moss', 'unknown')}",
                 f"- runtime objects: {counts.get('runtime_objects', 'unknown')}",
                 f"- dressing objects: {counts.get('dressing_objects', 'unknown')}",
             ],
@@ -514,7 +516,7 @@ class VisualArtLayerBuilder:
         }
 
     def _add_ruin_elements(self, *, layers: list[dict[str, Any]], rows: list[list[dict[str, Any]]]) -> dict[str, int]:
-        """Add current pilot ruin elements.
+        """Add ruin painter elements for broken stone sites.
 
         Args:
             layers: Mutable terrain element list.
@@ -523,39 +525,213 @@ class VisualArtLayerBuilder:
         Returns:
             Ruin element counters.
         """
-        details = 0
+        ruin_mask = self._mask_for(rows, self.RUIN_CONTEXTS)
+        wall_mask = self._mask_for(rows, frozenset({"ruin_wall"}))
+        floor_tiles = 0
+        wall_tiles = 0
+        cracks = 0
+        rubble = 0
+        moss = 0
+        dirt = 0
+        wall_shadows = 0
+        broken_hints = 0
+        debris_clusters = 0
+
         for y, row in enumerate(rows):
             for x, cell in enumerate(row):
                 primary = self._primary(cell)
-                if primary not in self.RUIN_CONTEXTS:
-                    continue
-                details += 1
-                layers.append(
-                    self._tile_element(
-                        element_id=f"ruin_{primary}_{x:04d}_{y:04d}",
-                        layer="structures_and_blockers" if primary == "ruin_wall" else "base_ground",
-                        family="ruin_wall" if primary == "ruin_wall" else "ruin_floor",
-                        kind=primary,
-                        x=x,
-                        y=y,
-                        variant=self._stable_mod("ruin", x, y, modulo=4),
-                        alpha=1.0,
-                    ),
-                )
-                if self._stable_mod("ruin-crack", x, y, modulo=2) == 0:
+                if primary == "ruin_floor":
+                    floor_tiles += 1
+                    near_wall = self._touches_mask(wall_mask, x=x, y=y)
                     layers.append(
                         self._tile_element(
-                            element_id=f"ruin_crack_{x:04d}_{y:04d}",
-                            layer="surface_decals",
-                            family="ruin_crack",
-                            kind="stone_crack_hint",
+                            element_id=f"ruin_floor_{x:04d}_{y:04d}",
+                            layer="base_ground",
+                            family="ruin_floor",
+                            kind="broken_stone_floor",
                             x=x,
                             y=y,
-                            variant=self._stable_mod("ruin-crack-var", x, y, modulo=4),
-                            alpha=0.35,
+                            variant=self._stable_mod("ruin-floor", x, y, modulo=6),
+                            alpha=1.0,
+                            extra={"near_wall": near_wall},
                         ),
                     )
-        return {"ruin_details": details}
+                    if self._stable_mod("ruin-floor-crack", x, y, modulo=3) == 0:
+                        cracks += 1
+                        layers.append(
+                            self._tile_element(
+                                element_id=f"ruin_floor_crack_{x:04d}_{y:04d}",
+                                layer="surface_decals",
+                                family="ruin_floor_crack",
+                                kind="floor_crack",
+                                x=x,
+                                y=y,
+                                variant=self._stable_mod("ruin-crack-var", x, y, modulo=4),
+                                alpha=0.34,
+                            ),
+                        )
+                    if near_wall and self._stable_mod("ruin-floor-moss", x, y, modulo=3) == 0:
+                        moss += 1
+                        layers.append(
+                            self._tile_element(
+                                element_id=f"ruin_floor_moss_{x:04d}_{y:04d}",
+                                layer="surface_decals",
+                                family="ruin_moss_patch",
+                                kind="moss_near_wall",
+                                x=x,
+                                y=y,
+                                variant=self._stable_mod("ruin-moss", x, y, modulo=5),
+                                alpha=0.30,
+                            ),
+                        )
+                    if self._stable_mod("ruin-floor-dirt", x, y, modulo=5) == 0:
+                        dirt += 1
+                        layers.append(
+                            self._tile_element(
+                                element_id=f"ruin_floor_dirt_{x:04d}_{y:04d}",
+                                layer="surface_decals",
+                                family="ruin_dirt_patch",
+                                kind="dirty_stone_floor",
+                                x=x,
+                                y=y,
+                                variant=self._stable_mod("ruin-dirt", x, y, modulo=4),
+                                alpha=0.22,
+                            ),
+                        )
+                    continue
+
+                if primary == "ruin_wall":
+                    wall_tiles += 1
+                    connections = self._mask_connections(wall_mask, x=x, y=y)
+                    layers.append(
+                        self._tile_element(
+                            element_id=f"ruin_wall_{x:04d}_{y:04d}",
+                            layer="structures_and_blockers",
+                            family="ruin_wall_mass",
+                            kind="broken_wall_mass",
+                            x=x,
+                            y=y,
+                            variant=self._stable_mod("ruin-wall", x, y, modulo=6),
+                            alpha=1.0,
+                            extra={"connections": connections},
+                        ),
+                    )
+                    shadow_marks = self._ruin_wall_shadow_count(connections)
+                    wall_shadows += shadow_marks
+                    if shadow_marks:
+                        layers.append(
+                            self._tile_element(
+                                element_id=f"ruin_wall_shadow_{x:04d}_{y:04d}",
+                                layer="terrain_transitions",
+                                family="ruin_wall_shadow",
+                                kind="wall_base_shadow",
+                                x=x,
+                                y=y,
+                                variant=self._stable_mod("ruin-shadow", x, y, modulo=4),
+                                alpha=0.30,
+                                extra={"connections": connections, "shadow_marks": shadow_marks},
+                            ),
+                        )
+                    if self._stable_mod("ruin-wall-broken", x, y, modulo=3) == 0:
+                        broken_hints += 1
+                        layers.append(
+                            self._tile_element(
+                                element_id=f"ruin_wall_broken_{x:04d}_{y:04d}",
+                                layer="surface_decals",
+                                family="ruin_broken_wall_hint",
+                                kind="broken_wall_gap",
+                                x=x,
+                                y=y,
+                                variant=self._stable_mod("ruin-break", x, y, modulo=4),
+                                alpha=0.28,
+                            ),
+                        )
+                    if self._stable_mod("ruin-wall-rubble", x, y, modulo=2) == 0:
+                        rubble += 1
+                        layers.append(
+                            self._tile_element(
+                                element_id=f"ruin_wall_rubble_{x:04d}_{y:04d}",
+                                layer="surface_decals",
+                                family="ruin_rubble_cluster",
+                                kind="wall_rubble",
+                                x=x,
+                                y=y,
+                                variant=self._stable_mod("ruin-rubble", x, y, modulo=6),
+                                alpha=0.42,
+                            ),
+                        )
+                    continue
+
+                if self._touches_mask(ruin_mask, x=x, y=y) and self._allows_ruin_debris(primary):
+                    if self._stable_mod("ruin-adjacent-rubble", x, y, modulo=3) == 0:
+                        rubble += 1
+                        debris_clusters += 1
+                        layers.append(
+                            self._tile_element(
+                                element_id=f"ruin_adjacent_rubble_{x:04d}_{y:04d}",
+                                layer="surface_decals",
+                                family="ruin_rubble_cluster",
+                                kind="adjacent_stone_debris",
+                                x=x,
+                                y=y,
+                                variant=self._stable_mod("ruin-adj-rubble", x, y, modulo=6),
+                                alpha=0.34,
+                            ),
+                        )
+                    if self._stable_mod("ruin-adjacent-moss", x, y, modulo=5) == 0:
+                        moss += 1
+                        layers.append(
+                            self._tile_element(
+                                element_id=f"ruin_adjacent_moss_{x:04d}_{y:04d}",
+                                layer="surface_decals",
+                                family="ruin_moss_patch",
+                                kind="adjacent_moss",
+                                x=x,
+                                y=y,
+                                variant=self._stable_mod("ruin-adj-moss", x, y, modulo=5),
+                                alpha=0.26,
+                            ),
+                        )
+
+        return {
+            "ruin_details": floor_tiles + wall_tiles,
+            "ruin_floor_tiles": floor_tiles,
+            "ruin_wall_tiles": wall_tiles,
+            "ruin_floor_cracks": cracks,
+            "ruin_rubble": rubble,
+            "ruin_moss": moss,
+            "ruin_dirt": dirt,
+            "ruin_wall_shadows": wall_shadows,
+            "ruin_broken_hints": broken_hints,
+            "ruin_debris_clusters": debris_clusters,
+        }
+
+    def _ruin_wall_shadow_count(self, connections: dict[str, bool]) -> int:
+        """Return approximate shadow marks for wall gaps.
+
+        Args:
+            connections: Cardinal wall connections.
+
+        Returns:
+            Count of visual wall-base shadow marks.
+        """
+        marks = 0
+        if not connections.get("S", False):
+            marks += 1
+        if not connections.get("E", False):
+            marks += 1
+        return marks
+
+    def _allows_ruin_debris(self, primary: str) -> bool:
+        """Return whether adjacent terrain may receive visual-only ruin debris.
+
+        Args:
+            primary: Primary visual context.
+
+        Returns:
+            True when debris may be placed without implying a blocker.
+        """
+        return primary in {"clearing", "ruin_floor", "blocked_structure"}
 
     def _add_visual_objects(
         self,
@@ -778,6 +954,9 @@ class VisualArtLayerBuilder:
                 "road_elements": sum(road_counts.values()),
                 "water_elements": sum(water_counts.values()),
                 "ruin_elements": sum(ruin_counts.values()),
+                "ruin_rubble": self._int_value(ruin_counts.get("ruin_rubble"), default=0),
+                "ruin_moss": self._int_value(ruin_counts.get("ruin_moss"), default=0),
+                "ruin_wall_shadows": self._int_value(ruin_counts.get("ruin_wall_shadows"), default=0),
                 "runtime_objects": self._int_value(object_counts.get("runtime_objects"), default=0),
                 "dressing_objects": self._int_value(dressing_counts.get("dressing_objects"), default=0),
             },

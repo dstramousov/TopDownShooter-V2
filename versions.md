@@ -1055,3 +1055,9 @@
 - Added visual micro-scenes export for prepared maps.
 - `--prepare-map` now writes `visual_micro_scenes.json`, `visual_micro_scenes_report.json`, and `visual_micro_scenes_summary.txt`.
 - Linked scene presets, dressing objects, runtime objects, and visual art layer references into runtime-readable visual scene entities without changing gameplay geometry.
+
+## v0.2.40 -> v0.2.41
+
+- Added a pilot ruin painter pass so ruin floors and walls render as broken stone places instead of flat gray plan blocks.
+- Exported ruin floor cracks, wall shadows, rubble clusters, moss patches, dirt hints, and broken-wall hints into visual art layer JSON.
+- Kept the ruin painter visual-only: tile geometry, collision, movement, runtime objects, and game renderers remain unchanged.

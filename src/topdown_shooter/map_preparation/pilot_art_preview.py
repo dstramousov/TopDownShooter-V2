@@ -65,7 +65,14 @@ class PilotArtPreviewRenderer:
         "reed_tip": (154, 135, 74),
         "water_highlight": (79, 111, 110),
         "ruin_floor": (92, 91, 84),
+        "ruin_floor_light": (112, 108, 96),
+        "ruin_floor_dark": (70, 68, 62),
         "ruin_wall": (62, 62, 59),
+        "ruin_wall_dark": (43, 43, 40),
+        "ruin_wall_shadow": (37, 37, 34),
+        "ruin_rubble": (122, 116, 99),
+        "ruin_moss": (72, 92, 59),
+        "ruin_dirt": (79, 70, 54),
         "forest_deep": (19, 43, 30),
         "forest_mid": (28, 61, 38),
         "forest_light": (42, 83, 49),
@@ -175,6 +182,9 @@ class PilotArtPreviewRenderer:
                 f"- road shoulders: {rendered.get('road_external_shoulder_tiles', 'unknown')}",
                 f"- road grass intrusions: {rendered.get('road_grass_intrusions', 'unknown')}",
                 f"- ruin details: {rendered.get('ruin_details', 'unknown')}",
+                f"- ruin rubble: {rendered.get('ruin_rubble', 'unknown')}",
+                f"- ruin moss: {rendered.get('ruin_moss', 'unknown')}",
+                f"- ruin wall shadows: {rendered.get('ruin_wall_shadows', 'unknown')}",
                 f"- water details: {rendered.get('water_details', 'unknown')}",
                 f"- water region bodies: {rendered.get('water_region_bodies', 'unknown')}",
                 f"- water bank tiles: {rendered.get('water_bank_tiles', 'unknown')}",
@@ -558,7 +568,7 @@ class PilotArtPreviewRenderer:
         rows: list[list[dict[str, Any]]],
         scale: int,
     ) -> dict[str, int]:
-        """Paint simple ruin floor and rubble hints.
+        """Paint ruins as broken stone places with rubble, dirt, and moss.
 
         Args:
             canvas: RGB canvas.
@@ -566,25 +576,270 @@ class PilotArtPreviewRenderer:
             scale: Preview pixels per tile.
 
         Returns:
-            Ruin detail counters.
+            Ruin painter counters.
         """
-        details = 0
-        for y, row in enumerate(rows):
-            for x, cell in enumerate(row):
-                primary = self._primary(cell)
-                if primary not in self.RUIN_CONTEXTS:
+        ruin_mask = self._mask_for(rows, self.RUIN_CONTEXTS)
+        wall_mask = self._mask_for(rows, frozenset({"ruin_wall"}))
+        floor_tiles = 0
+        wall_tiles = 0
+        cracks = 0
+        rubble = 0
+        moss = 0
+        dirt = 0
+        wall_shadows = 0
+        broken_hints = 0
+        debris_clusters = 0
+        height = len(rows)
+        width = len(rows[0]) if rows else 0
+
+        for y in range(height):
+            for x in range(width):
+                primary = self._primary(rows[y][x])
+                if primary == "ruin_floor":
+                    floor_tiles += 1
+                    self._draw_ruin_floor(canvas=canvas, x=x, y=y, scale=scale, near_wall=self._touches_mask(wall_mask, x=x, y=y))
+                    if self._stable_mod("ruin-floor-crack", x, y, modulo=3) == 0:
+                        cracks += 1
+                        self._draw_ruin_crack(canvas=canvas, x=x, y=y, scale=scale)
+                    if self._touches_mask(wall_mask, x=x, y=y) and self._stable_mod("ruin-floor-moss", x, y, modulo=3) == 0:
+                        moss += 1
+                        self._draw_ruin_moss(canvas=canvas, x=x, y=y, scale=scale)
+                    if self._stable_mod("ruin-floor-dirt", x, y, modulo=5) == 0:
+                        dirt += 1
+                        self._draw_ruin_dirt(canvas=canvas, x=x, y=y, scale=scale)
                     continue
-                details += 1
-                if self._stable_mod("ruin-crack", x, y, modulo=2) == 0:
-                    canvas.blend_rect(
-                        x * scale + scale // 4,
-                        y * scale + scale // 3,
-                        max(1, scale // 2),
-                        max(1, scale // 5),
-                        self.BASE_COLORS["ruin_detail"],
-                        alpha=0.35,
-                    )
-        return {"ruin_details": details}
+
+                if primary == "ruin_wall":
+                    wall_tiles += 1
+                    connections = self._mask_connections(wall_mask, x=x, y=y)
+                    self._draw_ruin_wall_mass(canvas=canvas, x=x, y=y, scale=scale, connections=connections)
+                    wall_shadows += self._draw_ruin_wall_shadow(canvas=canvas, x=x, y=y, scale=scale, connections=connections)
+                    if self._stable_mod("ruin-wall-broken", x, y, modulo=3) == 0:
+                        broken_hints += 1
+                        self._draw_ruin_broken_hint(canvas=canvas, x=x, y=y, scale=scale, connections=connections)
+                    if self._stable_mod("ruin-wall-rubble", x, y, modulo=2) == 0:
+                        rubble += 1
+                        self._draw_ruin_rubble(canvas=canvas, x=x, y=y, scale=scale, on_wall=True)
+                    continue
+
+                if self._touches_mask(ruin_mask, x=x, y=y) and self._allows_ruin_debris(primary):
+                    if self._stable_mod("ruin-adjacent-rubble", x, y, modulo=3) == 0:
+                        rubble += 1
+                        debris_clusters += 1
+                        self._draw_ruin_rubble(canvas=canvas, x=x, y=y, scale=scale, on_wall=False)
+                    if self._stable_mod("ruin-adjacent-moss", x, y, modulo=5) == 0:
+                        moss += 1
+                        self._draw_ruin_moss(canvas=canvas, x=x, y=y, scale=scale)
+
+        return {
+            "ruin_details": floor_tiles + wall_tiles,
+            "ruin_floor_tiles": floor_tiles,
+            "ruin_wall_tiles": wall_tiles,
+            "ruin_floor_cracks": cracks,
+            "ruin_rubble": rubble,
+            "ruin_moss": moss,
+            "ruin_dirt": dirt,
+            "ruin_wall_shadows": wall_shadows,
+            "ruin_broken_hints": broken_hints,
+            "ruin_debris_clusters": debris_clusters,
+        }
+
+    def _draw_ruin_floor(self, *, canvas: _ArtCanvas, x: int, y: int, scale: int, near_wall: bool) -> None:
+        """Draw a muted irregular stone floor tile.
+
+        Args:
+            canvas: RGB canvas.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+            scale: Preview pixels per tile.
+            near_wall: Whether the tile is adjacent to a wall tile.
+        """
+        alpha = 0.36 if near_wall else 0.28
+        canvas.blend_rect(x * scale, y * scale, scale, scale, self.BASE_COLORS["ruin_floor_dark"], alpha=0.16)
+        if self._stable_mod("ruin-floor-light", x, y, modulo=2) == 0:
+            canvas.blend_rect(
+                x * scale + scale // 5,
+                y * scale + scale // 5,
+                max(2, scale * 3 // 5),
+                max(2, scale // 2),
+                self.BASE_COLORS["ruin_floor_light"],
+                alpha=alpha,
+            )
+
+    def _draw_ruin_wall_mass(
+        self,
+        *,
+        canvas: _ArtCanvas,
+        x: int,
+        y: int,
+        scale: int,
+        connections: dict[str, bool],
+    ) -> None:
+        """Draw a heavier broken wall mass inside a wall tile.
+
+        Args:
+            canvas: RGB canvas.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+            scale: Preview pixels per tile.
+            connections: Cardinal wall connections.
+        """
+        left = x * scale
+        top = y * scale
+        center = scale // 2
+        half = max(3, scale * 3 // 8)
+        color = self.BASE_COLORS["ruin_wall_dark"]
+        canvas.blend_rect(left + center - half, top + center - half, half * 2, half * 2, color, alpha=0.54)
+        if connections["N"]:
+            canvas.blend_rect(left + center - half, top, half * 2, center, color, alpha=0.48)
+        if connections["S"]:
+            canvas.blend_rect(left + center - half, top + center, half * 2, center, color, alpha=0.48)
+        if connections["W"]:
+            canvas.blend_rect(left, top + center - half, center, half * 2, color, alpha=0.48)
+        if connections["E"]:
+            canvas.blend_rect(left + center, top + center - half, center, half * 2, color, alpha=0.48)
+
+    def _draw_ruin_wall_shadow(
+        self,
+        *,
+        canvas: _ArtCanvas,
+        x: int,
+        y: int,
+        scale: int,
+        connections: dict[str, bool],
+    ) -> int:
+        """Draw subtle wall-base shadow into adjacent wall gaps.
+
+        Args:
+            canvas: RGB canvas.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+            scale: Preview pixels per tile.
+            connections: Cardinal wall connections.
+
+        Returns:
+            Number of shadow marks drawn.
+        """
+        marks = 0
+        left = x * scale
+        top = y * scale
+        shadow = self.BASE_COLORS["ruin_wall_shadow"]
+        if not connections["S"]:
+            marks += 1
+            canvas.blend_rect(left + scale // 5, top + scale * 2 // 3, scale * 3 // 5, max(1, scale // 5), shadow, alpha=0.34)
+        if not connections["E"] and self._stable_mod("ruin-shadow-east", x, y, modulo=2) == 0:
+            marks += 1
+            canvas.blend_rect(left + scale * 2 // 3, top + scale // 5, max(1, scale // 5), scale * 3 // 5, shadow, alpha=0.22)
+        return marks
+
+    def _draw_ruin_crack(self, *, canvas: _ArtCanvas, x: int, y: int, scale: int) -> None:
+        """Draw a short stone crack on ruin floor.
+
+        Args:
+            canvas: RGB canvas.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+            scale: Preview pixels per tile.
+        """
+        horizontal = self._stable_mod("ruin-crack-dir", x, y, modulo=2) == 0
+        width = max(2, scale // 2 if horizontal else scale // 5)
+        height = max(1, scale // 6 if horizontal else scale // 2)
+        offset_x = self._stable_mod("ruin-crack-x", x, y, modulo=max(1, scale - width))
+        offset_y = self._stable_mod("ruin-crack-y", y, x, modulo=max(1, scale - height))
+        canvas.blend_rect(x * scale + offset_x, y * scale + offset_y, width, height, self.BASE_COLORS["ruin_detail"], alpha=0.34)
+
+    def _draw_ruin_rubble(self, *, canvas: _ArtCanvas, x: int, y: int, scale: int, on_wall: bool) -> None:
+        """Draw a small deterministic rubble cluster.
+
+        Args:
+            canvas: RGB canvas.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+            scale: Preview pixels per tile.
+            on_wall: Whether the rubble belongs to a wall cell.
+        """
+        count = 3 if on_wall else 2
+        for index in range(count):
+            size = max(2, scale // (5 if on_wall else 6))
+            ox = self._stable_mod(f"ruin-rubble-x-{index}", x, y, modulo=max(1, scale - size))
+            oy = self._stable_mod(f"ruin-rubble-y-{index}", y, x, modulo=max(1, scale - size))
+            canvas.blend_rect(x * scale + ox, y * scale + oy, size, size, self.BASE_COLORS["ruin_rubble"], alpha=0.42)
+
+    def _draw_ruin_moss(self, *, canvas: _ArtCanvas, x: int, y: int, scale: int) -> None:
+        """Draw a muted moss patch near ruins.
+
+        Args:
+            canvas: RGB canvas.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+            scale: Preview pixels per tile.
+        """
+        width = max(2, scale // 2)
+        height = max(2, scale // 3)
+        ox = self._stable_mod("ruin-moss-x", x, y, modulo=max(1, scale - width))
+        oy = self._stable_mod("ruin-moss-y", y, x, modulo=max(1, scale - height))
+        canvas.blend_ellipse(
+            x * scale + ox + width // 2,
+            y * scale + oy + height // 2,
+            max(1, width // 2),
+            max(1, height // 2),
+            self.BASE_COLORS["ruin_moss"],
+            alpha=0.30,
+        )
+
+    def _draw_ruin_dirt(self, *, canvas: _ArtCanvas, x: int, y: int, scale: int) -> None:
+        """Draw a dirty floor patch on ruin tiles.
+
+        Args:
+            canvas: RGB canvas.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+            scale: Preview pixels per tile.
+        """
+        canvas.blend_ellipse(
+            x * scale + scale // 2,
+            y * scale + scale // 2,
+            max(2, scale // 3),
+            max(2, scale // 4),
+            self.BASE_COLORS["ruin_dirt"],
+            alpha=0.22,
+        )
+
+    def _draw_ruin_broken_hint(
+        self,
+        *,
+        canvas: _ArtCanvas,
+        x: int,
+        y: int,
+        scale: int,
+        connections: dict[str, bool],
+    ) -> None:
+        """Draw a small gap or highlight to break wall regularity.
+
+        Args:
+            canvas: RGB canvas.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+            scale: Preview pixels per tile.
+            connections: Cardinal wall connections.
+        """
+        del connections
+        width = max(2, scale // 3)
+        height = max(1, scale // 5)
+        ox = self._stable_mod("ruin-break-x", x, y, modulo=max(1, scale - width))
+        oy = self._stable_mod("ruin-break-y", y, x, modulo=max(1, scale - height))
+        canvas.blend_rect(x * scale + ox, y * scale + oy, width, height, self.BASE_COLORS["ruin_floor_light"], alpha=0.28)
+
+    def _allows_ruin_debris(self, primary: str) -> bool:
+        """Return whether adjacent terrain may receive visual-only ruin debris.
+
+        Args:
+            primary: Primary visual context.
+
+        Returns:
+            True when debris may be painted without implying a blocker.
+        """
+        return primary in {"clearing", "ruin_floor", "blocked_structure"}
 
     def _paint_water_details(
         self,
@@ -1460,6 +1715,15 @@ class PilotArtPreviewRenderer:
                 "road_dirt_noise": road_stats.get("road_dirt_noise", 0),
                 "road_grass_intrusions": road_stats.get("road_grass_intrusions", 0),
                 "ruin_details": ruin_stats.get("ruin_details", 0),
+                "ruin_floor_tiles": ruin_stats.get("ruin_floor_tiles", 0),
+                "ruin_wall_tiles": ruin_stats.get("ruin_wall_tiles", 0),
+                "ruin_floor_cracks": ruin_stats.get("ruin_floor_cracks", 0),
+                "ruin_rubble": ruin_stats.get("ruin_rubble", 0),
+                "ruin_moss": ruin_stats.get("ruin_moss", 0),
+                "ruin_dirt": ruin_stats.get("ruin_dirt", 0),
+                "ruin_wall_shadows": ruin_stats.get("ruin_wall_shadows", 0),
+                "ruin_broken_hints": ruin_stats.get("ruin_broken_hints", 0),
+                "ruin_debris_clusters": ruin_stats.get("ruin_debris_clusters", 0),
                 "water_details": water_stats.get("water_details", 0),
                 "water_region_bodies": water_stats.get("water_region_bodies", 0),
                 "water_regions_filled": water_stats.get("water_regions_filled", 0),
