@@ -1067,3 +1067,15 @@
 - Strengthened the pilot ruin painter as the final ruin-visual pass for this iteration.
 - Increased ruin floor and wall readability with stronger broken-stone masses, heavier rubble, moss, dirt, cracks, and wall-base shadows.
 - Mirrored the stronger ruin visual language in `visual_art_layers.json` while keeping gameplay geometry, collision, movement, runtime objects, and game renderers unchanged.
+
+## v0.2.42 -> v0.2.43
+
+- Added visual micro-scene layout export with semantic object slots for prepared scenes.
+- `--prepare-map` now writes `visual_micro_scene_layouts.json`, `visual_micro_scene_objects.json`, and layout reports.
+- Extended preparation reports and CLI summary with micro-scene layout/object counts while keeping gameplay geometry unchanged.
+
+## v0.2.43 -> v0.2.44
+
+- Fixed missing `visual_micro_scene_layout` module import in map preparation.
+- Added `VisualMicroSceneLayoutBuilder` output for layout and scene-object artifacts.
+- Restored `./p` execution after the micro-scene layout export step.
