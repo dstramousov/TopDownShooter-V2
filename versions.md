@@ -1031,3 +1031,9 @@
 - Refined pilot water rendering so water patches read as more cohesive puddle bodies instead of scattered blue cells.
 - Added broader soft muddy banks, stronger connected water-body fills, and larger but sparser reed clusters around water edges.
 - Extended pilot art preview reports with water-region body/fill counters while keeping tile geometry, collision, movement, and runtime renderers unchanged.
+
+## v0.2.36 -> v0.2.37
+
+- Tuned the pilot water painter to reduce blue speckle noise and keep puddles as calmer connected wet patches.
+- Strengthened soft muddy banks around water without changing logical water, movement, collision, or gameplay geometry.
+- Reworked reed clusters as sparse readable green-brown vegetation near water edges.
