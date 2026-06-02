@@ -547,8 +547,8 @@ class VisualArtLayerBuilder:
                         self._tile_element(
                             element_id=f"ruin_floor_{x:04d}_{y:04d}",
                             layer="base_ground",
-                            family="ruin_floor",
-                            kind="broken_stone_floor",
+                            family="ruin_floor_heavy",
+                            kind="strong_broken_stone_floor",
                             x=x,
                             y=y,
                             variant=self._stable_mod("ruin-floor", x, y, modulo=6),
@@ -556,7 +556,7 @@ class VisualArtLayerBuilder:
                             extra={"near_wall": near_wall},
                         ),
                     )
-                    if self._stable_mod("ruin-floor-crack", x, y, modulo=3) == 0:
+                    if self._stable_mod("ruin-floor-crack", x, y, modulo=2) == 0:
                         cracks += 1
                         layers.append(
                             self._tile_element(
@@ -567,10 +567,10 @@ class VisualArtLayerBuilder:
                                 x=x,
                                 y=y,
                                 variant=self._stable_mod("ruin-crack-var", x, y, modulo=4),
-                                alpha=0.34,
+                                alpha=0.44,
                             ),
                         )
-                    if near_wall and self._stable_mod("ruin-floor-moss", x, y, modulo=3) == 0:
+                    if near_wall and self._stable_mod("ruin-floor-moss", x, y, modulo=2) == 0:
                         moss += 1
                         layers.append(
                             self._tile_element(
@@ -581,10 +581,10 @@ class VisualArtLayerBuilder:
                                 x=x,
                                 y=y,
                                 variant=self._stable_mod("ruin-moss", x, y, modulo=5),
-                                alpha=0.30,
+                                alpha=0.42,
                             ),
                         )
-                    if self._stable_mod("ruin-floor-dirt", x, y, modulo=5) == 0:
+                    if self._stable_mod("ruin-floor-dirt", x, y, modulo=4) == 0:
                         dirt += 1
                         layers.append(
                             self._tile_element(
@@ -595,7 +595,7 @@ class VisualArtLayerBuilder:
                                 x=x,
                                 y=y,
                                 variant=self._stable_mod("ruin-dirt", x, y, modulo=4),
-                                alpha=0.22,
+                                alpha=0.32,
                             ),
                         )
                     continue
@@ -607,8 +607,8 @@ class VisualArtLayerBuilder:
                         self._tile_element(
                             element_id=f"ruin_wall_{x:04d}_{y:04d}",
                             layer="structures_and_blockers",
-                            family="ruin_wall_mass",
-                            kind="broken_wall_mass",
+                            family="ruin_wall_mass_heavy",
+                            kind="strong_broken_wall_mass",
                             x=x,
                             y=y,
                             variant=self._stable_mod("ruin-wall", x, y, modulo=6),
@@ -628,11 +628,11 @@ class VisualArtLayerBuilder:
                                 x=x,
                                 y=y,
                                 variant=self._stable_mod("ruin-shadow", x, y, modulo=4),
-                                alpha=0.30,
+                                alpha=0.44,
                                 extra={"connections": connections, "shadow_marks": shadow_marks},
                             ),
                         )
-                    if self._stable_mod("ruin-wall-broken", x, y, modulo=3) == 0:
+                    if self._stable_mod("ruin-wall-broken", x, y, modulo=2) == 0:
                         broken_hints += 1
                         layers.append(
                             self._tile_element(
@@ -643,10 +643,10 @@ class VisualArtLayerBuilder:
                                 x=x,
                                 y=y,
                                 variant=self._stable_mod("ruin-break", x, y, modulo=4),
-                                alpha=0.28,
+                                alpha=0.42,
                             ),
                         )
-                    if self._stable_mod("ruin-wall-rubble", x, y, modulo=2) == 0:
+                    if self._stable_mod("ruin-wall-rubble", x, y, modulo=1) == 0:
                         rubble += 1
                         layers.append(
                             self._tile_element(
@@ -657,13 +657,13 @@ class VisualArtLayerBuilder:
                                 x=x,
                                 y=y,
                                 variant=self._stable_mod("ruin-rubble", x, y, modulo=6),
-                                alpha=0.42,
+                                alpha=0.58,
                             ),
                         )
                     continue
 
                 if self._touches_mask(ruin_mask, x=x, y=y) and self._allows_ruin_debris(primary):
-                    if self._stable_mod("ruin-adjacent-rubble", x, y, modulo=3) == 0:
+                    if self._stable_mod("ruin-adjacent-rubble", x, y, modulo=2) == 0:
                         rubble += 1
                         debris_clusters += 1
                         layers.append(
@@ -675,10 +675,10 @@ class VisualArtLayerBuilder:
                                 x=x,
                                 y=y,
                                 variant=self._stable_mod("ruin-adj-rubble", x, y, modulo=6),
-                                alpha=0.34,
+                                alpha=0.46,
                             ),
                         )
-                    if self._stable_mod("ruin-adjacent-moss", x, y, modulo=5) == 0:
+                    if self._stable_mod("ruin-adjacent-moss", x, y, modulo=3) == 0:
                         moss += 1
                         layers.append(
                             self._tile_element(
@@ -689,7 +689,7 @@ class VisualArtLayerBuilder:
                                 x=x,
                                 y=y,
                                 variant=self._stable_mod("ruin-adj-moss", x, y, modulo=5),
-                                alpha=0.26,
+                                alpha=0.36,
                             ),
                         )
 

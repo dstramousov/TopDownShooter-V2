@@ -1061,3 +1061,9 @@
 - Added a pilot ruin painter pass so ruin floors and walls render as broken stone places instead of flat gray plan blocks.
 - Exported ruin floor cracks, wall shadows, rubble clusters, moss patches, dirt hints, and broken-wall hints into visual art layer JSON.
 - Kept the ruin painter visual-only: tile geometry, collision, movement, runtime objects, and game renderers remain unchanged.
+
+## v0.2.41 -> v0.2.42
+
+- Strengthened the pilot ruin painter as the final ruin-visual pass for this iteration.
+- Increased ruin floor and wall readability with stronger broken-stone masses, heavier rubble, moss, dirt, cracks, and wall-base shadows.
+- Mirrored the stronger ruin visual language in `visual_art_layers.json` while keeping gameplay geometry, collision, movement, runtime objects, and game renderers unchanged.

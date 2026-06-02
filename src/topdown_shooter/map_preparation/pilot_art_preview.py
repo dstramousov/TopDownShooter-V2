@@ -64,15 +64,15 @@ class PilotArtPreviewRenderer:
         "reed_dark": (68, 86, 45),
         "reed_tip": (154, 135, 74),
         "water_highlight": (79, 111, 110),
-        "ruin_floor": (92, 91, 84),
-        "ruin_floor_light": (112, 108, 96),
-        "ruin_floor_dark": (70, 68, 62),
-        "ruin_wall": (62, 62, 59),
-        "ruin_wall_dark": (43, 43, 40),
-        "ruin_wall_shadow": (37, 37, 34),
-        "ruin_rubble": (122, 116, 99),
-        "ruin_moss": (72, 92, 59),
-        "ruin_dirt": (79, 70, 54),
+        "ruin_floor": (102, 100, 91),
+        "ruin_floor_light": (134, 129, 112),
+        "ruin_floor_dark": (61, 59, 54),
+        "ruin_wall": (72, 72, 68),
+        "ruin_wall_dark": (34, 34, 31),
+        "ruin_wall_shadow": (24, 24, 22),
+        "ruin_rubble": (148, 140, 116),
+        "ruin_moss": (82, 111, 64),
+        "ruin_dirt": (105, 88, 61),
         "forest_deep": (19, 43, 30),
         "forest_mid": (28, 61, 38),
         "forest_light": (42, 83, 49),
@@ -507,8 +507,8 @@ class PilotArtPreviewRenderer:
         """
         if self._stable_mod("road-grass-skip", x, y, modulo=7) != 0:
             return 0
-        width = max(2, scale // 3)
-        height = max(1, scale // 5)
+        width = max(3, scale // 2)
+        height = max(2, scale // 4)
         offset_x = self._stable_mod("road-grass-x", x, y, modulo=max(1, scale - width))
         offset_y = self._stable_mod("road-grass-y", y, x, modulo=max(1, scale - height))
         canvas.blend_ellipse(
@@ -598,13 +598,13 @@ class PilotArtPreviewRenderer:
                 if primary == "ruin_floor":
                     floor_tiles += 1
                     self._draw_ruin_floor(canvas=canvas, x=x, y=y, scale=scale, near_wall=self._touches_mask(wall_mask, x=x, y=y))
-                    if self._stable_mod("ruin-floor-crack", x, y, modulo=3) == 0:
+                    if self._stable_mod("ruin-floor-crack", x, y, modulo=2) == 0:
                         cracks += 1
                         self._draw_ruin_crack(canvas=canvas, x=x, y=y, scale=scale)
-                    if self._touches_mask(wall_mask, x=x, y=y) and self._stable_mod("ruin-floor-moss", x, y, modulo=3) == 0:
+                    if self._touches_mask(wall_mask, x=x, y=y) and self._stable_mod("ruin-floor-moss", x, y, modulo=2) == 0:
                         moss += 1
                         self._draw_ruin_moss(canvas=canvas, x=x, y=y, scale=scale)
-                    if self._stable_mod("ruin-floor-dirt", x, y, modulo=5) == 0:
+                    if self._stable_mod("ruin-floor-dirt", x, y, modulo=4) == 0:
                         dirt += 1
                         self._draw_ruin_dirt(canvas=canvas, x=x, y=y, scale=scale)
                     continue
@@ -614,20 +614,20 @@ class PilotArtPreviewRenderer:
                     connections = self._mask_connections(wall_mask, x=x, y=y)
                     self._draw_ruin_wall_mass(canvas=canvas, x=x, y=y, scale=scale, connections=connections)
                     wall_shadows += self._draw_ruin_wall_shadow(canvas=canvas, x=x, y=y, scale=scale, connections=connections)
-                    if self._stable_mod("ruin-wall-broken", x, y, modulo=3) == 0:
+                    if self._stable_mod("ruin-wall-broken", x, y, modulo=2) == 0:
                         broken_hints += 1
                         self._draw_ruin_broken_hint(canvas=canvas, x=x, y=y, scale=scale, connections=connections)
-                    if self._stable_mod("ruin-wall-rubble", x, y, modulo=2) == 0:
+                    if self._stable_mod("ruin-wall-rubble", x, y, modulo=1) == 0:
                         rubble += 1
                         self._draw_ruin_rubble(canvas=canvas, x=x, y=y, scale=scale, on_wall=True)
                     continue
 
                 if self._touches_mask(ruin_mask, x=x, y=y) and self._allows_ruin_debris(primary):
-                    if self._stable_mod("ruin-adjacent-rubble", x, y, modulo=3) == 0:
+                    if self._stable_mod("ruin-adjacent-rubble", x, y, modulo=2) == 0:
                         rubble += 1
                         debris_clusters += 1
                         self._draw_ruin_rubble(canvas=canvas, x=x, y=y, scale=scale, on_wall=False)
-                    if self._stable_mod("ruin-adjacent-moss", x, y, modulo=5) == 0:
+                    if self._stable_mod("ruin-adjacent-moss", x, y, modulo=3) == 0:
                         moss += 1
                         self._draw_ruin_moss(canvas=canvas, x=x, y=y, scale=scale)
 
@@ -654,16 +654,35 @@ class PilotArtPreviewRenderer:
             scale: Preview pixels per tile.
             near_wall: Whether the tile is adjacent to a wall tile.
         """
-        alpha = 0.36 if near_wall else 0.28
-        canvas.blend_rect(x * scale, y * scale, scale, scale, self.BASE_COLORS["ruin_floor_dark"], alpha=0.16)
+        alpha = 0.48 if near_wall else 0.38
+        left = x * scale
+        top = y * scale
+        canvas.blend_rect(left, top, scale, scale, self.BASE_COLORS["ruin_floor_dark"], alpha=0.20)
+        canvas.blend_rect(
+            left + max(1, scale // 8),
+            top + max(1, scale // 8),
+            max(2, scale * 3 // 4),
+            max(2, scale * 3 // 4),
+            self.BASE_COLORS["ruin_floor"],
+            alpha=0.44,
+        )
         if self._stable_mod("ruin-floor-light", x, y, modulo=2) == 0:
             canvas.blend_rect(
-                x * scale + scale // 5,
-                y * scale + scale // 5,
+                left + scale // 5,
+                top + scale // 5,
                 max(2, scale * 3 // 5),
                 max(2, scale // 2),
                 self.BASE_COLORS["ruin_floor_light"],
                 alpha=alpha,
+            )
+        if near_wall:
+            canvas.blend_rect(
+                left,
+                top + scale * 3 // 4,
+                scale,
+                max(1, scale // 5),
+                self.BASE_COLORS["ruin_wall_shadow"],
+                alpha=0.18,
             )
 
     def _draw_ruin_wall_mass(
@@ -687,17 +706,25 @@ class PilotArtPreviewRenderer:
         left = x * scale
         top = y * scale
         center = scale // 2
-        half = max(3, scale * 3 // 8)
+        half = max(4, scale * 7 // 16)
         color = self.BASE_COLORS["ruin_wall_dark"]
-        canvas.blend_rect(left + center - half, top + center - half, half * 2, half * 2, color, alpha=0.54)
+        canvas.blend_rect(left + center - half, top + center - half, half * 2, half * 2, color, alpha=0.70)
+        canvas.blend_rect(
+            left + center - max(2, half * 2 // 3),
+            top + center - max(2, half * 2 // 3),
+            max(3, half * 4 // 3),
+            max(3, half * 4 // 3),
+            self.BASE_COLORS["ruin_wall"],
+            alpha=0.32,
+        )
         if connections["N"]:
-            canvas.blend_rect(left + center - half, top, half * 2, center, color, alpha=0.48)
+            canvas.blend_rect(left + center - half, top, half * 2, center, color, alpha=0.62)
         if connections["S"]:
-            canvas.blend_rect(left + center - half, top + center, half * 2, center, color, alpha=0.48)
+            canvas.blend_rect(left + center - half, top + center, half * 2, center, color, alpha=0.62)
         if connections["W"]:
-            canvas.blend_rect(left, top + center - half, center, half * 2, color, alpha=0.48)
+            canvas.blend_rect(left, top + center - half, center, half * 2, color, alpha=0.62)
         if connections["E"]:
-            canvas.blend_rect(left + center, top + center - half, center, half * 2, color, alpha=0.48)
+            canvas.blend_rect(left + center, top + center - half, center, half * 2, color, alpha=0.62)
 
     def _draw_ruin_wall_shadow(
         self,
@@ -726,7 +753,7 @@ class PilotArtPreviewRenderer:
         shadow = self.BASE_COLORS["ruin_wall_shadow"]
         if not connections["S"]:
             marks += 1
-            canvas.blend_rect(left + scale // 5, top + scale * 2 // 3, scale * 3 // 5, max(1, scale // 5), shadow, alpha=0.34)
+            canvas.blend_rect(left + scale // 5, top + scale * 2 // 3, scale * 3 // 5, max(1, scale // 5), shadow, alpha=0.44)
         if not connections["E"] and self._stable_mod("ruin-shadow-east", x, y, modulo=2) == 0:
             marks += 1
             canvas.blend_rect(left + scale * 2 // 3, top + scale // 5, max(1, scale // 5), scale * 3 // 5, shadow, alpha=0.22)
@@ -758,12 +785,12 @@ class PilotArtPreviewRenderer:
             scale: Preview pixels per tile.
             on_wall: Whether the rubble belongs to a wall cell.
         """
-        count = 3 if on_wall else 2
+        count = 5 if on_wall else 4
         for index in range(count):
-            size = max(2, scale // (5 if on_wall else 6))
+            size = max(2, scale // (4 if on_wall else 5))
             ox = self._stable_mod(f"ruin-rubble-x-{index}", x, y, modulo=max(1, scale - size))
             oy = self._stable_mod(f"ruin-rubble-y-{index}", y, x, modulo=max(1, scale - size))
-            canvas.blend_rect(x * scale + ox, y * scale + oy, size, size, self.BASE_COLORS["ruin_rubble"], alpha=0.42)
+            canvas.blend_rect(x * scale + ox, y * scale + oy, size, size, self.BASE_COLORS["ruin_rubble"], alpha=0.58)
 
     def _draw_ruin_moss(self, *, canvas: _ArtCanvas, x: int, y: int, scale: int) -> None:
         """Draw a muted moss patch near ruins.
@@ -774,8 +801,8 @@ class PilotArtPreviewRenderer:
             y: Tile Y coordinate.
             scale: Preview pixels per tile.
         """
-        width = max(2, scale // 2)
-        height = max(2, scale // 3)
+        width = max(3, scale * 2 // 3)
+        height = max(2, scale // 2)
         ox = self._stable_mod("ruin-moss-x", x, y, modulo=max(1, scale - width))
         oy = self._stable_mod("ruin-moss-y", y, x, modulo=max(1, scale - height))
         canvas.blend_ellipse(
@@ -784,7 +811,7 @@ class PilotArtPreviewRenderer:
             max(1, width // 2),
             max(1, height // 2),
             self.BASE_COLORS["ruin_moss"],
-            alpha=0.30,
+            alpha=0.42,
         )
 
     def _draw_ruin_dirt(self, *, canvas: _ArtCanvas, x: int, y: int, scale: int) -> None:
@@ -802,7 +829,7 @@ class PilotArtPreviewRenderer:
             max(2, scale // 3),
             max(2, scale // 4),
             self.BASE_COLORS["ruin_dirt"],
-            alpha=0.22,
+            alpha=0.32,
         )
 
     def _draw_ruin_broken_hint(
@@ -824,11 +851,11 @@ class PilotArtPreviewRenderer:
             connections: Cardinal wall connections.
         """
         del connections
-        width = max(2, scale // 3)
-        height = max(1, scale // 5)
+        width = max(3, scale // 2)
+        height = max(2, scale // 4)
         ox = self._stable_mod("ruin-break-x", x, y, modulo=max(1, scale - width))
         oy = self._stable_mod("ruin-break-y", y, x, modulo=max(1, scale - height))
-        canvas.blend_rect(x * scale + ox, y * scale + oy, width, height, self.BASE_COLORS["ruin_floor_light"], alpha=0.28)
+        canvas.blend_rect(x * scale + ox, y * scale + oy, width, height, self.BASE_COLORS["ruin_floor_light"], alpha=0.42)
 
     def _allows_ruin_debris(self, primary: str) -> bool:
         """Return whether adjacent terrain may receive visual-only ruin debris.
