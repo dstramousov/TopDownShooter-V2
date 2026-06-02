@@ -1079,3 +1079,16 @@
 - Fixed missing `visual_micro_scene_layout` module import in map preparation.
 - Added `VisualMicroSceneLayoutBuilder` output for layout and scene-object artifacts.
 - Restored `./p` execution after the micro-scene layout export step.
+
+
+## v0.2.44 -> v0.2.45
+
+- Added prepared visual runtime contract validation for generated visual-art and micro-scene JSON artifacts.
+- `--prepare-map` now writes `prepared_visual_runtime_contract_report.json` and `prepared_visual_runtime_contract_summary.txt`.
+- Extended preparation reports and CLI summary with runtime-contract status and element counts for renderer-facing prepared visual data.
+
+## v0.2.45 -> v0.2.46
+
+- Added `PreparedVisualLoader` and immutable runtime-facing data models for prepared visual map artifacts.
+- The loader reads `visual_art_layers.json`, `visual_art_objects.json`, `visual_art_chunks.json`, and visual micro-scene artifacts into a `PreparedVisualMap` structure.
+- Added defensive schema, contract, dimension, tile-bound, and required-field validation without changing map preparation output or gameplay behavior.

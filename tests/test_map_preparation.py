@@ -8,6 +8,7 @@ import pytest
 from topdown_shooter.app.cli import main
 from topdown_shooter.map_loading.package_loader import MapPackageLoader
 from topdown_shooter.map_preparation import MapPreparationService
+from topdown_shooter.prepared_visual import PreparedVisualLoader
 
 
 def _write_json(path: Path, data: object) -> None:
@@ -298,6 +299,14 @@ def test_map_preparation_copies_structured_and_visual_artifacts(tmp_path: Path) 
 
     copied_package = MapPackageLoader().load(output_dir)
     assert copied_package.structured_map is not None
+
+    prepared_visual = PreparedVisualLoader().load(output_dir)
+    assert prepared_visual.width_tiles == 4
+    assert prepared_visual.height_tiles == 1
+    assert prepared_visual.tile_size_px == 16
+    assert len(prepared_visual.layers) > 0
+    assert len(prepared_visual.chunks) > 0
+    assert prepared_visual.layers_by_name("base_ground")
 
 
 def test_cli_prepare_map_writes_summary(

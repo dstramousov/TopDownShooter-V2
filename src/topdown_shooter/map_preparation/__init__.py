@@ -40,6 +40,10 @@ from topdown_shooter.map_preparation.visual_micro_scene_layout import (
     VisualMicroSceneLayoutBuilder,
     VisualMicroSceneLayoutResult,
 )
+from topdown_shooter.map_preparation.visual_runtime_contract import (
+    PreparedVisualRuntimeContractResult,
+    PreparedVisualRuntimeContractValidator,
+)
 from topdown_shooter.map_preparation.visual_object_normalization import (
     VisualObjectNormalizationResult,
     VisualObjectNormalizer,
@@ -61,6 +65,8 @@ __all__ = [
     "PilotSceneOverlayResult",
     "PreparedVisualPreviewRenderer",
     "PreparedVisualPreviewResult",
+    "PreparedVisualRuntimeContractResult",
+    "PreparedVisualRuntimeContractValidator",
     "PreparedMapResult",
     "VisualArtLayerBuilder",
     "VisualArtLayerResult",

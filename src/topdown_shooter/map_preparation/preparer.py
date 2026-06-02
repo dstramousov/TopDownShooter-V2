@@ -47,6 +47,10 @@ from topdown_shooter.map_preparation.visual_micro_scene_layout import (
     VisualMicroSceneLayoutBuilder,
     VisualMicroSceneLayoutResult,
 )
+from topdown_shooter.map_preparation.visual_runtime_contract import (
+    PreparedVisualRuntimeContractResult,
+    PreparedVisualRuntimeContractValidator,
+)
 from topdown_shooter.map_preparation.visual_object_normalization import (
     VisualObjectNormalizationResult,
     VisualObjectNormalizer,
@@ -140,6 +144,8 @@ class MapPreparationService:
     VISUAL_MICRO_SCENE_OBJECTS_FILE = "visual_micro_scene_objects.json"
     VISUAL_MICRO_SCENE_LAYOUT_REPORT_FILE = "visual_micro_scene_layout_report.json"
     VISUAL_MICRO_SCENE_LAYOUT_SUMMARY_FILE = "visual_micro_scene_layout_summary.txt"
+    PREPARED_VISUAL_RUNTIME_CONTRACT_REPORT_FILE = "prepared_visual_runtime_contract_report.json"
+    PREPARED_VISUAL_RUNTIME_CONTRACT_SUMMARY_FILE = "prepared_visual_runtime_contract_summary.txt"
 
     def __init__(
         self,
@@ -158,6 +164,7 @@ class MapPreparationService:
         visual_art_layer_builder: VisualArtLayerBuilder | None = None,
         visual_micro_scene_exporter: VisualMicroSceneExporter | None = None,
         visual_micro_scene_layout_builder: VisualMicroSceneLayoutBuilder | None = None,
+        visual_runtime_contract_validator: PreparedVisualRuntimeContractValidator | None = None,
     ) -> None:
         """Initialize the preparation service.
 
@@ -180,6 +187,8 @@ class MapPreparationService:
             visual_micro_scene_exporter: Optional visual micro-scene exporter override for tests.
             visual_micro_scene_layout_builder: Optional visual micro-scene layout builder
                 override for tests.
+            visual_runtime_contract_validator: Optional prepared visual runtime contract
+                validator override for tests.
         """
         self._loader = loader or MapPackageLoader()
         self._runtime_builder = runtime_builder or RuntimeMapBuilder()
@@ -208,6 +217,9 @@ class MapPreparationService:
         )
         self._visual_micro_scene_layout_builder = (
             visual_micro_scene_layout_builder or VisualMicroSceneLayoutBuilder()
+        )
+        self._visual_runtime_contract_validator = (
+            visual_runtime_contract_validator or PreparedVisualRuntimeContractValidator()
         )
 
     def prepare(self, source_dir: Path, output_dir: Path) -> PreparedMapResult:
@@ -298,6 +310,19 @@ class MapPreparationService:
         visual_micro_scene_layout_result = self._visual_micro_scene_layout_builder.build(
             micro_scenes=visual_micro_scene_result.micro_scenes,
         )
+        visual_runtime_contract_result = self._visual_runtime_contract_validator.validate(
+            expected_dimensions={
+                "width_tiles": runtime_map.width_tiles,
+                "height_tiles": runtime_map.height_tiles,
+                "tile_size_px": runtime_map.tile_size_px,
+            },
+            visual_art_layers=visual_art_layer_result.visual_art_layers,
+            visual_art_objects=visual_art_layer_result.visual_art_objects,
+            visual_art_chunks=visual_art_layer_result.visual_art_chunks,
+            visual_micro_scenes=visual_micro_scene_result.micro_scenes,
+            visual_micro_scene_layouts=visual_micro_scene_layout_result.layouts,
+            visual_micro_scene_objects=visual_micro_scene_layout_result.scene_objects,
+        )
         generated_artifacts = self._write_visual_context_artifacts(
             output_dir=resolved_output_dir,
             result=visual_context_result,
@@ -368,6 +393,12 @@ class MapPreparationService:
                 result=visual_micro_scene_layout_result,
             ),
         )
+        generated_artifacts.extend(
+            self._write_visual_runtime_contract_artifacts(
+                output_dir=resolved_output_dir,
+                result=visual_runtime_contract_result,
+            ),
+        )
         report = self._build_preparation_report(
             package=package,
             runtime_map=runtime_map,
@@ -389,6 +420,7 @@ class MapPreparationService:
             visual_art_layers_report=visual_art_layer_result.art_report,
             visual_micro_scenes_report=visual_micro_scene_result.micro_scene_report,
             visual_micro_scene_layout_report=visual_micro_scene_layout_result.layout_report,
+            visual_runtime_contract_report=visual_runtime_contract_result.contract_report,
         )
         manifest = self._build_prepared_manifest(
             package=package,
@@ -457,6 +489,14 @@ class MapPreparationService:
         visual_micro_scene_counts = self._require_report_dict(visual_micro_scenes, "counts")
         micro_scene_layouts = self._require_report_dict(report, "visual_micro_scene_layouts")
         micro_scene_layout_counts = self._require_report_dict(micro_scene_layouts, "counts")
+        visual_runtime_contract = self._require_report_dict(
+            report,
+            "prepared_visual_runtime_contract",
+        )
+        visual_runtime_contract_counts = self._require_report_dict(
+            visual_runtime_contract,
+            "counts",
+        )
         quality_scenes = self._require_report_dict(visual_quality, "scene_ranking")
         quality_generic = self._require_report_dict(visual_quality, "generic_objects")
         family_generic = self._require_report_dict(visual_families, "generic_objects")
@@ -586,6 +626,13 @@ class MapPreparationService:
                     "- laid out scene objects: "
                     f"{micro_scene_layout_counts.get('layouts', 'unknown')} layouts / "
                     f"{micro_scene_layout_counts.get('scene_objects', 'unknown')} objects"
+                ),
+                f"- visual runtime contract: {visual_runtime_contract.get('status', 'unknown')}",
+                (
+                    "- visual runtime contract elements: "
+                    f"{visual_runtime_contract_counts.get('art_layer_elements', 'unknown')} layers / "
+                    f"{visual_runtime_contract_counts.get('art_objects', 'unknown')} objects / "
+                    f"{visual_runtime_contract_counts.get('micro_scenes', 'unknown')} scenes"
                 ),
                 f"- copied artifacts: {copied_count}",
                 f"- output: {output.get('path', 'unknown')}",
@@ -1055,6 +1102,36 @@ class MapPreparationService:
         )
         return artifacts
 
+    def _write_visual_runtime_contract_artifacts(
+        self,
+        *,
+        output_dir: Path,
+        result: PreparedVisualRuntimeContractResult,
+    ) -> list[str]:
+        """Write prepared visual runtime contract artifacts.
+
+        Args:
+            output_dir: Destination prepared-map directory.
+            result: Prepared visual runtime contract result.
+
+        Returns:
+            Generated relative artifact paths.
+        """
+        reports_dir = output_dir / self.REPORTS_DIR
+        artifacts = [
+            f"{self.REPORTS_DIR}/{self.PREPARED_VISUAL_RUNTIME_CONTRACT_REPORT_FILE}",
+            f"{self.REPORTS_DIR}/{self.PREPARED_VISUAL_RUNTIME_CONTRACT_SUMMARY_FILE}",
+        ]
+        self._write_json(
+            reports_dir / self.PREPARED_VISUAL_RUNTIME_CONTRACT_REPORT_FILE,
+            result.contract_report,
+        )
+        self._write_text(
+            reports_dir / self.PREPARED_VISUAL_RUNTIME_CONTRACT_SUMMARY_FILE,
+            result.contract_summary,
+        )
+        return artifacts
+
     def _write_visual_quality_artifacts(
         self,
         *,
@@ -1221,6 +1298,7 @@ class MapPreparationService:
         visual_art_layers_report: dict[str, Any],
         visual_micro_scenes_report: dict[str, Any],
         visual_micro_scene_layout_report: dict[str, Any],
+        visual_runtime_contract_report: dict[str, Any],
     ) -> dict[str, Any]:
         """Build the preparation report dictionary.
 
@@ -1243,6 +1321,7 @@ class MapPreparationService:
             visual_art_layers_report: Visual art layer export report.
             visual_micro_scenes_report: Visual micro-scene export report.
             visual_micro_scene_layout_report: Visual micro-scene layout report.
+            visual_runtime_contract_report: Prepared visual runtime contract report.
 
         Returns:
             Preparation report dictionary.
@@ -1335,6 +1414,13 @@ class MapPreparationService:
                 str(visual_micro_scene_layout_report.get("status", "failed")),
                 "Visual micro-scene layouts must assign scene objects to semantic slots.",
             ),
+            self._check(
+                "prepared_visual_runtime_contract",
+                self._status_to_check_status(
+                    str(visual_runtime_contract_report.get("status", "failed")),
+                ),
+                "Prepared visual runtime contract must validate renderer-facing JSON artifacts.",
+            ),
         ]
         status = self._build_overall_status(checks)
         report_path = output_dir / self.REPORTS_DIR / self.PREPARATION_REPORT_FILE
@@ -1381,6 +1467,7 @@ class MapPreparationService:
             "visual_art_layers": visual_art_layers_report,
             "visual_micro_scenes": visual_micro_scenes_report,
             "visual_micro_scene_layouts": visual_micro_scene_layout_report,
+            "prepared_visual_runtime_contract": visual_runtime_contract_report,
             "checks": checks,
             "output": {
                 "path": str(output_dir),
@@ -1473,6 +1560,19 @@ class MapPreparationService:
             Check dictionary.
         """
         return {"code": code, "status": status, "message": message}
+
+    def _status_to_check_status(self, status: str) -> str:
+        """Map component status to preparation check status.
+
+        Args:
+            status: Component status.
+
+        Returns:
+            Preparation check status.
+        """
+        if status == "ok":
+            return "passed"
+        return status
 
     def _build_overall_status(self, checks: list[dict[str, str]]) -> str:
         """Build an overall report status from checks.
