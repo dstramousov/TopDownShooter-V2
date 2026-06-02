@@ -1,1 +1,1 @@
-python3 res/map_3d_viewer.py  ../TopDownMapGen/out/tactical_map.json
+python3 res/map_3d_viewer.py  ../TopDownMapGen/output/tactical_map.json

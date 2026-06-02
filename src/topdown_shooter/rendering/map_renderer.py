@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Any
 
 from topdown_shooter.config.runtime_config import WindowConfig
 from topdown_shooter.rendering.camera import RuntimeCamera
+from topdown_shooter.prepared_visual import PreparedVisualMap
 from topdown_shooter.rendering.colors import build_tile_palette
+from topdown_shooter.rendering.prepared_visual_debug_renderer import (
+    PreparedVisualDebugRenderer,
+)
 from topdown_shooter.world.coordinates import TileCoord
 from topdown_shooter.world.runtime_map import RuntimeMap, RuntimeMapObject
 
@@ -29,18 +34,137 @@ class RenderStats:
     total_tiles: int
 
 
+
+@dataclass(frozen=True, slots=True)
+class _StaticTerrainCacheKey:
+    """Identity of a static terrain cache."""
+
+    width_tiles: int
+    height_tiles: int
+    tile_size_px: int
+
+    @classmethod
+    def from_runtime_map(cls, runtime_map: RuntimeMap) -> "_StaticTerrainCacheKey":
+        """Build a cache key from immutable terrain dimensions."""
+        return cls(
+            width_tiles=runtime_map.width_tiles,
+            height_tiles=runtime_map.height_tiles,
+            tile_size_px=runtime_map.tile_size_px,
+        )
+
+
+@dataclass(slots=True)
+class _StaticTerrainCache:
+    """Cached render texture containing immutable base terrain tiles."""
+
+    key: _StaticTerrainCacheKey
+    render_texture: Any
+    width_px: int
+    height_px: int
+    unloaded: bool = False
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        raylib: object,
+        runtime_map: RuntimeMap,
+        palette: dict[str, object],
+        fallback_color: object,
+        key: _StaticTerrainCacheKey,
+    ) -> "_StaticTerrainCache":
+        """Build a render texture for static terrain tiles."""
+        width_px = runtime_map.width_tiles * runtime_map.tile_size_px
+        height_px = runtime_map.height_tiles * runtime_map.tile_size_px
+        render_texture = raylib.load_render_texture(width_px, height_px)
+        raylib.begin_texture_mode(render_texture)
+        try:
+            raylib.clear_background(raylib.BLACK)
+            tile_size = runtime_map.tile_size_px
+            for y, row in enumerate(runtime_map.tiles):
+                for x, tile in enumerate(row):
+                    color = palette.get(tile.symbol, fallback_color)
+                    raylib.draw_rectangle(
+                        x * tile_size,
+                        y * tile_size,
+                        tile_size,
+                        tile_size,
+                        color,
+                    )
+        finally:
+            raylib.end_texture_mode()
+        return cls(
+            key=key,
+            render_texture=render_texture,
+            width_px=width_px,
+            height_px=height_px,
+        )
+
+    def draw(self, raylib: object) -> None:
+        """Draw the cached terrain texture in world coordinates."""
+        texture = self.render_texture.texture
+        source = raylib.Rectangle(
+            0.0,
+            0.0,
+            float(self.width_px),
+            -float(self.height_px),
+        )
+        destination = raylib.Rectangle(
+            0.0,
+            0.0,
+            float(self.width_px),
+            float(self.height_px),
+        )
+        origin = raylib.Vector2(0.0, 0.0)
+        raylib.draw_texture_pro(texture, source, destination, origin, 0.0, raylib.WHITE)
+
+    def unload(self, raylib: object) -> None:
+        """Unload the cached render texture once."""
+        if self.unloaded:
+            return
+        try:
+            raylib.unload_render_texture(self.render_texture)
+        except (AttributeError, TypeError, ValueError, RuntimeError):
+            return
+        self.unloaded = True
+
+
 class MapRenderer:
     """Draw runtime maps with raylib primitives."""
 
-    def __init__(self, raylib: object) -> None:
+    def __init__(
+        self,
+        raylib: object,
+        prepared_visual_map: PreparedVisualMap | None = None,
+    ) -> None:
         """Initialize the renderer.
 
         Args:
             raylib: Imported pyray module.
+            prepared_visual_map: Optional prepared visual data for debug rendering.
         """
         self._raylib = raylib
         self._palette = build_tile_palette(raylib)
         self._fallback_color = raylib.MAGENTA
+        self._static_terrain_cache: _StaticTerrainCache | None = None
+        self._prepared_visual_map = prepared_visual_map
+        self._prepared_visual_renderer = (
+            PreparedVisualDebugRenderer(raylib) if prepared_visual_map is not None else None
+        )
+
+    def prepare_frame_static_caches(self) -> None:
+        """Prepare optional static render caches before entering camera mode."""
+        if self._prepared_visual_map is not None and self._prepared_visual_renderer is not None:
+            self._prepared_visual_renderer.ensure_static_cache(self._prepared_visual_map)
+
+    def unload(self) -> None:
+        """Unload optional renderer-owned raylib resources."""
+        cache = self._static_terrain_cache
+        if cache is not None:
+            cache.unload(self._raylib)
+            self._static_terrain_cache = None
+        if self._prepared_visual_renderer is not None:
+            self._prepared_visual_renderer.unload()
 
     def draw(
         self,
@@ -60,26 +184,31 @@ class MapRenderer:
         Returns:
             Per-frame rendering statistics.
         """
-        tile_size = runtime_map.tile_size_px
+        if self._prepared_visual_map is not None and self._prepared_visual_renderer is not None:
+            visual_stats = self._prepared_visual_renderer.draw(
+                prepared_visual_map=self._prepared_visual_map,
+                camera=camera,
+                window_config=window_config,
+                consumed_runtime_object_ids=consumed_runtime_object_ids,
+            )
+            return RenderStats(
+                visible_tiles=visual_stats.visible_tiles,
+                drawn_tiles=visual_stats.drawn_layer_elements + visual_stats.drawn_object_elements,
+                total_tiles=runtime_map.width_tiles * runtime_map.height_tiles,
+            )
+
         min_x, max_x, min_y, max_y = self._calculate_visible_tile_bounds(
             runtime_map=runtime_map,
             camera=camera,
             window_config=window_config,
         )
-        drawn_tiles = 0
-        for y in range(min_y, max_y):
-            row = runtime_map.tiles[y]
-            for x in range(min_x, max_x):
-                tile = row[x]
-                color = self._palette.get(tile.symbol, self._fallback_color)
-                self._raylib.draw_rectangle(
-                    x * tile_size,
-                    y * tile_size,
-                    tile_size,
-                    tile_size,
-                    color,
-                )
-                drawn_tiles += 1
+        drawn_tiles = self._draw_static_terrain(
+            runtime_map=runtime_map,
+            min_x=min_x,
+            max_x=max_x,
+            min_y=min_y,
+            max_y=max_y,
+        )
 
         self._draw_runtime_objects(
             runtime_map=runtime_map,
@@ -96,6 +225,93 @@ class MapRenderer:
             drawn_tiles=drawn_tiles,
             total_tiles=total_tiles,
         )
+
+
+    def _draw_static_terrain(
+        self,
+        *,
+        runtime_map: RuntimeMap,
+        min_x: int,
+        max_x: int,
+        min_y: int,
+        max_y: int,
+    ) -> int:
+        """Draw the static tile terrain, using a render-texture cache when available.
+
+        Args:
+            runtime_map: Runtime map to draw.
+            min_x: Inclusive visible minimum X tile.
+            max_x: Exclusive visible maximum X tile.
+            min_y: Inclusive visible minimum Y tile.
+            max_y: Exclusive visible maximum Y tile.
+
+        Returns:
+            Number of visible tiles represented by the terrain draw.
+        """
+        visible_tiles = max(0, max_x - min_x) * max(0, max_y - min_y)
+        cache = self._get_or_build_static_terrain_cache(runtime_map)
+        if cache is not None:
+            cache.draw(self._raylib)
+            return visible_tiles
+        return self._draw_visible_tile_primitives(
+            runtime_map=runtime_map,
+            min_x=min_x,
+            max_x=max_x,
+            min_y=min_y,
+            max_y=max_y,
+        )
+
+    def _draw_visible_tile_primitives(
+        self,
+        *,
+        runtime_map: RuntimeMap,
+        min_x: int,
+        max_x: int,
+        min_y: int,
+        max_y: int,
+    ) -> int:
+        """Draw visible tile primitives without using the static terrain cache."""
+        tile_size = runtime_map.tile_size_px
+        drawn_tiles = 0
+        for y in range(min_y, max_y):
+            row = runtime_map.tiles[y]
+            for x in range(min_x, max_x):
+                tile = row[x]
+                color = self._palette.get(tile.symbol, self._fallback_color)
+                self._raylib.draw_rectangle(
+                    x * tile_size,
+                    y * tile_size,
+                    tile_size,
+                    tile_size,
+                    color,
+                )
+                drawn_tiles += 1
+        return drawn_tiles
+
+    def _get_or_build_static_terrain_cache(
+        self,
+        runtime_map: RuntimeMap,
+    ) -> "_StaticTerrainCache | None":
+        """Return a render-texture cache for static terrain when raylib supports it."""
+        cache_key = _StaticTerrainCacheKey.from_runtime_map(runtime_map)
+        cache = self._static_terrain_cache
+        if cache is not None and cache.key == cache_key:
+            return cache
+        if cache is not None:
+            cache.unload(self._raylib)
+            self._static_terrain_cache = None
+        try:
+            cache = _StaticTerrainCache.build(
+                raylib=self._raylib,
+                runtime_map=runtime_map,
+                palette=self._palette,
+                fallback_color=self._fallback_color,
+                key=cache_key,
+            )
+        except (AttributeError, TypeError, ValueError, RuntimeError):
+            return None
+        self._static_terrain_cache = cache
+        return cache
 
     def _draw_runtime_objects(
         self,

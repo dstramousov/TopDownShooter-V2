@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from topdown_shooter.diagnostics.frame_profiler import FrameProfilerConfig
+
 
 class RuntimeConfigError(RuntimeError):
     """Raised when runtime configuration cannot be loaded."""
@@ -29,6 +31,22 @@ class WindowConfig:
     screen_margin_px: int = 100
     width: int = 0
     height: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class PresentationConfig:
+    """Presentation timing settings.
+
+    Attributes:
+        mode: Frame pacing mode: target_fps, uncapped, or vsync.
+        disable_driver_vsync: Whether to set common driver environment flags
+            that disable implicit OpenGL vblank synchronization.
+        max_queued_frames: Requested maximum queued frames for drivers that support it.
+    """
+
+    mode: str
+    disable_driver_vsync: bool
+    max_queued_frames: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,6 +271,7 @@ class EnemyConfig:
         path_target_rebuild_distance_px: Player movement distance that forces path rebuild.
         path_max_iterations: Maximum A* iterations per enemy path query.
         path_max_rebuilds_per_frame: Maximum enemy A* path rebuilds allowed per update.
+        path_failed_rebuild_backoff_seconds: Delay after a failed path query before retrying.
         path_waypoint_reach_distance_px: Distance used to advance enemy path waypoints.
         draw_enemy_paths: Whether debug enemy A* paths are drawn.
         max_debug_enemy_paths: Maximum enemy A* paths drawn per frame. Zero disables them.
@@ -319,6 +338,7 @@ class EnemyConfig:
     path_target_rebuild_distance_px: float
     path_max_iterations: int
     path_max_rebuilds_per_frame: int
+    path_failed_rebuild_backoff_seconds: float
     path_waypoint_reach_distance_px: float
     draw_enemy_paths: bool
     max_debug_enemy_paths: int
@@ -342,6 +362,52 @@ class EnemyConfig:
     fire_max_distance_px: float
     fire_muzzle_offset_px: float
     fire_aim_error_degrees: float
+
+
+@dataclass(frozen=True, slots=True)
+class EnemyTypeSpawnConfig:
+    """Weighted enemy type entry for zone-driven spawn.
+
+    Attributes:
+        type_id: Stable enemy type identifier used for diagnostics.
+        role: Runtime tactical role assigned to spawned enemies.
+        weapon_id: Initial weapon id assigned to this enemy type.
+        weight: Relative deterministic selection weight.
+    """
+
+    type_id: str
+    role: str
+    weapon_id: str
+    weight: float
+
+
+@dataclass(frozen=True, slots=True)
+class EnemySpawnConfig:
+    """Zone-driven enemy spawn selection settings.
+
+    Attributes:
+        enabled: Whether zone-driven spawn selection may return candidates.
+        min_distance_from_player_tiles: Minimum spawn distance from player.
+        max_distance_from_player_tiles: Maximum spawn distance from player.
+        avoid_player_line_of_sight: Whether visible tiles are filtered out.
+        max_alive_enemies: Global alive-enemy cap used by spawn selection.
+        initial_spawn_count: Number of enemies created at map startup from zones.
+        spawn_cooldown_seconds: Minimum time between future spawn attempts.
+        group_size_min: Minimum zone-driven startup group size.
+        group_size_max: Maximum zone-driven startup group size.
+        enemy_types: Weighted type mix used by zone-driven startup spawn.
+    """
+
+    enabled: bool
+    min_distance_from_player_tiles: float
+    max_distance_from_player_tiles: float
+    avoid_player_line_of_sight: bool
+    max_alive_enemies: int
+    initial_spawn_count: int
+    spawn_cooldown_seconds: float
+    group_size_min: int
+    group_size_max: int
+    enemy_types: tuple[EnemyTypeSpawnConfig, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -670,29 +736,35 @@ class RuntimeConfig:
     Attributes:
         window: Window settings.
         camera: Camera settings.
+        presentation: Presentation timing settings.
         player: Player display settings.
         aim_debug: Aim debug display settings.
         weapons: Weapon database settings.
         projectile_impacts: Projectile impact marker settings.
         shell_ejection: Shell casing ejection visual settings.
         enemies: Enemy marker display settings.
+        enemy_spawn: Zone-driven enemy spawn selection settings.
         ui: Shared UI display settings.
         hud: Player HUD display settings.
         render3d: Experimental 3D renderer settings.
+        frame_profiler: Interactive runtime frame profiler settings.
         controls: Control bindings.
     """
 
     window: WindowConfig
     camera: CameraConfig
+    presentation: PresentationConfig
     player: PlayerConfig
     aim_debug: AimDebugConfig
     weapons: WeaponsConfig
     projectile_impacts: ProjectileImpactConfig
     shell_ejection: ShellEjectionConfig
     enemies: EnemyConfig
+    enemy_spawn: EnemySpawnConfig
     ui: UiConfig
     hud: HudConfig
     render3d: Render3DConfig
+    frame_profiler: FrameProfilerConfig
     controls: ControlsConfig
 
 
@@ -746,15 +818,18 @@ class RuntimeConfigLoader:
         """
         window = self._require_dict(raw_config, "window")
         camera = self._require_dict(raw_config, "camera")
+        presentation = self._require_dict(raw_config, "presentation")
         player = self._require_dict(raw_config, "player")
         aim_debug = self._require_dict(raw_config, "aim_debug")
         weapons = self._require_dict(raw_config, "weapons")
         projectile_impacts = self._require_dict(raw_config, "projectile_impacts")
         shell_ejection = self._require_dict(raw_config, "shell_ejection")
         enemies = self._require_dict(raw_config, "enemies")
+        enemy_spawn = self._require_dict(raw_config, "enemy_spawn")
         ui = self._require_dict(raw_config, "ui")
         hud = self._require_dict(raw_config, "hud")
         render3d = self._require_dict(raw_config, "render3d")
+        frame_profiler = self._require_dict(raw_config, "frame_profiler")
         controls = self._require_dict(raw_config, "controls")
         return RuntimeConfig(
             window=WindowConfig(
@@ -766,6 +841,17 @@ class RuntimeConfigLoader:
                 ),
             ),
             camera=self._build_camera_config(camera),
+            presentation=PresentationConfig(
+                mode=self._require_presentation_mode(presentation, "mode"),
+                disable_driver_vsync=self._require_bool(
+                    presentation,
+                    "disable_driver_vsync",
+                ),
+                max_queued_frames=self._require_positive_int(
+                    presentation,
+                    "max_queued_frames",
+                ),
+            ),
             player=PlayerConfig(
                 marker_radius_px=self._require_positive_int(player, "marker_radius_px"),
                 movement_speed_px_per_second=self._require_positive_float(
@@ -967,6 +1053,10 @@ class RuntimeConfigLoader:
                     enemies,
                     "path_max_rebuilds_per_frame",
                 ),
+                path_failed_rebuild_backoff_seconds=self._require_non_negative_float(
+                    enemies,
+                    "path_failed_rebuild_backoff_seconds",
+                ),
                 path_waypoint_reach_distance_px=self._require_non_negative_float(
                     enemies,
                     "path_waypoint_reach_distance_px",
@@ -1053,6 +1143,7 @@ class RuntimeConfigLoader:
                     "fire_aim_error_degrees",
                 ),
             ),
+            enemy_spawn=self._build_enemy_spawn_config(enemy_spawn),
             ui=UiConfig(
                 font_path=self._require_str(ui, "font_path"),
                 font_spacing=self._require_non_negative_float(ui, "font_spacing"),
@@ -1074,6 +1165,22 @@ class RuntimeConfigLoader:
                 background_alpha=self._require_alpha(hud, "background_alpha"),
             ),
             render3d=self._build_render3d_config(render3d),
+            frame_profiler=FrameProfilerConfig(
+                enabled=self._require_bool(frame_profiler, "enabled"),
+                log_interval_seconds=self._require_positive_float(
+                    frame_profiler,
+                    "log_interval_seconds",
+                ),
+                slow_frame_threshold_ms=self._require_positive_float(
+                    frame_profiler,
+                    "slow_frame_threshold_ms",
+                ),
+                draw_overlay=self._require_bool(frame_profiler, "draw_overlay"),
+                sample_window_size=self._require_positive_int(
+                    frame_profiler,
+                    "sample_window_size",
+                ),
+            ),
             controls=ControlsConfig(
                 quit=self._require_str(controls, "quit"),
                 help=self._require_str(controls, "help"),
@@ -1102,6 +1209,102 @@ class RuntimeConfigLoader:
                 interact=self._require_str(controls, "interact"),
             ),
         )
+
+    def _build_enemy_spawn_config(self, enemy_spawn: dict[str, Any]) -> EnemySpawnConfig:
+        """Build typed zone-driven spawn selection config from raw data.
+
+        Args:
+            enemy_spawn: Raw spawn selection configuration dictionary.
+
+        Returns:
+            Zone-driven enemy spawn selection configuration.
+        """
+        min_distance = self._require_non_negative_float(
+            enemy_spawn,
+            "min_distance_from_player_tiles",
+        )
+        max_distance = self._require_non_negative_float(
+            enemy_spawn,
+            "max_distance_from_player_tiles",
+        )
+        if max_distance > 0.0 and min_distance > max_distance:
+            raise RuntimeConfigError(
+                "Runtime config enemy spawn distance range is invalid.",
+            )
+        group_size_min = self._require_positive_int(enemy_spawn, "group_size_min")
+        group_size_max = self._require_positive_int(enemy_spawn, "group_size_max")
+        if group_size_min > group_size_max:
+            raise RuntimeConfigError(
+                "Runtime config enemy spawn group size range is invalid.",
+            )
+        return EnemySpawnConfig(
+            enabled=self._require_bool(enemy_spawn, "enabled"),
+            min_distance_from_player_tiles=min_distance,
+            max_distance_from_player_tiles=max_distance,
+            avoid_player_line_of_sight=self._require_bool(
+                enemy_spawn,
+                "avoid_player_line_of_sight",
+            ),
+            max_alive_enemies=self._require_non_negative_int(
+                enemy_spawn,
+                "max_alive_enemies",
+            ),
+            initial_spawn_count=self._require_non_negative_int(
+                enemy_spawn,
+                "initial_spawn_count",
+            ),
+            spawn_cooldown_seconds=self._require_non_negative_float(
+                enemy_spawn,
+                "spawn_cooldown_seconds",
+            ),
+            group_size_min=group_size_min,
+            group_size_max=group_size_max,
+            enemy_types=self._build_enemy_type_spawn_configs(enemy_spawn),
+        )
+
+    def _build_enemy_type_spawn_configs(
+        self,
+        enemy_spawn: dict[str, Any],
+    ) -> tuple[EnemyTypeSpawnConfig, ...]:
+        """Build weighted zone-driven enemy type entries.
+
+        Args:
+            enemy_spawn: Raw spawn selection configuration dictionary.
+
+        Returns:
+            Non-empty tuple of weighted enemy type entries.
+        """
+        raw_types = enemy_spawn.get("enemy_types")
+        if raw_types is None:
+            return (
+                EnemyTypeSpawnConfig(
+                    type_id="rifleman",
+                    role="rifleman",
+                    weapon_id="ak47",
+                    weight=1.0,
+                ),
+            )
+        if not isinstance(raw_types, list) or not raw_types:
+            raise RuntimeConfigError(
+                "Runtime config enemy_spawn.enemy_types must be a non-empty list.",
+            )
+
+        result: list[EnemyTypeSpawnConfig] = []
+        for index, raw_type in enumerate(raw_types):
+            if not isinstance(raw_type, dict):
+                raise RuntimeConfigError(
+                    "Runtime config enemy_spawn.enemy_types entries must be objects.",
+                )
+            result.append(
+                EnemyTypeSpawnConfig(
+                    type_id=self._require_str(raw_type, "type_id"),
+                    role=self._require_str(raw_type, "role"),
+                    weapon_id=self._require_str(raw_type, "weapon_id"),
+                    weight=self._require_positive_float(raw_type, "weight"),
+                ),
+            )
+        return tuple(result)
+
 
     def _build_render3d_config(self, render3d: dict[str, Any]) -> Render3DConfig:
         """Build typed experimental 3D renderer config from raw data.
@@ -1441,6 +1644,25 @@ class RuntimeConfigLoader:
             raise RuntimeConfigError(
                 "Runtime config field "
                 f"'{field}' must be less than or equal to 255.",
+            )
+        return value
+
+
+    def _require_presentation_mode(self, data: dict[str, Any], field: str) -> str:
+        """Return a validated presentation timing mode.
+
+        Args:
+            data: Source dictionary.
+            field: Field name.
+
+        Returns:
+            Presentation timing mode.
+        """
+        value = self._require_str(data, field)
+        allowed = {"target_fps", "uncapped", "vsync"}
+        if value not in allowed:
+            raise RuntimeConfigError(
+                f"Runtime config presentation mode is invalid: {field}",
             )
         return value
 

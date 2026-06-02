@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+rm -Rf ./prepared_map/*
 set -u
 
 # Comma-separated extensions to delete.

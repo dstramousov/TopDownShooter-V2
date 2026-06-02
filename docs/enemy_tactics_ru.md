@@ -162,7 +162,8 @@ enemy_spawn_zone
 - путь не перестраивается каждый кадр;
 - перестроение зависит от `path_rebuild_interval_seconds` и смещения цели `path_target_rebuild_distance_px`;
 - есть лимит `path_max_iterations`;
-- есть per-frame лимит `path_max_rebuilds_per_frame`, чтобы массовый alert не запускал десятки A* в одном кадре.
+- есть per-frame лимит `path_max_rebuilds_per_frame`, чтобы массовый alert не запускал десятки A* в одном кадре;
+- после failed path-query используется `path_failed_rebuild_backoff_seconds`, чтобы не повторять дорогой поиск каждый кадр.
 
 Враг двигается к текущему waypoint. Когда он достаточно близко к нему, waypoint считается достигнутым. Это расстояние задаётся `path_waypoint_reach_distance_px`.
 

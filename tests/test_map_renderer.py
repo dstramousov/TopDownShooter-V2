@@ -54,6 +54,80 @@ class FakeRaylib:
         self.outlines.append((x, y, width, height, color))
 
 
+
+class FakeCachedRaylib(FakeRaylib):
+    """Raylib substitute with render-texture support."""
+
+    BLACK = "black"
+    WHITE = "white"
+
+    def __init__(self) -> None:
+        """Initialize cached-renderer draw recording."""
+        super().__init__()
+        self.texture_rectangles: list[tuple[int, int, int, int, object]] = []
+        self.texture_draws = 0
+        self.unloaded_textures = 0
+        self._in_texture_mode = False
+
+    class _RenderTexture:
+        """Small fake render-texture object."""
+
+        def __init__(self) -> None:
+            """Initialize fake texture payload."""
+            self.texture = object()
+
+    def load_render_texture(self, width: int, height: int) -> object:
+        """Return a fake render texture."""
+        return self._RenderTexture()
+
+    def begin_texture_mode(self, render_texture: object) -> None:
+        """Start recording static terrain tile draws."""
+        self._in_texture_mode = True
+
+    def end_texture_mode(self) -> None:
+        """Stop recording static terrain tile draws."""
+        self._in_texture_mode = False
+
+    def clear_background(self, color: object) -> None:
+        """Accept clear calls for fake render textures."""
+
+    def Rectangle(
+        self,
+        x: float,
+        y: float,
+        width: float,
+        height: float,
+    ) -> tuple[float, float, float, float]:
+        """Build a fake rectangle value."""
+        return x, y, width, height
+
+    def Vector2(self, x: float, y: float) -> tuple[float, float]:
+        """Build a fake vector value."""
+        return x, y
+
+    def draw_texture_pro(
+        self,
+        texture: object,
+        source: object,
+        destination: object,
+        origin: object,
+        rotation: float,
+        tint: object,
+    ) -> None:
+        """Record a cached texture draw."""
+        self.texture_draws += 1
+
+    def unload_render_texture(self, render_texture: object) -> None:
+        """Record render texture unloading."""
+        self.unloaded_textures += 1
+
+    def draw_rectangle(self, x: int, y: int, width: int, height: int, color: object) -> None:
+        """Record rectangle draw calls, separating texture and frame draws."""
+        if self._in_texture_mode:
+            self.texture_rectangles.append((x, y, width, height, color))
+            return
+        super().draw_rectangle(x, y, width, height, color)
+
 def _build_runtime_map(
     width: int,
     height: int,
@@ -177,3 +251,31 @@ def test_map_renderer_draws_distinct_placeholders_for_current_runtime_object_typ
 
         object_rectangle_count = len(raylib.rectangles) - stats.drawn_tiles
         assert object_rectangle_count > len(runtime_object.footprint), object_type
+
+
+def test_map_renderer_caches_static_terrain_after_first_draw() -> None:
+    """Static terrain should be rendered into a texture once and reused."""
+    runtime_map = _build_runtime_map(width=8, height=8)
+    raylib = FakeCachedRaylib()
+    renderer = MapRenderer(raylib)
+
+    renderer.draw(
+        runtime_map=runtime_map,
+        camera=_build_camera(target=WorldCoord(64.0, 64.0), zoom=1.0),
+        window_config=WindowConfig(title="Test", width=128, height=128, target_fps=60),
+    )
+    first_texture_tile_draws = len(raylib.texture_rectangles)
+
+    renderer.draw(
+        runtime_map=runtime_map,
+        camera=_build_camera(target=WorldCoord(64.0, 64.0), zoom=1.0),
+        window_config=WindowConfig(title="Test", width=128, height=128, target_fps=60),
+    )
+
+    assert first_texture_tile_draws == 64
+    assert len(raylib.texture_rectangles) == first_texture_tile_draws
+    assert raylib.texture_draws == 2
+
+    renderer.unload()
+
+    assert raylib.unloaded_textures == 1

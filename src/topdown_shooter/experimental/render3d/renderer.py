@@ -17,6 +17,7 @@ from topdown_shooter.combat.projectiles import (
 )
 from topdown_shooter.combat.weapons import WeaponController
 from topdown_shooter.config.runtime_config import RuntimeConfig
+from topdown_shooter.diagnostics.frame_profiler import FrameProfiler
 from topdown_shooter.gameplay.camera_feedback import CameraFeedbackSystem
 from topdown_shooter.gameplay.combat_runtime import update_combat_runtime
 from topdown_shooter.gameplay.explosions import RuntimeExplosionSystem
@@ -39,6 +40,11 @@ from topdown_shooter.rendering.raylib_input import (
     RaylibInputResolver,
     configure_raylib_logging,
     is_any_key_down,
+)
+from topdown_shooter.rendering.presentation import (
+    apply_presentation_environment,
+    configure_frame_pacing,
+    configure_window_flags,
 )
 from topdown_shooter.rendering.raylib_window import import_raylib
 from topdown_shooter.rendering.window_layout import (
@@ -132,6 +138,7 @@ class Render3DRenderer:
         """
         self._runtime_map = runtime_map
         self._package = package
+        apply_presentation_environment(config.presentation)
         self._raylib = import_raylib()
         self._input = RaylibInputResolver(self._raylib)
         self._window_layout = resolve_raylib_window_layout(self._raylib, config.window)
@@ -206,6 +213,10 @@ class Render3DRenderer:
             window=config.window,
             ui=config.ui,
         )
+        self._frame_profiler = FrameProfiler(
+            config=config.frame_profiler,
+            label="3d",
+        )
         self._ui = RuntimeUi(
             raylib=self._raylib,
             config=config,
@@ -241,158 +252,241 @@ class Render3DRenderer:
         raylib = self._raylib
         window = self._config.window
         self._configure_raylib_logging()
+        configure_window_flags(raylib, self._config.presentation)
         raylib.init_window(window.width, window.height, f"{window.title} - 3D experiment")
         raylib.set_exit_key(raylib.KEY_NULL)
         self._apply_initial_window_position()
-        raylib.set_target_fps(window.target_fps)
+        configure_frame_pacing(raylib, self._config.presentation, window.target_fps)
         self._set_mouse_capture(True)
         scene = scene_builder.build_snapshot(player.tile)
         try:
             while not raylib.window_should_close():
-                self._apply_initial_window_position()
-                ui_input = self._ui.handle_input()
+                self._frame_profiler.begin_frame()
+                with self._frame_profiler.section("window"):
+                    self._apply_initial_window_position()
+                with self._frame_profiler.section("ui_input"):
+                    ui_input = self._ui.handle_input()
                 if ui_input.should_exit:
                     break
-                if raylib.is_key_pressed(self._mouse_capture_toggle_key) and not ui_input.blocks_gameplay:
-                    self._mouse_capture_desired = not self._mouse_capture_desired
-                self._set_mouse_capture(self._mouse_capture_desired and not ui_input.blocks_gameplay)
-                frame_time = raylib.get_frame_time()
+                with self._frame_profiler.section("input"):
+                    if raylib.is_key_pressed(self._mouse_capture_toggle_key) and not ui_input.blocks_gameplay:
+                        self._mouse_capture_desired = not self._mouse_capture_desired
+                    self._set_mouse_capture(self._mouse_capture_desired and not ui_input.blocks_gameplay)
+                    frame_time = raylib.get_frame_time()
                 if not ui_input.blocks_gameplay:
-                    self._update_camera_mode(camera_controller)
-                    if self._mouse_capture_active:
-                        self._update_facing_from_mouse()
-                    input_state = self._read_input_state()
-                    self._update_player(player, player_controller, input_state, frame_time)
-                    self._update_combat_controls(
-                        player=player,
-                        weapon_controller=weapon_controller,
-                        frame_time=frame_time,
-                    )
-                    self._update_interactions(
-                        player=player,
-                        weapon_controller=weapon_controller,
-                        frame_time=frame_time,
-                    )
-                    update_combat_runtime(
-                        player=player,
-                        enemy_system=enemy_system,
-                        projectile_system=projectile_system,
-                        weapon_controller=weapon_controller,
-                        collision_service=collision_service,
-                        pathfinder=enemy_pathfinder,
-                        runtime_map=self._runtime_map,
-                        config=self._config,
-                        frame_time=frame_time,
-                        weapon_fire_events=self._weapon_fire_events_last_update,
-                        player_speed_px_per_second=self._player_speed_px_per_second(),
-                    )
-                    explosion_results = self._explosion_system.process_projectile_events(
-                        events=projectile_system.events,
-                        runtime_map=self._runtime_map,
-                        player=player,
-                        enemy_system=enemy_system,
-                        projectile_system=projectile_system,
-                    )
-                    projectile_events = projectile_system.consume_events()
-                    self._add_projectile_events(projectile_events)
-                    self._combat_feedback.add_events(projectile_events)
-                    self._camera_feedback.add_projectile_events(
-                        projectile_events,
+                    with self._frame_profiler.section("controls"):
+                        self._update_camera_mode(camera_controller)
+                        if self._mouse_capture_active:
+                            self._update_facing_from_mouse()
+                        input_state = self._read_input_state()
+                        self._update_player(player, player_controller, input_state, frame_time)
+                        self._update_combat_controls(
+                            player=player,
+                            weapon_controller=weapon_controller,
+                            frame_time=frame_time,
+                        )
+                        self._update_interactions(
+                            player=player,
+                            weapon_controller=weapon_controller,
+                            frame_time=frame_time,
+                        )
+                    with self._frame_profiler.section("combat"):
+                        update_combat_runtime(
+                            player=player,
+                            enemy_system=enemy_system,
+                            projectile_system=projectile_system,
+                            weapon_controller=weapon_controller,
+                            collision_service=collision_service,
+                            pathfinder=enemy_pathfinder,
+                            runtime_map=self._runtime_map,
+                            config=self._config,
+                            frame_time=frame_time,
+                            weapon_fire_events=self._weapon_fire_events_last_update,
+                            player_speed_px_per_second=self._player_speed_px_per_second(),
+                        )
+                    with self._frame_profiler.section("events"):
+                        explosion_results = self._explosion_system.process_projectile_events(
+                            events=projectile_system.events,
+                            runtime_map=self._runtime_map,
+                            player=player,
+                            enemy_system=enemy_system,
+                            projectile_system=projectile_system,
+                        )
+                        projectile_events = projectile_system.consume_events()
+                        self._add_projectile_events(projectile_events)
+                        self._combat_feedback.add_events(projectile_events)
+                        self._camera_feedback.add_projectile_events(
+                            projectile_events,
+                            player_position=player.world_position,
+                            tile_size_px=self._runtime_map.tile_size_px,
+                        )
+                        self._camera_feedback.add_explosions(
+                            explosion_results,
+                            player_position=player.world_position,
+                            tile_size_px=self._runtime_map.tile_size_px,
+                        )
+                    with self._frame_profiler.section("scene_build"):
+                        scene = scene_builder.build_snapshot(player.tile)
+                with self._frame_profiler.section("visibility"):
+                    visible_enemies = self._visible_enemies(
+                        enemies=enemy_system.enemies,
                         player_position=player.world_position,
-                        tile_size_px=self._runtime_map.tile_size_px,
                     )
-                    self._camera_feedback.add_explosions(
-                        explosion_results,
+                    visible_projectiles = self._visible_projectiles(
+                        projectiles=projectile_system.projectiles,
                         player_position=player.world_position,
-                        tile_size_px=self._runtime_map.tile_size_px,
                     )
-                    scene = scene_builder.build_snapshot(player.tile)
-                visible_enemies = self._visible_enemies(
-                    enemies=enemy_system.enemies,
-                    player_position=player.world_position,
-                )
-                visible_projectiles = self._visible_projectiles(
-                    projectiles=projectile_system.projectiles,
-                    player_position=player.world_position,
-                )
-                visible_impacts = self._visible_impacts(
-                    impacts=projectile_system.impacts,
-                    player_position=player.world_position,
-                )
-                visible_enemy_hit_markers = self._visible_enemy_hit_markers(
-                    hit_markers=enemy_system.hit_markers,
-                    player_position=player.world_position,
-                )
-                camera_state = camera_controller.build_state(
-                    player_position=player.world_position,
-                    facing_x=self._last_facing_x,
-                    facing_y=self._last_facing_y,
-                    frame_time=frame_time,
-                    mode=self._camera_mode,
-                )
-                self._update_camera_relative_basis(camera_state)
+                    visible_impacts = self._visible_impacts(
+                        impacts=projectile_system.impacts,
+                        player_position=player.world_position,
+                    )
+                    visible_enemy_hit_markers = self._visible_enemy_hit_markers(
+                        hit_markers=enemy_system.hit_markers,
+                        player_position=player.world_position,
+                    )
+                with self._frame_profiler.section("camera"):
+                    camera_state = camera_controller.build_state(
+                        player_position=player.world_position,
+                        facing_x=self._last_facing_x,
+                        facing_y=self._last_facing_y,
+                        frame_time=frame_time,
+                        mode=self._camera_mode,
+                    )
+                    self._update_camera_relative_basis(camera_state)
                 active_frame_time = frame_time if not ui_input.blocks_gameplay else 0.0
-                self._update_muzzle_flashes(active_frame_time)
-                self._update_projectile_trails(active_frame_time)
-                self._update_shell_casings(active_frame_time)
-                self._combat_feedback.update(active_frame_time)
-                self._camera_feedback.update(active_frame_time)
-                camera_state = self._apply_camera_feedback(camera_state)
-                camera = raylib.Camera3D(
-                    raylib.Vector3(
-                        camera_state.position.x,
-                        camera_state.position.y,
-                        camera_state.position.z,
-                    ),
-                    raylib.Vector3(
-                        camera_state.target.x,
-                        camera_state.target.y,
-                        camera_state.target.z,
-                    ),
-                    raylib.Vector3(0.0, 1.0, 0.0),
-                    60.0,
-                    raylib.CAMERA_PERSPECTIVE,
-                )
-                raylib.begin_drawing()
-                raylib.clear_background(raylib.BLACK)
-                raylib.begin_mode_3d(camera)
-                self._draw_scene(scene)
+                with self._frame_profiler.section("feedback"):
+                    self._update_muzzle_flashes(active_frame_time)
+                    self._update_projectile_trails(active_frame_time)
+                    self._update_shell_casings(active_frame_time)
+                    self._combat_feedback.update(active_frame_time)
+                    self._camera_feedback.update(active_frame_time)
+                    camera_state = self._apply_camera_feedback(camera_state)
+                with self._frame_profiler.section("camera3d"):
+                    camera = raylib.Camera3D(
+                        raylib.Vector3(
+                            camera_state.position.x,
+                            camera_state.position.y,
+                            camera_state.position.z,
+                        ),
+                        raylib.Vector3(
+                            camera_state.target.x,
+                            camera_state.target.y,
+                            camera_state.target.z,
+                        ),
+                        raylib.Vector3(0.0, 1.0, 0.0),
+                        60.0,
+                        raylib.CAMERA_PERSPECTIVE,
+                    )
+                with self._frame_profiler.section("draw_begin"):
+                    raylib.begin_drawing()
+                    raylib.clear_background(raylib.BLACK)
+                    raylib.begin_mode_3d(camera)
+                with self._frame_profiler.section("draw_scene"):
+                    self._draw_scene(scene)
                 if self._view_mode_draws_gameplay_markers():
-                    self._draw_enemy_vision_cones(visible_enemies)
-                    self._draw_enemy_markers(visible_enemies)
-                    self._draw_muzzle_flashes()
-                    self._draw_projectile_markers(visible_projectiles)
-                    self._draw_shell_casings()
-                    self._draw_impact_markers(visible_impacts)
-                    self._draw_aim_line(
+                    with self._frame_profiler.section("draw_gameplay"):
+                        self._draw_enemy_vision_cones(visible_enemies)
+                        self._draw_enemy_markers(visible_enemies)
+                        self._draw_muzzle_flashes()
+                        self._draw_projectile_markers(visible_projectiles)
+                        self._draw_shell_casings()
+                        self._draw_impact_markers(visible_impacts)
+                        self._draw_aim_line(
+                            player.world_position,
+                            self._last_facing_x,
+                            self._last_facing_y,
+                        )
+                if self._view_mode_draws_debug_markers():
+                    with self._frame_profiler.section("draw_debug"):
+                        self._draw_enemy_hit_markers(visible_enemy_hit_markers)
+                with self._frame_profiler.section("draw_player"):
+                    self._draw_player_marker(
                         player.world_position,
                         self._last_facing_x,
                         self._last_facing_y,
                     )
-                if self._view_mode_draws_debug_markers():
-                    self._draw_enemy_hit_markers(visible_enemy_hit_markers)
-                self._draw_player_marker(
-                    player.world_position,
-                    self._last_facing_x,
-                    self._last_facing_y,
+                    raylib.end_mode_3d()
+                with self._frame_profiler.section("draw_ui"):
+                    self._player_hud.draw(
+                        player,
+                        weapon_controller.stats,
+                        damage_pulse=self._combat_feedback.hud_damage_pulse,
+                        status_message=self._interaction_system.active_message,
+                    )
+                    self._combat_feedback.draw()
+                    self._fps_counter.draw()
+                    self._draw_frame_profiler_overlay()
+                    self._ui.draw()
+                self._record_profiler_counters(
+                    enemy_system=enemy_system,
+                    projectile_system=projectile_system,
+                    visible_enemies=len(visible_enemies),
+                    visible_projectiles=len(visible_projectiles),
+                    visible_impacts=len(visible_impacts),
                 )
-                raylib.end_mode_3d()
-                self._player_hud.draw(
-                    player,
-                    weapon_controller.stats,
-                    damage_pulse=self._combat_feedback.hud_damage_pulse,
-                    status_message=self._interaction_system.active_message,
-                )
-                self._combat_feedback.draw()
-                self._fps_counter.draw()
-                self._ui.draw()
-                raylib.end_drawing()
+                with self._frame_profiler.section("present"):
+                    raylib.end_drawing()
+                self._frame_profiler.end_frame()
         finally:
             self._player_hud.unload()
             self._fps_counter.unload()
             self._ui.unload()
             self._set_mouse_capture(False)
             raylib.close_window()
+
+    def _record_profiler_counters(
+        self,
+        *,
+        enemy_system: EnemySystem,
+        projectile_system: ProjectileSystem,
+        visible_enemies: int,
+        visible_projectiles: int,
+        visible_impacts: int,
+    ) -> None:
+        """Record compact runtime counters for frame diagnostics."""
+        if not self._frame_profiler.enabled:
+            return
+        enemy_stats = enemy_system.stats
+        self._frame_profiler.set_counter("enemies", enemy_stats.active_enemies)
+        self._frame_profiler.set_counter("alerted", enemy_stats.alerted_enemies)
+        self._frame_profiler.set_counter("engaged", enemy_stats.engaged_enemies)
+        self._frame_profiler.set_counter("pathing", enemy_stats.pathing_enemies)
+        self._frame_profiler.set_counter("path_rebuilds", enemy_stats.path_rebuilds)
+        self._frame_profiler.set_counter("projectiles", len(projectile_system.projectiles))
+        self._frame_profiler.set_counter("impacts", len(projectile_system.impacts))
+        self._frame_profiler.set_counter("presentation_mode", self._config.presentation.mode)
+        self._frame_profiler.set_counter("target_fps", self._config.window.target_fps)
+        self._frame_profiler.set_counter(
+            "driver_vsync_disabled",
+            self._config.presentation.disable_driver_vsync,
+        )
+        self._frame_profiler.set_counter("shells", len(self._shell_casings))
+        self._frame_profiler.set_counter("visible_enemies", visible_enemies)
+        self._frame_profiler.set_counter("visible_projectiles", visible_projectiles)
+        self._frame_profiler.set_counter("visible_impacts", visible_impacts)
+
+    def _draw_frame_profiler_overlay(self) -> None:
+        """Draw profiler lines in the top-left corner when diagnostics are enabled."""
+        lines = self._frame_profiler.overlay_lines()
+        if not lines:
+            return
+        raylib = self._raylib
+        font_size = 10
+        padding = 6
+        line_gap = 3
+        width = max(raylib.measure_text(line, font_size) for line in lines) + padding * 2
+        height = len(lines) * (font_size + line_gap) + padding * 2
+        x = 12
+        y = 44
+        raylib.draw_rectangle(x, y, width, height, raylib.Color(0, 0, 0, 150))
+        for index, line in enumerate(lines):
+            raylib.draw_text(
+                line,
+                x + padding,
+                y + padding + index * (font_size + line_gap),
+                font_size,
+                raylib.RAYWHITE,
+            )
 
 
     @staticmethod

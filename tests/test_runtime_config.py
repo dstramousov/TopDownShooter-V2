@@ -11,6 +11,9 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.window.height == 0
     assert config.window.screen_margin_px == 300
     assert config.window.target_fps == 60
+    assert config.presentation.mode == "target_fps"
+    assert config.presentation.disable_driver_vsync is True
+    assert config.presentation.max_queued_frames == 1
     assert config.controls.quit == "KEY_ESCAPE"
     assert config.controls.help == "KEY_F1"
     assert config.controls.mouse_capture_toggle == "KEY_F10"
@@ -119,10 +122,11 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.enemies.strafe_switch_min_seconds == 0.9
     assert config.enemies.strafe_switch_max_seconds == 1.6
     assert config.enemies.pathfinding_enabled is True
-    assert config.enemies.path_rebuild_interval_seconds == 0.35
-    assert config.enemies.path_target_rebuild_distance_px == 48.0
-    assert config.enemies.path_max_iterations == 2048
-    assert config.enemies.path_max_rebuilds_per_frame == 4
+    assert config.enemies.path_rebuild_interval_seconds == 0.8
+    assert config.enemies.path_target_rebuild_distance_px == 64.0
+    assert config.enemies.path_max_iterations == 768
+    assert config.enemies.path_max_rebuilds_per_frame == 1
+    assert config.enemies.path_failed_rebuild_backoff_seconds == 2.0
     assert config.enemies.path_waypoint_reach_distance_px == 12.0
     assert config.enemies.draw_enemy_paths is False
     assert config.enemies.max_debug_enemy_paths == 6
@@ -143,6 +147,30 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.enemies.fire_primary_weapon_id == "ak47"
     assert config.enemies.fire_fallback_weapon_id == "pistol"
     assert config.enemies.fire_aim_error_degrees == 8.0
+    assert config.enemy_spawn.enabled is True
+    assert config.enemy_spawn.min_distance_from_player_tiles == 12.0
+    assert config.enemy_spawn.max_distance_from_player_tiles == 96.0
+    assert config.enemy_spawn.avoid_player_line_of_sight is True
+    assert config.enemy_spawn.max_alive_enemies == 24
+    assert config.enemy_spawn.initial_spawn_count == 12
+    assert config.enemy_spawn.spawn_cooldown_seconds == 8.0
+    assert config.enemy_spawn.group_size_min == 1
+    assert config.enemy_spawn.group_size_max == 3
+    assert [enemy_type.type_id for enemy_type in config.enemy_spawn.enemy_types] == [
+        "rifleman",
+        "scout",
+        "heavy",
+    ]
+    assert [enemy_type.weapon_id for enemy_type in config.enemy_spawn.enemy_types] == [
+        "ak47",
+        "pistol",
+        "minigun_m134",
+    ]
+    assert [enemy_type.weight for enemy_type in config.enemy_spawn.enemy_types] == [
+        7.0,
+        2.0,
+        1.0,
+    ]
     assert config.hud.position == "top"
     assert config.hud.margin_x == 12
     assert config.hud.margin_y == 12
@@ -186,6 +214,11 @@ def test_default_runtime_config_loads_window_and_controls() -> None:
     assert config.render3d.enemy_vision.idle_alpha == 70
     assert config.render3d.enemy_vision.alert_alpha == 105
     assert config.render3d.enemy_vision.combat_alpha == 145
+    assert config.frame_profiler.enabled is True
+    assert config.frame_profiler.log_interval_seconds == 1.0
+    assert config.frame_profiler.slow_frame_threshold_ms == 25.0
+    assert config.frame_profiler.draw_overlay is True
+    assert config.frame_profiler.sample_window_size == 120
     assert config.render3d.projectiles.projectile_height_tiles == 0.72
     assert config.render3d.projectiles.draw_impacts is True
     assert config.render3d.projectiles.impact_height_tiles == 0.55

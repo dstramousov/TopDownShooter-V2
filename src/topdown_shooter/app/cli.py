@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from topdown_shooter.app.inspect_map import inspect_map_package
+from topdown_shooter.app.prepare_map import prepare_map_package
 from topdown_shooter.app.run_game import run_game
 from topdown_shooter.config.runtime_config import RuntimeConfigError
 from topdown_shooter.map_loading.errors import MapPackageError
@@ -42,11 +43,32 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Open a minimal raylib window and render the generated map.",
     )
+    mode_group.add_argument(
+        "--prepare-map",
+        action="store_true",
+        help="Build a prepared runtime map package from generated map output.",
+    )
+    parser.add_argument(
+        "--out",
+        dest="prepared_map_dir",
+        type=Path,
+        help="Output directory for --prepare-map.",
+    )
     parser.add_argument(
         "--renderer",
         choices=("2d", "3d"),
         default="2d",
         help="Runtime renderer backend used by --run. Defaults to 2d.",
+    )
+    parser.add_argument(
+        "--visual-render",
+        choices=("legacy", "prepared-debug", "auto"),
+        default="legacy",
+        help=(
+            "2D visual renderer mode used by --run. "
+            "legacy ignores prepared visual JSON, prepared-debug requires it, "
+            "and auto falls back to legacy when it is unavailable. Defaults to legacy."
+        ),
     )
     return parser
 
@@ -69,7 +91,18 @@ def main(argv: list[str] | None = None) -> int:
             summary = inspect_map_package(args.map_package_dir)
             sys.stdout.write(f"{summary}\n")
             return 0
-        run_game(args.map_package_dir, renderer=args.renderer)
+        if args.prepare_map:
+            if args.prepared_map_dir is None:
+                sys.stderr.write("ERROR: --prepare-map requires --out.\n")
+                return 2
+            summary = prepare_map_package(args.map_package_dir, args.prepared_map_dir)
+            sys.stdout.write(f"{summary}\n")
+            return 0
+        run_game(
+            args.map_package_dir,
+            renderer=args.renderer,
+            visual_render=args.visual_render,
+        )
         return 0
     except MapPackageError as exc:
         sys.stderr.write(f"ERROR: Map package operation failed:\n{exc}\n")

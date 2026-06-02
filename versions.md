@@ -885,3 +885,253 @@
 - Added typed gameplay-zone models with bounds, polygons, entry/exit points, linked ids, danger/loot levels, recommended encounters, elevation usage, and tags.
 - Added tile-indexed gameplay-zone query APIs: `zones_at_tile`, `zones_by_type`, `is_tile_in_zone`, `nearest_zone`, zone-type helpers, and zone coverage/count statistics.
 - Updated map inspection and structured map-package tests so gameplay zones are visible to future spawn, loot, mission, and AI systems without changing current gameplay behavior.
+
+## v0.2.12 -> v0.2.13
+
+- Added zone-driven runtime candidate APIs for enemy spawn, loot, danger, safe, and extraction tiles using structured gameplay zones.
+- Filtered enemy spawn candidates to walkable non-safe/non-extraction tiles while preserving legacy tactical spawn fallback behavior for maps without zones.
+- Extended inspection output and tests so future spawn, loot, and mission systems can use gameplay zones without changing AI, balance, rendering, 3D, or elevation behavior.
+
+## v0.2.13 -> v0.2.14
+
+- Added `SpawnDirector` as a zone-driven enemy spawn point selector that returns valid tiles without creating enemies or changing current spawn behavior.
+- Added `enemy_spawn` runtime config for distance limits, line-of-sight avoidance, alive-enemy caps, cooldown, and future group size bounds.
+- Added tests for zone candidates, safe/extraction exclusion, occupied tiles, distance filters, line-of-sight filtering, legacy fallback candidates, and disabled/full-capacity behavior.
+
+## v0.2.14 -> v0.2.15
+
+- Added zone-driven initial enemy creation through `SpawnDirector` for structured maps with gameplay spawn candidates.
+- Added `enemy_spawn.initial_spawn_count` runtime config and wired 2D/3D startup enemy creation through the shared runtime spawn-source selector.
+- Preserved legacy `enemy_spawn_zones` startup behavior for maps without structured gameplay zones and added tests for zone-driven spawn, zero-count disable, and legacy fallback.
+
+## v0.2.15 -> v0.2.16
+
+- Added grouped zone-driven initial spawn using `enemy_spawn.group_size_min` / `group_size_max` while keeping legacy tactical-map spawning unchanged.
+- Added weighted `enemy_spawn.enemy_types` entries with type id, runtime role, starting weapon id, and selection weight for zone-driven startup enemies.
+- Preserved spawn safety filters, alive-enemy caps, and duplicate-tile prevention while adding tests for grouped spawn, enemy type assignment, and default runtime config parsing.
+
+## v0.2.16 -> v0.2.17
+
+- Reduced default enemy A* pathfinding pressure after gunshot alerts by increasing rebuild spacing, lowering per-frame rebuild budget, and reducing per-query iteration caps.
+- Added failed path-query backoff so unreachable targets do not trigger repeated expensive A* rebuilds every update.
+- Documented the new pathfinding guard and added tests covering failed-path backoff and updated runtime config defaults.
+
+## v0.2.17 -> v0.2.18
+
+- Оптимизирован `GridPathfinder`: walkability grid теперь кэшируется при создании pathfinder-а, а A* работает на raw `(x, y)` координатах без повторных дорогих запросов в `RuntimeMap`.
+- Снижена стоимость enemy pathfinding после gunshot alert на больших structured maps.
+- Сохранено прежнее поведение pathfinding, включая запрет diagonal corner cutting.
+
+## v0.2.18 -> v0.2.19
+
+- Added a render-texture cache for immutable 2D terrain tiles so the main loop no longer redraws thousands of static tile rectangles every frame.
+- Kept runtime objects, projectiles, enemies, player, UI, and combat feedback dynamic while caching only the base terrain layer.
+- Added safe cache unload/fallback behavior so tests and environments without render-texture support keep the existing primitive renderer path.
+
+## v0.2.19 -> v0.2.20
+
+- Добавлен cached tile snapshot в `TileCollisionService` для walkability, movement speed и projectile blocking.
+- Enemy line-of-sight теперь использует allocation-free world XY checks вместо создания `WorldCoord` на каждом sample.
+- 2D static terrain cache больше не пересчитывает hash всех tile symbols каждый кадр.
+## v0.2.20 -> v0.2.21
+
+- Добавлен lightweight frame profiler для 2D и experimental 3D runtime.
+- В profiler вынесены секции update/render/present и ключевые counters по enemies/projectiles/impacts/pathfinding.
+- Добавлен runtime config `frame_profiler` с overlay и периодическим console report для диагностики просадок FPS.
+
+## v0.2.21 -> v0.2.22
+
+- Added presentation timing config for raylib runtimes with explicit `target_fps`, `uncapped`, and `vsync` modes.
+- Added startup OpenGL driver vblank environment hints to diagnose/fix `present`/`EndDrawing` stalls that ignore `target_fps` changes.
+- Exposed presentation mode, target FPS, and driver-vsync status in frame-profiler counters for 2D and 3D runtimes.
+
+## v0.2.22 -> v0.2.23
+
+- Added a prepared-map creation pipeline that validates generated map packages, builds runtime map data, and writes `manifest.json` plus preparation reports.
+- Added CLI support for `topdown-shooter --map <source> --prepare-map --out <prepared_map>` as the backend foundation for future New Game / world creation flow.
+- Copied runtime-relevant source artifacts into the prepared package, including structured `map_package/` and optional `visual_map/`, while keeping gameplay geometry unchanged.
+
+## v0.2.23 -> v0.2.24
+
+- Added `VisualContextAnalyzer` to derive per-tile visual context, connected visual regions, and scene candidates during map preparation.
+- `--prepare-map` now writes `visual_context.json`, `visual_regions.json`, `visual_scene_candidates.json`, and `visual_context_report.json` into the prepared map package.
+- Extended preparation manifest, report, and CLI summary with generated visual-context artifacts while preserving gameplay geometry, collision, and renderer behavior.
+
+## v0.2.24 -> v0.2.25
+
+- Added visual scene ranking during map preparation to turn raw scene candidates into accepted scenes and rejected noise with stable reasons.
+- Added non-blocking visual quality gates for visual-map readiness, generic-object ratio, accepted scenes, and rejected candidate summaries.
+- `--prepare-map` now writes `visual_scene_ranking.json`, `visual_quality_report.json`, and `visual_quality_summary.txt` while keeping gameplay geometry, collision, and renderers unchanged.
+
+
+## v0.2.25 -> v0.2.26
+
+- Added visual object family resolution during map preparation to turn generic visual objects into source-type family diagnostics.
+- `--prepare-map` now writes `visual_object_families.json`, `visual_object_family_report.json`, and `visual_object_family_summary.txt`.
+- Extended preparation summary and reports with resolved/unresolved generic family counts while keeping gameplay geometry, collision, and renderers unchanged.
+
+## v0.2.26 -> v0.2.27
+
+- Added visual scene preset assignment during map preparation to turn accepted ranked scenes into deterministic scene dressing intents.
+- `--prepare-map` now writes `visual_scene_presets.json`, `visual_scene_preset_report.json`, and `visual_scene_preset_summary.txt`.
+- Extended preparation summary and reports with scene preset coverage while keeping gameplay geometry, collision, and renderers unchanged.
+
+## v0.2.27 -> v0.2.28
+
+- Added visual object normalization during map preparation to produce `visual_objects_normalized.json` with resolved concrete object sprites.
+- Visual quality gates now evaluate normalized visual objects, so resolved `object.generic` placeholders no longer keep prepared maps in `needs_work`.
+- Added normalization reports and CLI summary fields for replaced and remaining generic objects while keeping gameplay geometry, collision, and renderers unchanged.
+
+
+## v0.2.28 -> v0.2.29
+
+- Added deterministic visual scene dressing generation during map preparation for accepted scene presets.
+- `--prepare-map` now writes `visual_scene_dressing.json`, `visual_objects_dressed.json`, `visual_scene_dressing_report.json`, and `visual_scene_dressing_summary.txt`.
+- Extended preparation reports and CLI summary with dressed-scene and dressing-object counts while keeping gameplay geometry, collision, and renderers unchanged.
+
+## v0.2.29 -> v0.2.30
+
+- Added a deterministic prepared visual preview renderer for map preparation output.
+- `--prepare-map` now writes `prepared_preview.png`, `prepared_preview_legend.json`, `prepared_visual_preview_report.json`, and `prepared_visual_preview_summary.txt`.
+- Extended preparation reports and CLI summary with rendered normalized-object and dressing-object counts while keeping gameplay geometry, collision, and game renderers unchanged.
+
+## v0.2.30 -> v0.2.31
+
+- Added a non-debug pilot artistic preview renderer for prepared map output.
+- `--prepare-map` now writes `pilot_art_preview.png`, `pilot_art_preview_legend.json`, `pilot_art_preview_report.json`, and `pilot_art_preview_summary.txt`.
+- Pilot preview paints forest as connected region masses with deterministic internal crown structure instead of visible edge outlines, while keeping gameplay geometry, collision, and game renderers unchanged.
+
+## v0.2.31 -> v0.2.32
+
+- Pilot art forest rendering now uses region-scale canopy blobs instead of relying on per-tile forest marks.
+- Reduced local forest stamp density and softened forest-adjacent shadow to lower visible tile-grid artifacts.
+- Extended pilot art reports and summaries with forest region blob counters for visual iteration control.
+
+## v0.2.32 -> v0.2.33
+
+- Pilot art road rendering now paints old roads as soft path regions instead of full-tile brown strips.
+- Added faded road shoulders, dirt wear, junction emphasis, and grass-intrusion hints to reduce grid-like road artifacts.
+- Extended pilot art reports and summaries with road shoulder, dirt-noise, and grass-intrusion counters while preserving gameplay geometry.
+
+## v0.2.33 -> v0.2.34
+
+- Reworked pilot road rendering to restore a continuous dirt path body instead of dotted road marks.
+- Broadened road cores and shoulders while making grass intrusions and dirt wear sparser and less debug-like.
+- Kept the pilot road painter visual-only: gameplay geometry, collision, and runtime renderers remain unchanged.
+
+
+## v0.2.34 -> v0.2.35
+
+- Pilot art water rendering now paints water masks as connected puddle-like blobs instead of blue tile blocks.
+- Added muddy bank washes, darker water-edge patches, subtle highlights, and sparse reed clusters around water while preserving gameplay geometry.
+- Extended pilot art reports and summaries with water bank, reed, highlight, and region-wash counters.
+
+## v0.2.35 -> v0.2.36
+
+- Refined pilot water rendering so water patches read as more cohesive puddle bodies instead of scattered blue cells.
+- Added broader soft muddy banks, stronger connected water-body fills, and larger but sparser reed clusters around water edges.
+- Extended pilot art preview reports with water-region body/fill counters while keeping tile geometry, collision, movement, and runtime renderers unchanged.
+
+## v0.2.36 -> v0.2.37
+
+- Tuned the pilot water painter to reduce blue speckle noise and keep puddles as calmer connected wet patches.
+- Strengthened soft muddy banks around water without changing logical water, movement, collision, or gameplay geometry.
+- Reworked reed clusters as sparse readable green-brown vegetation near water edges.
+
+## v0.2.37 -> v0.2.38
+
+- Added `VisualArtLayerBuilder` to export pilot painter decisions as prepared visual art JSON.
+- `--prepare-map` now writes `visual_art_layers.json`, `visual_art_objects.json`, `visual_art_chunks.json`, and matching reports.
+- Extended preparation reports and CLI summary with visual art layer/object/chunk counts without changing gameplay geometry or runtime renderers.
+
+## v0.2.38 -> v0.2.39
+
+- Added a pilot scene overlay preview that annotates accepted scene presets over the clean pilot art preview.
+- `--prepare-map` now writes `pilot_art_preview_scenes.png`, `pilot_art_preview_scenes_legend.json`, and matching scene-overlay reports.
+- Kept the clean `pilot_art_preview.png` unchanged while making scene bounds, centers, and preset-family markers reviewable in a separate debug artifact.
+
+## v0.2.39 -> v0.2.40
+
+- Added visual micro-scenes export for prepared maps.
+- `--prepare-map` now writes `visual_micro_scenes.json`, `visual_micro_scenes_report.json`, and `visual_micro_scenes_summary.txt`.
+- Linked scene presets, dressing objects, runtime objects, and visual art layer references into runtime-readable visual scene entities without changing gameplay geometry.
+
+## v0.2.40 -> v0.2.41
+
+- Added a pilot ruin painter pass so ruin floors and walls render as broken stone places instead of flat gray plan blocks.
+- Exported ruin floor cracks, wall shadows, rubble clusters, moss patches, dirt hints, and broken-wall hints into visual art layer JSON.
+- Kept the ruin painter visual-only: tile geometry, collision, movement, runtime objects, and game renderers remain unchanged.
+
+## v0.2.41 -> v0.2.42
+
+- Strengthened the pilot ruin painter as the final ruin-visual pass for this iteration.
+- Increased ruin floor and wall readability with stronger broken-stone masses, heavier rubble, moss, dirt, cracks, and wall-base shadows.
+- Mirrored the stronger ruin visual language in `visual_art_layers.json` while keeping gameplay geometry, collision, movement, runtime objects, and game renderers unchanged.
+
+## v0.2.42 -> v0.2.43
+
+- Added visual micro-scene layout export with semantic object slots for prepared scenes.
+- `--prepare-map` now writes `visual_micro_scene_layouts.json`, `visual_micro_scene_objects.json`, and layout reports.
+- Extended preparation reports and CLI summary with micro-scene layout/object counts while keeping gameplay geometry unchanged.
+
+## v0.2.43 -> v0.2.44
+
+- Fixed missing `visual_micro_scene_layout` module import in map preparation.
+- Added `VisualMicroSceneLayoutBuilder` output for layout and scene-object artifacts.
+- Restored `./p` execution after the micro-scene layout export step.
+
+
+## v0.2.44 -> v0.2.45
+
+- Added prepared visual runtime contract validation for generated visual-art and micro-scene JSON artifacts.
+- `--prepare-map` now writes `prepared_visual_runtime_contract_report.json` and `prepared_visual_runtime_contract_summary.txt`.
+- Extended preparation reports and CLI summary with runtime-contract status and element counts for renderer-facing prepared visual data.
+
+## v0.2.45 -> v0.2.46
+
+- Added `PreparedVisualLoader` and immutable runtime-facing data models for prepared visual map artifacts.
+- The loader reads `visual_art_layers.json`, `visual_art_objects.json`, `visual_art_chunks.json`, and visual micro-scene artifacts into a `PreparedVisualMap` structure.
+- Added defensive schema, contract, dimension, tile-bound, and required-field validation without changing map preparation output or gameplay behavior.
+
+
+## v0.2.46 -> v0.2.47
+
+- Added an asset-free prepared visual debug renderer for runtime 2D rendering.
+- Runtime now tries to load prepared visual map artifacts and passes them to the 2D map renderer when available.
+- Prepared visual debug rendering draws visual art layers and objects in the game window without changing gameplay, collision, AI, or map preparation output.
+## v0.2.47 -> v0.2.48
+
+- Added explicit prepared visual render mode selection for runtime launches.
+- `--run` now supports `--visual-render legacy|prepared-debug|auto`, defaulting to legacy.
+- Prepared visual debug rendering no longer activates implicitly just because prepared visual JSON exists.
+
+## v0.2.48 -> v0.2.49
+
+- Fixed prepared visual loading for visual micro-scene bounds serialized as `min_x/min_y/max_x/max_y`.
+- The prepared visual loader now normalizes micro-scene bounds to runtime `x/y/w/h` coordinates in memory.
+- Added compatibility for `preset_id` scene fields while keeping prepared visual rendering, gameplay, collision, and map preparation output unchanged.
+
+## v0.2.49 -> v0.2.50
+
+- Added a render-texture cache for prepared visual debug rendering static layers and visual-only objects.
+- `MapRenderer` now prepares prepared-visual static caches before entering 2D camera mode and unloads them safely.
+- Prepared visual debug mode keeps dynamic runtime objects drawable per frame while avoiding thousands of repeated static draw calls.
+
+
+## v0.2.50 -> v0.2.51
+
+- Reworked the prepared visual runtime renderer from debug rectangles toward painter-style cached primitives.
+- Runtime prepared visual mode now draws forest masses, road bodies, water puddles, reeds, ruin floors/walls, and scene dressing with shape-specific primitives instead of mostly full-tile squares.
+- Kept the renderer asset-free and cached, without changing gameplay, collision, map preparation output, or legacy rendering.
+
+## v0.2.51 -> v0.2.52
+
+- Added prepared visual shape smoothing elements for forest, road, and water masks.
+- Runtime prepared visual painter now uses side/corner/diagonal smoothing hints instead of relying only on tile-anchored rectangles.
+- Extended visual art layer reports and summaries with shape smoothing element counts while preserving gameplay geometry and collision.
+
+## v0.2.52 -> v0.2.53
+
+- Added `docs/visual_normalizer_status.md` as the final branch handoff report for the prepared visual normalizer work.
+- Documented implemented preparation stages, runtime-facing JSON outputs, runtime render status, prototype limitations, and merge readiness.
+- Captured the recommended next direction: asset-rule resolving and a tileset-backed prepared visual renderer instead of further primitive-renderer polishing.

@@ -36,7 +36,13 @@ class PathResult:
 
 
 class GridPathfinder:
-    """Find walkable tile paths on a runtime map using A*."""
+    """Find walkable tile paths on a runtime map using A*.
+
+    The pathfinder keeps an immutable walkability snapshot built at
+    construction time. Enemy navigation performs many neighbor checks during
+    combat, so querying the full RuntimeMap object from every A* expansion is
+    too expensive on large maps.
+    """
 
     _ORTHOGONAL_COST = 10
     _DIAGONAL_COST = 14
@@ -50,6 +56,9 @@ class GridPathfinder:
         """
         self._runtime_map = runtime_map
         self._allow_diagonal = allow_diagonal
+        self._width_tiles = runtime_map.width_tiles
+        self._height_tiles = runtime_map.height_tiles
+        self._walkable_rows = self._build_walkable_rows(runtime_map)
 
     def find_path(
         self,
@@ -74,30 +83,38 @@ class GridPathfinder:
         if start == goal:
             return PathResult(tiles=(start,), stats=PathfinderStats(iterations=0, reached_goal=True))
 
-        open_heap: list[tuple[int, int, TileCoord]] = []
+        start_key = (start.x, start.y)
+        goal_key = (goal.x, goal.y)
+        open_heap: list[tuple[int, int, tuple[int, int]]] = []
         counter = 0
-        start_priority = self._heuristic(start, goal)
-        heapq.heappush(open_heap, (start_priority, counter, start))
-        came_from: dict[TileCoord, TileCoord] = {}
-        cost_so_far: dict[TileCoord, int] = {start: 0}
+        start_priority = self._heuristic_xy(start_key[0], start_key[1], goal_key[0], goal_key[1])
+        heapq.heappush(open_heap, (start_priority, counter, start_key))
+        came_from: dict[tuple[int, int], tuple[int, int]] = {}
+        cost_so_far: dict[tuple[int, int], int] = {start_key: 0}
         iterations = 0
 
         while open_heap and iterations < max_iterations:
             _priority, _counter, current = heapq.heappop(open_heap)
             iterations += 1
-            if current == goal:
+            if current == goal_key:
                 return PathResult(
-                    tiles=self._reconstruct_path(came_from, start, goal),
+                    tiles=self._reconstruct_path(came_from, start_key, goal_key),
                     stats=PathfinderStats(iterations=iterations, reached_goal=True),
                 )
-            for neighbor, step_cost in self._neighbors(current):
-                new_cost = cost_so_far[current] + step_cost
+            current_cost = cost_so_far[current]
+            for neighbor, step_cost in self._neighbors_xy(current[0], current[1]):
+                new_cost = current_cost + step_cost
                 previous_cost = cost_so_far.get(neighbor)
                 if previous_cost is not None and new_cost >= previous_cost:
                     continue
                 cost_so_far[neighbor] = new_cost
                 counter += 1
-                priority = new_cost + self._heuristic(neighbor, goal)
+                priority = new_cost + self._heuristic_xy(
+                    neighbor[0],
+                    neighbor[1],
+                    goal_key[0],
+                    goal_key[1],
+                )
                 heapq.heappush(open_heap, (priority, counter, neighbor))
                 came_from[neighbor] = current
 
@@ -115,7 +132,7 @@ class GridPathfinder:
         Returns:
             True when the tile is inside the map and walkable.
         """
-        return self._runtime_map.is_tile_walkable(tile)
+        return self._is_walkable_xy(tile.x, tile.y)
 
     def _neighbors(self, tile: TileCoord) -> tuple[tuple[TileCoord, int], ...]:
         """Return walkable neighboring tiles and movement costs.
@@ -126,27 +143,55 @@ class GridPathfinder:
         Returns:
             Neighbor tiles with integer movement costs.
         """
-        neighbors: list[tuple[TileCoord, int]] = []
+        return tuple(
+            (TileCoord(x, y), cost)
+            for (x, y), cost in self._neighbors_xy(tile.x, tile.y)
+        )
+
+    def _neighbors_xy(self, tile_x: int, tile_y: int) -> tuple[tuple[tuple[int, int], int], ...]:
+        """Return walkable neighboring coordinate pairs and movement costs."""
+        neighbors: list[tuple[tuple[int, int], int]] = []
         orthogonal_offsets = ((1, 0), (-1, 0), (0, 1), (0, -1))
         for offset_x, offset_y in orthogonal_offsets:
-            neighbor = TileCoord(tile.x + offset_x, tile.y + offset_y)
-            if self.is_walkable(neighbor):
-                neighbors.append((neighbor, self._ORTHOGONAL_COST))
+            neighbor_x = tile_x + offset_x
+            neighbor_y = tile_y + offset_y
+            if self._is_walkable_xy(neighbor_x, neighbor_y):
+                neighbors.append(((neighbor_x, neighbor_y), self._ORTHOGONAL_COST))
 
         if not self._allow_diagonal:
             return tuple(neighbors)
 
         diagonal_offsets = ((1, 1), (1, -1), (-1, 1), (-1, -1))
         for offset_x, offset_y in diagonal_offsets:
-            neighbor = TileCoord(tile.x + offset_x, tile.y + offset_y)
-            if not self.is_walkable(neighbor):
+            neighbor_x = tile_x + offset_x
+            neighbor_y = tile_y + offset_y
+            if not self._is_walkable_xy(neighbor_x, neighbor_y):
                 continue
-            horizontal = TileCoord(tile.x + offset_x, tile.y)
-            vertical = TileCoord(tile.x, tile.y + offset_y)
-            if not self.is_walkable(horizontal) or not self.is_walkable(vertical):
+            if not self._is_walkable_xy(neighbor_x, tile_y):
                 continue
-            neighbors.append((neighbor, self._DIAGONAL_COST))
+            if not self._is_walkable_xy(tile_x, neighbor_y):
+                continue
+            neighbors.append(((neighbor_x, neighbor_y), self._DIAGONAL_COST))
         return tuple(neighbors)
+
+    def _is_walkable_xy(self, tile_x: int, tile_y: int) -> bool:
+        """Return cached walkability for a tile coordinate pair."""
+        if tile_x < 0 or tile_y < 0:
+            return False
+        if tile_x >= self._width_tiles or tile_y >= self._height_tiles:
+            return False
+        return self._walkable_rows[tile_y][tile_x]
+
+    @staticmethod
+    def _build_walkable_rows(runtime_map: RuntimeMap) -> tuple[tuple[bool, ...], ...]:
+        """Build an immutable navigation walkability snapshot."""
+        return tuple(
+            tuple(
+                runtime_map.is_tile_walkable(TileCoord(x, y))
+                for x in range(runtime_map.width_tiles)
+            )
+            for y in range(runtime_map.height_tiles)
+        )
 
     @staticmethod
     def _heuristic(start: TileCoord, goal: TileCoord) -> int:
@@ -159,17 +204,22 @@ class GridPathfinder:
         Returns:
             Admissible integer heuristic for 8-way grid movement.
         """
-        dx = abs(start.x - goal.x)
-        dy = abs(start.y - goal.y)
+        return GridPathfinder._heuristic_xy(start.x, start.y, goal.x, goal.y)
+
+    @staticmethod
+    def _heuristic_xy(start_x: int, start_y: int, goal_x: int, goal_y: int) -> int:
+        """Return octile distance heuristic for raw coordinate pairs."""
+        dx = abs(start_x - goal_x)
+        dy = abs(start_y - goal_y)
         diagonal = min(dx, dy)
         straight = max(dx, dy) - diagonal
         return diagonal * GridPathfinder._DIAGONAL_COST + straight * GridPathfinder._ORTHOGONAL_COST
 
     @staticmethod
     def _reconstruct_path(
-        came_from: dict[TileCoord, TileCoord],
-        start: TileCoord,
-        goal: TileCoord,
+        came_from: dict[tuple[int, int], tuple[int, int]],
+        start: tuple[int, int],
+        goal: tuple[int, int],
     ) -> tuple[TileCoord, ...]:
         """Build a path from A* parent links.
 
@@ -187,4 +237,4 @@ class GridPathfinder:
             current = came_from[current]
             path.append(current)
         path.reverse()
-        return tuple(path)
+        return tuple(TileCoord(x, y) for x, y in path)

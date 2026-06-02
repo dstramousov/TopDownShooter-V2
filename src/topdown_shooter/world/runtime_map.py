@@ -20,6 +20,12 @@ _COVER_GRID = "cover_grid"
 _CONCEALMENT_GRID = "concealment_grid"
 _HEIGHT_GRID = "height_grid"
 
+_ENEMY_SPAWN_ZONE_TYPES = ("encounter_area", "ambush_area", "danger_area", "spawn_area")
+_LOOT_CANDIDATE_ZONE_TYPES = ("loot_area", "story_area")
+_DANGER_ZONE_TYPES = ("danger_area", "ambush_area", "encounter_area")
+_SAFE_ZONE_TYPES = ("safe_area",)
+_EXTRACTION_ZONE_TYPES = ("extraction_area",)
+
 
 @dataclass(frozen=True, slots=True)
 class RuntimeGridLayer:
@@ -840,6 +846,54 @@ class RuntimeMap:
         """Return extraction-area gameplay zones."""
         return self.zones_by_type("extraction_area")
 
+    @property
+    def enemy_spawn_candidate_tiles(self) -> tuple[TileCoord, ...]:
+        """Return walkable tiles suitable for zone-driven enemy spawning.
+
+        Candidate tiles come from encounter, ambush, danger, or spawn zones.
+        Safe and extraction zones are excluded so future spawn systems do not
+        place enemies on top of player start or objective exit areas. Legacy
+        maps without gameplay zones return an empty tuple and keep using their
+        old tactical spawn data.
+        """
+        return self._candidate_tiles_from_zone_types(
+            _ENEMY_SPAWN_ZONE_TYPES,
+            require_walkable=True,
+            exclude_zone_types=_SAFE_ZONE_TYPES + _EXTRACTION_ZONE_TYPES,
+        )
+
+    @property
+    def loot_candidate_tiles(self) -> tuple[TileCoord, ...]:
+        """Return walkable tiles suitable for zone-driven loot placement."""
+        return self._candidate_tiles_from_zone_types(
+            _LOOT_CANDIDATE_ZONE_TYPES,
+            require_walkable=True,
+        )
+
+    @property
+    def danger_tiles(self) -> tuple[TileCoord, ...]:
+        """Return tiles covered by danger-like gameplay zones."""
+        return self._candidate_tiles_from_zone_types(
+            _DANGER_ZONE_TYPES,
+            require_walkable=False,
+        )
+
+    @property
+    def safe_tiles(self) -> tuple[TileCoord, ...]:
+        """Return tiles covered by safe-area gameplay zones."""
+        return self._candidate_tiles_from_zone_types(
+            _SAFE_ZONE_TYPES,
+            require_walkable=False,
+        )
+
+    @property
+    def extraction_tiles(self) -> tuple[TileCoord, ...]:
+        """Return tiles covered by extraction-area gameplay zones."""
+        return self._candidate_tiles_from_zone_types(
+            _EXTRACTION_ZONE_TYPES,
+            require_walkable=False,
+        )
+
     def zones_at_tile(self, tile: TileCoord) -> tuple[RuntimeGameplayZone, ...]:
         """Return gameplay zones covering a tile.
 
@@ -902,6 +956,37 @@ class RuntimeMap:
                 best_zone = zone
                 best_distance = distance
         return best_zone
+
+    def _candidate_tiles_from_zone_types(
+        self,
+        zone_types: tuple[str, ...],
+        *,
+        require_walkable: bool,
+        exclude_zone_types: tuple[str, ...] = (),
+    ) -> tuple[TileCoord, ...]:
+        """Return stable tile candidates covered by selected zone types."""
+        if not zone_types or not self.gameplay_zones_by_tile:
+            return ()
+
+        zone_type_set = set(zone_types)
+        excluded_type_set = set(exclude_zone_types)
+        candidates: list[TileCoord] = []
+        for tile in sorted(
+            self.gameplay_zones_by_tile,
+            key=lambda item: (item.y, item.x),
+        ):
+            zones = self.zones_at_tile(tile)
+            if not any(zone.zone_type in zone_type_set for zone in zones):
+                continue
+            if excluded_type_set and any(
+                zone.zone_type in excluded_type_set
+                for zone in zones
+            ):
+                continue
+            if require_walkable and not self.is_tile_walkable(tile):
+                continue
+            candidates.append(tile)
+        return tuple(candidates)
 
     @property
     def interactive_runtime_objects(self) -> tuple[RuntimeMapObject, ...]:

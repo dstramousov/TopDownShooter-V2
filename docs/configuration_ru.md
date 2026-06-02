@@ -37,6 +37,38 @@ res/config/
 
 ---
 
+## presentation
+
+Настройки presentation/frame pacing. Используются до создания raylib-окна и помогают
+отделить внутренний limiter raylib от driver/compositor vblank sync.
+
+### mode
+Режим ограничения кадров:
+
+```text
+target_fps — использовать raylib SetTargetFPS(window.target_fps)
+uncapped   — не вызывать SetTargetFPS
+vsync      — включить raylib FLAG_VSYNC_HINT перед init_window
+```
+
+### disable_driver_vsync
+Если `true`, процесс выставляет common OpenGL driver hints перед созданием окна:
+
+```text
+vblank_mode=0
+__GL_SYNC_TO_VBLANK=0
+__GL_MaxFramesAllowed=<max_queued_frames>
+```
+
+Это нужно для диагностики случаев, когда profiler показывает основную задержку
+в `present` / `EndDrawing`, а изменение `target_fps` не влияет на FPS.
+
+### max_queued_frames
+Подсказка для драйверов, которые поддерживают ограничение очереди кадров.
+Обычно для диагностики достаточно значения `1`.
+
+---
+
 ## camera
 
 ### zoom
@@ -431,6 +463,11 @@ Decal в первую очередь нужен для ровных и твёр�
 
 Это защита от фризов при массовом агре: если лимит исчерпан, враг временно продолжает идти по старому пути или ждёт следующий кадр. `0` полностью запрещает новые path-запросы.
 
+#### path_failed_rebuild_backoff_seconds
+Задержка перед повторной попыткой A* после неудачного построения пути.
+
+Нужна для больших карт: если цель недостижима, враг не должен повторять дорогой failed-query каждый кадр.
+
 #### path_waypoint_reach_distance_px
 Дистанция, на которой waypoint считается достигнутым.
 
@@ -656,3 +693,78 @@ ID резервного оружия врага из общей базы `res/co
 пытаться попасть ровно в пиксель своей стартовой точки. Для текущей сетки
 нормальный диапазон — примерно `12..24 px`.
 
+
+## enemy_spawn
+
+Настройки zone-driven спавна врагов для structured `map_package`.
+Если карта содержит `gameplay_zones`, стартовый спавн берёт точки из `encounter_area`, `ambush_area`, `danger_area` и `spawn_area` через `SpawnDirector`.
+Если таких зон нет, используется старый `enemies` / `enemy_spawn_zones` fallback.
+
+### enabled
+Включает zone-driven выбор точек спавна.
+
+### min_distance_from_player_tiles
+Минимальная дистанция от игрока до точки спавна в тайлах.
+
+### max_distance_from_player_tiles
+Максимальная дистанция от игрока до точки спавна в тайлах.
+`0` означает без верхнего ограничения.
+
+### avoid_player_line_of_sight
+Запрещает стартовый спавн в прямой видимости игрока.
+
+### max_alive_enemies
+Глобальный лимит живых врагов для zone-driven spawn systems.
+
+### initial_spawn_count
+Количество врагов, создаваемых при старте карты из zone-driven candidates.
+`0` отключает стартовое создание врагов через `SpawnDirector`.
+
+### spawn_cooldown_seconds
+Минимальная пауза между будущими попытками динамического спавна.
+В v0.2.16 зарезервировано для triggered/reinforcement spawn следующих итераций.
+
+### group_size_min / group_size_max
+Границы размера стартовых zone-driven spawn-групп.
+`SpawnDirector` выбирает якорь группы и добирает рядом с ним свободные walkable tiles.
+Если полной группы рядом нет, создаётся меньшая валидная группа без постановки врагов в одну клетку.
+
+### enemy_types
+Взвешанный набор типов врагов для zone-driven стартового спавна.
+Каждый элемент содержит:
+
+- `type_id` — стабильный идентификатор типа для диагностики;
+- `role` — runtime-роль врага;
+- `weapon_id` — стартовое оружие из `weapons.database_path`;
+- `weight` — относительный вес выбора.
+
+Пример:
+
+```json
+{
+  "type_id": "rifleman",
+  "role": "rifleman",
+  "weapon_id": "ak47",
+  "weight": 7.0
+}
+```
+
+## frame_profiler
+
+Настройки встроенного runtime-профайлера кадров для ветки `perf_normalizer`.
+Профайлер используется для диагностики просадок FPS в 2D и experimental 3D без внешних инструментов.
+
+### enabled
+Включает сбор frame timing diagnostics.
+
+### log_interval_seconds
+Период вывода агрегированного отчёта в консоль.
+
+### slow_frame_threshold_ms
+Порог медленного кадра в миллисекундах. При превышении среднего значения profiler помечает отчёт как `SLOW`.
+
+### draw_overlay
+Показывает компактный overlay в окне игры.
+
+### sample_window_size
+Количество последних кадров, по которым считаются rolling average/max значения.
