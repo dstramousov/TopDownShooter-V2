@@ -1,4 +1,4 @@
-"""Debug renderer for prepared visual runtime data."""
+"""Painter-style debug renderer for prepared visual runtime data."""
 
 from __future__ import annotations
 
@@ -155,13 +155,15 @@ class _PreparedVisualStaticCache:
 
 
 class PreparedVisualDebugRenderer:
-    """Draw prepared visual layers with simple raylib primitives.
+    """Draw prepared visual layers with painter-style raylib primitives.
 
     This renderer is intentionally asset-free. It exists to validate that the
     runtime can consume prepared visual JSON and render it inside the game
     window before production sprites are introduced. Static prepared visual
     primitives are cached into one render texture when the active raylib backend
-    supports render textures.
+    supports render textures. The drawing language mirrors the pilot painter
+    preview: larger softened regions, path bodies, wet banks, reeds, and ruin
+    detail hints instead of one full rectangle per logical tile.
     """
 
     def __init__(self, raylib: object) -> None:
@@ -345,52 +347,61 @@ class PreparedVisualDebugRenderer:
 
     def _draw_layer_element(self, item: PreparedVisualElement, tile_size: int) -> None:
         """Draw one prepared visual layer element."""
-        raylib = self._raylib
-        color = self._color_for(layer=item.layer, family=item.family, kind=item.kind, alpha=item.alpha)
-        x = item.x * tile_size
-        y = item.y * tile_size
-        if item.family in {"forest_canopy_blob", "water_region_body"}:
-            inset = max(1, tile_size // 6)
-            raylib.draw_rectangle_rounded(
-                raylib.Rectangle(
-                    float(x - inset),
-                    float(y - inset),
-                    float(tile_size + inset * 2),
-                    float(tile_size + inset * 2),
-                ),
-                0.45,
-                5,
-                color,
-            )
+        family = item.family
+        if family in {"forest_region_mass", "forest_base"}:
+            self._draw_forest_mass(item, tile_size)
             return
-        if item.family in {"road_soft_shoulder", "muddy_water_bank", "forest_soft_shadow"}:
-            inset = max(1, tile_size // 8)
-            raylib.draw_rectangle(
-                x + inset,
-                y + inset,
-                max(1, tile_size - inset * 2),
-                max(1, tile_size - inset * 2),
-                color,
-            )
+        if family in {"forest_canopy_blob", "forest_canopy_stamp"}:
+            self._draw_forest_canopy(item, tile_size)
+            return
+        if family == "forest_soft_shadow":
+            self._draw_soft_tile_wash(item, tile_size, inset_ratio=0.0, roundness=0.35)
+            return
+        if family in {"road_painted_body", "road_base"}:
+            self._draw_road_body(item, tile_size)
+            return
+        if family == "road_soft_shoulder":
+            self._draw_road_shoulder(item, tile_size)
+            return
+        if family in {"road_dirt_noise", "road_grass_intrusion"}:
+            self._draw_small_patch(item, tile_size, radius_ratio=0.22)
+            return
+        if family in {"water_puddle_body", "water_region_body", "water_base"}:
+            self._draw_water_body(item, tile_size)
+            return
+        if family == "muddy_water_bank":
+            self._draw_muddy_bank(item, tile_size)
+            return
+        if family in {"ruin_floor_heavy", "ruin_floor", "ruin_base"}:
+            self._draw_ruin_floor(item, tile_size)
+            return
+        if family in {"ruin_wall_mass_heavy", "ruin_wall"}:
+            self._draw_ruin_wall(item, tile_size)
+            return
+        if family.startswith("ruin_"):
+            self._draw_ruin_detail(item, tile_size)
+            return
+        if family in {"grass_base", "clearing_ground", "grass_detail"}:
+            self._draw_ground(item, tile_size)
             return
         if item.layer == "surface_decals":
-            radius = max(1.0, tile_size / 5.5)
-            raylib.draw_circle(
-                x + tile_size // 2,
-                y + tile_size // 2,
-                radius,
-                color,
-            )
+            self._draw_small_patch(item, tile_size, radius_ratio=0.18)
             return
-        raylib.draw_rectangle(x, y, tile_size, tile_size, color)
+        self._draw_plain_tile(item, tile_size)
 
     def _draw_object_element(self, item: PreparedVisualObject, tile_size: int) -> None:
         """Draw one prepared visual object element."""
-        raylib = self._raylib
-        color = self._color_for(layer=item.layer, family=item.family, kind=item.kind, alpha=0.86)
-        x = item.x * tile_size
-        y = item.y * tile_size
-        if item.kind == "large_object" or item.family in {
+        family = item.family
+        if family == "reed_cluster":
+            self._draw_reed_cluster(item, tile_size)
+            return
+        if family in {"grass_wear", "moss_patch", "ruin_moss_patch"}:
+            self._draw_object_patch(item, tile_size, radius_ratio=0.24)
+            return
+        if family in {"small_stones", "stone_debris", "ruin_rubble_cluster", "rubble_small"}:
+            self._draw_rubble_object(item, tile_size)
+            return
+        if item.kind == "large_object" or family in {
             "fallen_log",
             "earth_berm",
             "field_tent",
@@ -398,37 +409,372 @@ class PreparedVisualDebugRenderer:
             "broken_radio_mast",
             "old_checkpoint",
         }:
-            width = tile_size + max(2, tile_size // 2)
-            height = tile_size
-            raylib.draw_rectangle_rounded(
-                raylib.Rectangle(float(x), float(y + tile_size // 4), float(width), float(height // 2)),
-                0.35,
-                4,
-                color,
-            )
-            return
-        if item.family in {"reed_cluster", "grass_wear", "moss_patch", "ruin_moss_patch"}:
-            stem_width = max(1, tile_size // 8)
-            raylib.draw_rectangle(
-                x + tile_size // 2 - stem_width // 2,
-                y + tile_size // 4,
-                stem_width,
-                max(2, tile_size // 2),
-                color,
-            )
+            self._draw_large_object(item, tile_size)
             return
         if item.visual_only:
-            radius = max(1.0, tile_size / 6.5)
-            raylib.draw_circle(x + tile_size // 2, y + tile_size // 2, radius, color)
+            self._draw_object_patch(item, tile_size, radius_ratio=0.18)
             return
-        inset = max(2, tile_size // 4)
-        raylib.draw_rectangle(
-            x + inset,
-            y + inset,
-            max(1, tile_size - inset * 2),
-            max(1, tile_size - inset * 2),
+        self._draw_runtime_object_marker(item, tile_size)
+
+    def _draw_plain_tile(self, item: PreparedVisualElement, tile_size: int) -> None:
+        """Draw a simple full-tile fallback."""
+        raylib = self._raylib
+        color = self._color_for(layer=item.layer, family=item.family, kind=item.kind, alpha=item.alpha)
+        x = item.x * tile_size
+        y = item.y * tile_size
+        raylib.draw_rectangle(x, y, tile_size, tile_size, color)
+
+    def _draw_ground(self, item: PreparedVisualElement, tile_size: int) -> None:
+        """Draw muted terrain with subtle deterministic variation."""
+        raylib = self._raylib
+        base_alpha = item.alpha
+        color = self._color_for(layer=item.layer, family=item.family, kind=item.kind, alpha=base_alpha)
+        x = item.x * tile_size
+        y = item.y * tile_size
+        raylib.draw_rectangle(x, y, tile_size, tile_size, color)
+        if item.family == "grass_detail":
+            self._draw_small_patch(item, tile_size, radius_ratio=0.16)
+
+    def _draw_forest_mass(self, item: PreparedVisualElement, tile_size: int) -> None:
+        """Draw forest as a softened region tile instead of a hard square."""
+        raylib = self._raylib
+        depth = self._raw_int(item.raw, "depth", default=1)
+        alpha = min(0.96, max(0.48, item.alpha + min(depth, 5) * 0.025))
+        color = self._color_for(layer=item.layer, family=item.family, kind=item.kind, alpha=alpha)
+        x = item.x * tile_size
+        y = item.y * tile_size
+        inset = max(0, tile_size // 18)
+        raylib.draw_rectangle_rounded(
+            raylib.Rectangle(
+                float(x - inset),
+                float(y - inset),
+                float(tile_size + inset * 2),
+                float(tile_size + inset * 2),
+            ),
+            0.18,
+            4,
             color,
         )
+        if item.variant % 3 == 0:
+            detail_color = self._color_for(
+                layer=item.layer,
+                family="forest_canopy_stamp",
+                kind="forest_inner_texture",
+                alpha=0.10,
+            )
+            self._draw_offset_circle(item, tile_size, detail_color, dx_ratio=0.28, dy_ratio=0.30, radius_ratio=0.14)
+
+    def _draw_forest_canopy(self, item: PreparedVisualElement, tile_size: int) -> None:
+        """Draw large organic canopy hints for forest regions."""
+        color = self._color_for(layer=item.layer, family=item.family, kind=item.kind, alpha=item.alpha)
+        radius_tiles = self._raw_int(item.raw, "radius_tiles", default=1)
+        radius_ratio = 0.72 if radius_tiles > 1 else 0.42
+        self._draw_offset_circle(
+            item,
+            tile_size,
+            color,
+            dx_ratio=0.50 + ((item.variant % 3) - 1) * 0.10,
+            dy_ratio=0.50 + (((item.variant // 3) % 3) - 1) * 0.08,
+            radius_ratio=radius_ratio,
+        )
+
+    def _draw_road_body(self, item: PreparedVisualElement, tile_size: int) -> None:
+        """Draw road elements as connected path bodies."""
+        raylib = self._raylib
+        color = self._color_for(layer=item.layer, family=item.family, kind=item.kind, alpha=item.alpha)
+        x = item.x * tile_size
+        y = item.y * tile_size
+        connections = self._raw_dict(item.raw, "connections")
+        half = tile_size // 2
+        core = max(5, tile_size // 2)
+        left = x + half - core // 2
+        top = y + half - core // 2
+        raylib.draw_rectangle_rounded(
+            raylib.Rectangle(float(left), float(top), float(core), float(core)),
+            0.35,
+            5,
+            color,
+        )
+        if connections.get("N"):
+            raylib.draw_rectangle(left, y, core, half, color)
+        if connections.get("S"):
+            raylib.draw_rectangle(left, y + half, core, half, color)
+        if connections.get("W"):
+            raylib.draw_rectangle(x, top, half, core, color)
+        if connections.get("E"):
+            raylib.draw_rectangle(x + half, top, half, core, color)
+        if sum(bool(value) for value in connections.values()) >= 3:
+            junction_color = self._color_for(layer=item.layer, family=item.family, kind="worn_junction", alpha=min(1.0, item.alpha + 0.12))
+            self._draw_offset_circle(item, tile_size, junction_color, dx_ratio=0.5, dy_ratio=0.5, radius_ratio=0.34)
+
+    def _draw_road_shoulder(self, item: PreparedVisualElement, tile_size: int) -> None:
+        """Draw soft dirt shoulders around road bodies."""
+        raylib = self._raylib
+        color = self._color_for(layer=item.layer, family=item.family, kind=item.kind, alpha=item.alpha)
+        x = item.x * tile_size
+        y = item.y * tile_size
+        connections = self._raw_dict(item.raw, "connections")
+        if connections:
+            half = tile_size // 2
+            width = max(8, int(tile_size * 0.72))
+            left = x + half - width // 2
+            top = y + half - width // 2
+            raylib.draw_rectangle_rounded(
+                raylib.Rectangle(float(left), float(top), float(width), float(width)),
+                0.35,
+                5,
+                color,
+            )
+            if connections.get("N"):
+                raylib.draw_rectangle(left, y, width, half, color)
+            if connections.get("S"):
+                raylib.draw_rectangle(left, y + half, width, half, color)
+            if connections.get("W"):
+                raylib.draw_rectangle(x, top, half, width, color)
+            if connections.get("E"):
+                raylib.draw_rectangle(x + half, top, half, width, color)
+            return
+        self._draw_soft_tile_wash(item, tile_size, inset_ratio=0.16, roundness=0.35)
+
+    def _draw_water_body(self, item: PreparedVisualElement, tile_size: int) -> None:
+        """Draw water as a calm puddle blob."""
+        raylib = self._raylib
+        color = self._color_for(layer=item.layer, family=item.family, kind=item.kind, alpha=item.alpha)
+        x = item.x * tile_size
+        y = item.y * tile_size
+        pad = max(1, tile_size // 8)
+        if item.family == "water_region_body":
+            pad = -max(1, tile_size // 6)
+        raylib.draw_rectangle_rounded(
+            raylib.Rectangle(
+                float(x + pad),
+                float(y + pad),
+                float(tile_size - pad * 2),
+                float(tile_size - pad * 2),
+            ),
+            0.55,
+            7,
+            color,
+        )
+        if item.variant % 4 == 0:
+            highlight = self._color_for(layer=item.layer, family="water_highlight", kind="subtle_water_highlight", alpha=0.18)
+            self._draw_offset_circle(item, tile_size, highlight, dx_ratio=0.58, dy_ratio=0.38, radius_ratio=0.10)
+
+    def _draw_muddy_bank(self, item: PreparedVisualElement, tile_size: int) -> None:
+        """Draw muddy water bank as a soft irregular wash."""
+        self._draw_soft_tile_wash(item, tile_size, inset_ratio=0.06, roundness=0.45)
+        if item.variant % 3 == 0:
+            color = self._color_for(layer=item.layer, family=item.family, kind="muddy_bank_detail", alpha=item.alpha * 0.65)
+            self._draw_offset_circle(item, tile_size, color, dx_ratio=0.36, dy_ratio=0.60, radius_ratio=0.16)
+
+    def _draw_ruin_floor(self, item: PreparedVisualElement, tile_size: int) -> None:
+        """Draw broken stone floor with small tile detail."""
+        raylib = self._raylib
+        color = self._color_for(layer=item.layer, family=item.family, kind=item.kind, alpha=item.alpha)
+        x = item.x * tile_size
+        y = item.y * tile_size
+        raylib.draw_rectangle(x, y, tile_size, tile_size, color)
+        detail = self._color_for(layer=item.layer, family="ruin_floor_crack", kind="floor_grid_hint", alpha=0.22)
+        if item.variant % 2 == 0:
+            raylib.draw_rectangle(x + tile_size // 3, y + 2, 1, tile_size - 4, detail)
+        if item.variant % 3 == 0:
+            raylib.draw_rectangle(x + 2, y + tile_size // 2, tile_size - 4, 1, detail)
+
+    def _draw_ruin_wall(self, item: PreparedVisualElement, tile_size: int) -> None:
+        """Draw ruin walls as heavier broken stone blocks."""
+        raylib = self._raylib
+        color = self._color_for(layer=item.layer, family=item.family, kind=item.kind, alpha=item.alpha)
+        x = item.x * tile_size
+        y = item.y * tile_size
+        pad = max(1, tile_size // 10)
+        raylib.draw_rectangle(x + pad, y + pad, tile_size - pad * 2, tile_size - pad * 2, color)
+        cap = self._color_for(layer=item.layer, family="ruin_wall_cap", kind="stone_cap", alpha=0.48)
+        raylib.draw_rectangle(x + pad, y + pad, tile_size - pad * 2, max(1, tile_size // 5), cap)
+        if item.variant % 2 == 0:
+            chip = self._color_for(layer=item.layer, family="ruin_broken_wall_hint", kind="wall_chip", alpha=0.65)
+            raylib.draw_rectangle(x + tile_size // 2, y + pad, max(1, tile_size // 5), max(1, tile_size // 4), chip)
+
+    def _draw_ruin_detail(self, item: PreparedVisualElement, tile_size: int) -> None:
+        """Draw visual-only ruin decals as clustered details."""
+        if "rubble" in item.family:
+            self._draw_rubble_layer(item, tile_size)
+            return
+        if "moss" in item.family:
+            self._draw_small_patch(item, tile_size, radius_ratio=0.22)
+            return
+        if "crack" in item.family or "broken" in item.family:
+            self._draw_crack_hint(item, tile_size)
+            return
+        self._draw_small_patch(item, tile_size, radius_ratio=0.18)
+
+    def _draw_reed_cluster(self, item: PreparedVisualObject, tile_size: int) -> None:
+        """Draw reeds as sparse green-brown stems."""
+        raylib = self._raylib
+        color = self._color_for(layer=item.layer, family=item.family, kind=item.kind, alpha=0.74)
+        x = item.x * tile_size
+        y = item.y * tile_size
+        stem_width = max(1, tile_size // 10)
+        offsets = (tile_size // 3, tile_size // 2, tile_size * 2 // 3)
+        for index, offset in enumerate(offsets):
+            height = max(3, tile_size // 2 + ((item.variant + index) % 3) - 1)
+            raylib.draw_rectangle(
+                x + offset,
+                y + tile_size - height - tile_size // 5,
+                stem_width,
+                height,
+                color,
+            )
+
+    def _draw_large_object(self, item: PreparedVisualObject, tile_size: int) -> None:
+        """Draw a larger runtime object silhouette."""
+        raylib = self._raylib
+        color = self._color_for(layer=item.layer, family=item.family, kind=item.kind, alpha=0.78)
+        x = item.x * tile_size
+        y = item.y * tile_size
+        width = tile_size + max(2, tile_size // 2)
+        height = tile_size
+        if item.family in {"field_tent", "old_checkpoint"}:
+            width = tile_size * 2
+            height = tile_size
+        raylib.draw_rectangle_rounded(
+            raylib.Rectangle(float(x), float(y + tile_size // 4), float(width), float(max(2, height // 2))),
+            0.35,
+            5,
+            color,
+        )
+
+    def _draw_runtime_object_marker(self, item: PreparedVisualObject, tile_size: int) -> None:
+        """Draw a compact marker for non-visual runtime objects."""
+        raylib = self._raylib
+        color = self._color_for(layer=item.layer, family=item.family, kind=item.kind, alpha=0.84)
+        x = item.x * tile_size
+        y = item.y * tile_size
+        inset = max(2, tile_size // 4)
+        raylib.draw_rectangle_rounded(
+            raylib.Rectangle(
+                float(x + inset),
+                float(y + inset),
+                float(max(1, tile_size - inset * 2)),
+                float(max(1, tile_size - inset * 2)),
+            ),
+            0.25,
+            4,
+            color,
+        )
+
+    def _draw_object_patch(self, item: PreparedVisualObject, tile_size: int, *, radius_ratio: float) -> None:
+        """Draw a visual-only object as a soft patch."""
+        color = self._color_for(layer=item.layer, family=item.family, kind=item.kind, alpha=0.68)
+        self._draw_object_circle(item, tile_size, color, radius_ratio=radius_ratio)
+
+    def _draw_rubble_object(self, item: PreparedVisualObject, tile_size: int) -> None:
+        """Draw rubble-like visual object as a small cluster."""
+        color = self._color_for(layer=item.layer, family=item.family, kind=item.kind, alpha=0.76)
+        self._draw_object_circle(item, tile_size, color, radius_ratio=0.15)
+        self._draw_object_circle(item, tile_size, color, radius_ratio=0.10, offset_x=0.20, offset_y=-0.14)
+
+    def _draw_rubble_layer(self, item: PreparedVisualElement, tile_size: int) -> None:
+        """Draw rubble layer element as a small stone cluster."""
+        color = self._color_for(layer=item.layer, family=item.family, kind=item.kind, alpha=item.alpha)
+        self._draw_offset_circle(item, tile_size, color, dx_ratio=0.45, dy_ratio=0.50, radius_ratio=0.12)
+        self._draw_offset_circle(item, tile_size, color, dx_ratio=0.62, dy_ratio=0.42, radius_ratio=0.08)
+        self._draw_offset_circle(item, tile_size, color, dx_ratio=0.52, dy_ratio=0.65, radius_ratio=0.07)
+
+    def _draw_crack_hint(self, item: PreparedVisualElement, tile_size: int) -> None:
+        """Draw a small crack or broken-wall hint."""
+        raylib = self._raylib
+        color = self._color_for(layer=item.layer, family=item.family, kind=item.kind, alpha=item.alpha)
+        x = item.x * tile_size
+        y = item.y * tile_size
+        if item.variant % 2 == 0:
+            raylib.draw_rectangle(x + tile_size // 4, y + tile_size // 2, max(2, tile_size // 2), 1, color)
+            return
+        raylib.draw_rectangle(x + tile_size // 2, y + tile_size // 4, 1, max(2, tile_size // 2), color)
+
+    def _draw_soft_tile_wash(
+        self,
+        item: PreparedVisualElement,
+        tile_size: int,
+        *,
+        inset_ratio: float,
+        roundness: float,
+    ) -> None:
+        """Draw a rounded translucent tile wash."""
+        raylib = self._raylib
+        color = self._color_for(layer=item.layer, family=item.family, kind=item.kind, alpha=item.alpha)
+        x = item.x * tile_size
+        y = item.y * tile_size
+        inset = int(tile_size * inset_ratio)
+        raylib.draw_rectangle_rounded(
+            raylib.Rectangle(
+                float(x + inset),
+                float(y + inset),
+                float(max(1, tile_size - inset * 2)),
+                float(max(1, tile_size - inset * 2)),
+            ),
+            roundness,
+            5,
+            color,
+        )
+
+    def _draw_small_patch(self, item: PreparedVisualElement, tile_size: int, *, radius_ratio: float) -> None:
+        """Draw a small circular detail patch."""
+        color = self._color_for(layer=item.layer, family=item.family, kind=item.kind, alpha=item.alpha)
+        dx = 0.50 + ((item.variant % 3) - 1) * 0.11
+        dy = 0.50 + (((item.variant // 3) % 3) - 1) * 0.10
+        self._draw_offset_circle(item, tile_size, color, dx_ratio=dx, dy_ratio=dy, radius_ratio=radius_ratio)
+
+    def _draw_offset_circle(
+        self,
+        item: PreparedVisualElement,
+        tile_size: int,
+        color: object,
+        *,
+        dx_ratio: float,
+        dy_ratio: float,
+        radius_ratio: float,
+    ) -> None:
+        """Draw a circle inside a tile at a relative offset."""
+        self._raylib.draw_circle(
+            int(item.x * tile_size + tile_size * dx_ratio),
+            int(item.y * tile_size + tile_size * dy_ratio),
+            max(1.0, tile_size * radius_ratio),
+            color,
+        )
+
+    def _draw_object_circle(
+        self,
+        item: PreparedVisualObject,
+        tile_size: int,
+        color: object,
+        *,
+        radius_ratio: float,
+        offset_x: float = 0.0,
+        offset_y: float = 0.0,
+    ) -> None:
+        """Draw a circle for an object element."""
+        self._raylib.draw_circle(
+            int(item.x * tile_size + tile_size * (0.5 + offset_x)),
+            int(item.y * tile_size + tile_size * (0.5 + offset_y)),
+            max(1.0, tile_size * radius_ratio),
+            color,
+        )
+
+    def _raw_dict(self, raw: dict[str, Any], key: str) -> dict[str, Any]:
+        """Return a dictionary field from raw element data."""
+        value = raw.get(key)
+        if isinstance(value, dict):
+            return value
+        return {}
+
+    def _raw_int(self, raw: dict[str, Any], key: str, *, default: int) -> int:
+        """Return an integer field from raw element data."""
+        value = raw.get(key)
+        if isinstance(value, bool):
+            return default
+        if isinstance(value, int):
+            return value
+        return default
 
     def _visible_layers(
         self,

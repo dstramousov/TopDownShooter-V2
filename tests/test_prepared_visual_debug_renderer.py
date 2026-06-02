@@ -150,4 +150,6 @@ def test_prepared_visual_debug_renderer_draws_layers_and_objects() -> None:
     assert stats.drawn_object_elements == 1
     assert stats.total_layer_elements == 2
     assert stats.total_object_elements == 1
-    assert [call[0] for call in raylib.calls] == ["rectangle", "rounded", "rectangle"]
+    call_names = [call[0] for call in raylib.calls]
+    assert call_names.count("rectangle") >= 2
+    assert "circle" in call_names

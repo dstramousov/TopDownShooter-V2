@@ -1116,3 +1116,10 @@
 - Added a render-texture cache for prepared visual debug rendering static layers and visual-only objects.
 - `MapRenderer` now prepares prepared-visual static caches before entering 2D camera mode and unloads them safely.
 - Prepared visual debug mode keeps dynamic runtime objects drawable per frame while avoiding thousands of repeated static draw calls.
+
+
+## v0.2.50 -> v0.2.51
+
+- Reworked the prepared visual runtime renderer from debug rectangles toward painter-style cached primitives.
+- Runtime prepared visual mode now draws forest masses, road bodies, water puddles, reeds, ruin floors/walls, and scene dressing with shape-specific primitives instead of mostly full-tile squares.
+- Kept the renderer asset-free and cached, without changing gameplay, collision, map preparation output, or legacy rendering.
