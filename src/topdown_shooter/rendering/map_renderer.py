@@ -8,7 +8,11 @@ from typing import Any
 
 from topdown_shooter.config.runtime_config import WindowConfig
 from topdown_shooter.rendering.camera import RuntimeCamera
+from topdown_shooter.prepared_visual import PreparedVisualMap
 from topdown_shooter.rendering.colors import build_tile_palette
+from topdown_shooter.rendering.prepared_visual_debug_renderer import (
+    PreparedVisualDebugRenderer,
+)
 from topdown_shooter.world.coordinates import TileCoord
 from topdown_shooter.world.runtime_map import RuntimeMap, RuntimeMapObject
 
@@ -128,16 +132,25 @@ class _StaticTerrainCache:
 class MapRenderer:
     """Draw runtime maps with raylib primitives."""
 
-    def __init__(self, raylib: object) -> None:
+    def __init__(
+        self,
+        raylib: object,
+        prepared_visual_map: PreparedVisualMap | None = None,
+    ) -> None:
         """Initialize the renderer.
 
         Args:
             raylib: Imported pyray module.
+            prepared_visual_map: Optional prepared visual data for debug rendering.
         """
         self._raylib = raylib
         self._palette = build_tile_palette(raylib)
         self._fallback_color = raylib.MAGENTA
         self._static_terrain_cache: _StaticTerrainCache | None = None
+        self._prepared_visual_map = prepared_visual_map
+        self._prepared_visual_renderer = (
+            PreparedVisualDebugRenderer(raylib) if prepared_visual_map is not None else None
+        )
 
     def unload(self) -> None:
         """Unload optional renderer-owned raylib resources."""
@@ -165,6 +178,19 @@ class MapRenderer:
         Returns:
             Per-frame rendering statistics.
         """
+        if self._prepared_visual_map is not None and self._prepared_visual_renderer is not None:
+            visual_stats = self._prepared_visual_renderer.draw(
+                prepared_visual_map=self._prepared_visual_map,
+                camera=camera,
+                window_config=window_config,
+                consumed_runtime_object_ids=consumed_runtime_object_ids,
+            )
+            return RenderStats(
+                visible_tiles=visual_stats.visible_tiles,
+                drawn_tiles=visual_stats.drawn_layer_elements + visual_stats.drawn_object_elements,
+                total_tiles=runtime_map.width_tiles * runtime_map.height_tiles,
+            )
+
         min_x, max_x, min_y, max_y = self._calculate_visible_tile_bounds(
             runtime_map=runtime_map,
             camera=camera,

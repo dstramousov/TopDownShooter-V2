@@ -1092,3 +1092,10 @@
 - Added `PreparedVisualLoader` and immutable runtime-facing data models for prepared visual map artifacts.
 - The loader reads `visual_art_layers.json`, `visual_art_objects.json`, `visual_art_chunks.json`, and visual micro-scene artifacts into a `PreparedVisualMap` structure.
 - Added defensive schema, contract, dimension, tile-bound, and required-field validation without changing map preparation output or gameplay behavior.
+
+
+## v0.2.46 -> v0.2.47
+
+- Added an asset-free prepared visual debug renderer for runtime 2D rendering.
+- Runtime now tries to load prepared visual map artifacts and passes them to the 2D map renderer when available.
+- Prepared visual debug rendering draws visual art layers and objects in the game window without changing gameplay, collision, AI, or map preparation output.

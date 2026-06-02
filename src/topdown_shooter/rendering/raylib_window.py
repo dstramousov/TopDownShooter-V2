@@ -14,6 +14,7 @@ from topdown_shooter.gameplay.combat_runtime import update_combat_runtime
 from topdown_shooter.gameplay.explosions import RuntimeExplosionSystem
 from topdown_shooter.gameplay.interactions import RuntimeObjectInteractionSystem
 from topdown_shooter.map_loading.package_loader import GeneratedMapPackage
+from topdown_shooter.prepared_visual import PreparedVisualMap
 from topdown_shooter.rendering.camera import CameraRig
 from topdown_shooter.rendering.combat_feedback import CombatFeedbackOverlay
 from topdown_shooter.rendering.enemy_renderer import EnemyRenderer
@@ -80,6 +81,7 @@ class RaylibWindow:
         runtime_map: RuntimeMap,
         package: GeneratedMapPackage,
         config: RuntimeConfig,
+        prepared_visual_map: PreparedVisualMap | None = None,
     ) -> None:
         """Initialize the runtime window.
 
@@ -87,6 +89,7 @@ class RaylibWindow:
             runtime_map: Runtime map to display.
             package: Loaded generated map package.
             config: Runtime configuration.
+            prepared_visual_map: Optional prepared visual data for debug rendering.
         """
         self._runtime_map = runtime_map
         self._package = package
@@ -126,7 +129,10 @@ class RaylibWindow:
             renderer_name="2D",
             help_lines=self._build_help_lines(config),
         )
-        self._renderer = MapRenderer(self._raylib)
+        self._renderer = MapRenderer(
+            self._raylib,
+            prepared_visual_map=prepared_visual_map,
+        )
         self._player = PlayerState.spawn_at_map_start(
             runtime_map,
             max_health=config.player.max_health,
