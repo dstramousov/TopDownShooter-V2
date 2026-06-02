@@ -1104,3 +1104,9 @@
 - Added explicit prepared visual render mode selection for runtime launches.
 - `--run` now supports `--visual-render legacy|prepared-debug|auto`, defaulting to legacy.
 - Prepared visual debug rendering no longer activates implicitly just because prepared visual JSON exists.
+
+## v0.2.48 -> v0.2.49
+
+- Fixed prepared visual loading for visual micro-scene bounds serialized as `min_x/min_y/max_x/max_y`.
+- The prepared visual loader now normalizes micro-scene bounds to runtime `x/y/w/h` coordinates in memory.
+- Added compatibility for `preset_id` scene fields while keeping prepared visual rendering, gameplay, collision, and map preparation output unchanged.

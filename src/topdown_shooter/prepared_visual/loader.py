@@ -494,7 +494,7 @@ class PreparedVisualLoader:
         return PreparedVisualScene(
             scene_id=self._required_string(data.get("id"), "scene.id"),
             scene_type=self._required_string(data.get("type"), "scene.type"),
-            preset=self._required_string(data.get("preset"), "scene.preset"),
+            preset=self._scene_preset(data),
             visual_role=self._required_string(data.get("visual_role"), "scene.visual_role"),
             bounds=bounds,
             center=center,
@@ -551,17 +551,73 @@ class PreparedVisualLoader:
         """
         if not isinstance(raw_bounds, dict):
             raise PreparedVisualLoadError(f"{context} is missing bounds")
-        bounds = {
-            "x": self._required_non_negative_int(raw_bounds.get("x"), f"{context}.bounds.x"),
-            "y": self._required_non_negative_int(raw_bounds.get("y"), f"{context}.bounds.y"),
-            "w": self._required_positive_int(raw_bounds.get("w"), f"{context}.bounds.w"),
-            "h": self._required_positive_int(raw_bounds.get("h"), f"{context}.bounds.h"),
-        }
+        if {"x", "y", "w", "h"}.issubset(raw_bounds):
+            bounds = {
+                "x": self._required_non_negative_int(raw_bounds.get("x"), f"{context}.bounds.x"),
+                "y": self._required_non_negative_int(raw_bounds.get("y"), f"{context}.bounds.y"),
+                "w": self._required_positive_int(raw_bounds.get("w"), f"{context}.bounds.w"),
+                "h": self._required_positive_int(raw_bounds.get("h"), f"{context}.bounds.h"),
+            }
+            self._validate_bounds(bounds=bounds, context=context, dimensions=dimensions)
+            return bounds
+
+        if {"min_x", "min_y", "max_x", "max_y"}.issubset(raw_bounds):
+            min_x = self._required_non_negative_int(raw_bounds.get("min_x"), f"{context}.bounds.min_x")
+            min_y = self._required_non_negative_int(raw_bounds.get("min_y"), f"{context}.bounds.min_y")
+            max_x = self._required_non_negative_int(raw_bounds.get("max_x"), f"{context}.bounds.max_x")
+            max_y = self._required_non_negative_int(raw_bounds.get("max_y"), f"{context}.bounds.max_y")
+            if max_x < min_x or max_y < min_y:
+                raise PreparedVisualLoadError(f"{context}.bounds max values must be greater than or equal to min values")
+            bounds = {
+                "x": min_x,
+                "y": min_y,
+                "w": max_x - min_x + 1,
+                "h": max_y - min_y + 1,
+            }
+            self._validate_bounds(bounds=bounds, context=context, dimensions=dimensions)
+            return bounds
+
+        raise PreparedVisualLoadError(
+            f"{context}.bounds must use either x/y/w/h or min_x/min_y/max_x/max_y",
+        )
+
+
+    def _validate_bounds(
+        self,
+        *,
+        bounds: dict[str, int],
+        context: str,
+        dimensions: dict[str, int],
+    ) -> None:
+        """Validate normalized scene bounds against map dimensions.
+
+        Args:
+            bounds: Normalized bounds dictionary using x/y/w/h.
+            context: Diagnostic context.
+            dimensions: Map dimensions.
+
+        Raises:
+            PreparedVisualLoadError: If bounds are outside map dimensions.
+        """
         self._validate_point(x=bounds["x"], y=bounds["y"], context=f"{context}.bounds", dimensions=dimensions)
         max_x = bounds["x"] + bounds["w"] - 1
         max_y = bounds["y"] + bounds["h"] - 1
         self._validate_point(x=max_x, y=max_y, context=f"{context}.bounds", dimensions=dimensions)
-        return bounds
+
+    def _scene_preset(self, data: dict[str, Any]) -> str:
+        """Return a scene preset from either supported serialized field.
+
+        Args:
+            data: Raw visual micro-scene dictionary.
+
+        Returns:
+            Scene preset identifier.
+
+        Raises:
+            PreparedVisualLoadError: If no supported preset field is present.
+        """
+        raw_preset = data.get("preset", data.get("preset_id"))
+        return self._required_string(raw_preset, "scene.preset")
 
     def _center(
         self,
