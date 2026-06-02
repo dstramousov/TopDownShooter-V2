@@ -1012,3 +1012,16 @@
 - Pilot art road rendering now paints old roads as soft path regions instead of full-tile brown strips.
 - Added faded road shoulders, dirt wear, junction emphasis, and grass-intrusion hints to reduce grid-like road artifacts.
 - Extended pilot art reports and summaries with road shoulder, dirt-noise, and grass-intrusion counters while preserving gameplay geometry.
+
+## v0.2.33 -> v0.2.34
+
+- Reworked pilot road rendering to restore a continuous dirt path body instead of dotted road marks.
+- Broadened road cores and shoulders while making grass intrusions and dirt wear sparser and less debug-like.
+- Kept the pilot road painter visual-only: gameplay geometry, collision, and runtime renderers remain unchanged.
+
+
+## v0.2.34 -> v0.2.35
+
+- Pilot art water rendering now paints water masks as connected puddle-like blobs instead of blue tile blocks.
+- Added muddy bank washes, darker water-edge patches, subtle highlights, and sparse reed clusters around water while preserving gameplay geometry.
+- Extended pilot art reports and summaries with water bank, reed, highlight, and region-wash counters.

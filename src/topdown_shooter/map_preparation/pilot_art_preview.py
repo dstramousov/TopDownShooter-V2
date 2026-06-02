@@ -57,6 +57,11 @@ class PilotArtPreviewRenderer:
         "road_shoulder": (130, 109, 75),
         "water": (36, 77, 88),
         "water_deep": (28, 58, 72),
+        "water_shallow": (47, 91, 99),
+        "water_bank": (78, 91, 61),
+        "wet_mud": (82, 76, 55),
+        "reeds": (105, 128, 67),
+        "water_highlight": (65, 112, 119),
         "ruin_floor": (92, 91, 84),
         "ruin_wall": (62, 62, 59),
         "forest_deep": (19, 43, 30),
@@ -169,6 +174,8 @@ class PilotArtPreviewRenderer:
                 f"- road grass intrusions: {rendered.get('road_grass_intrusions', 'unknown')}",
                 f"- ruin details: {rendered.get('ruin_details', 'unknown')}",
                 f"- water details: {rendered.get('water_details', 'unknown')}",
+                f"- water bank tiles: {rendered.get('water_bank_tiles', 'unknown')}",
+                f"- water reeds: {rendered.get('water_reeds', 'unknown')}",
                 f"- rendered objects: {rendered.get('normalized_objects', 'unknown')}",
                 f"- rendered dressing: {rendered.get('dressing_objects', 'unknown')}",
             ],
@@ -323,7 +330,7 @@ class PilotArtPreviewRenderer:
         }
 
     def _draw_road_tile_base(self, *, canvas: _ArtCanvas, x: int, y: int, scale: int) -> None:
-        """Blend a road tile back toward grass before painting the path.
+        """Blend a road tile toward grass before painting the continuous path body.
 
         Args:
             canvas: RGB canvas.
@@ -332,10 +339,10 @@ class PilotArtPreviewRenderer:
             scale: Preview pixels per tile.
         """
         base = self._shift_color(self.BASE_COLORS["clearing"], self._stable_mod("road-base", x, y, modulo=9) - 4)
-        canvas.blend_rect(x * scale, y * scale, scale, scale, base, alpha=0.55)
+        canvas.blend_rect(x * scale, y * scale, scale, scale, base, alpha=0.24)
 
     def _draw_road_external_shoulder(self, *, canvas: _ArtCanvas, x: int, y: int, scale: int) -> None:
-        """Draw a faint dirt shoulder on non-road cells adjacent to a road.
+        """Draw a very faint dirt wash on non-road cells adjacent to a road.
 
         Args:
             canvas: RGB canvas.
@@ -343,17 +350,17 @@ class PilotArtPreviewRenderer:
             y: Tile Y coordinate.
             scale: Preview pixels per tile.
         """
-        if self._stable_mod("road-ext-shoulder-skip", x, y, modulo=3) == 0:
+        if self._stable_mod("road-ext-shoulder-skip", x, y, modulo=2) == 0:
             return
-        offset_x = self._stable_mod("road-ext-x", x, y, modulo=max(1, scale // 2))
-        offset_y = self._stable_mod("road-ext-y", y, x, modulo=max(1, scale // 2))
+        offset_x = self._stable_mod("road-ext-x", x, y, modulo=max(1, scale // 3)) - scale // 6
+        offset_y = self._stable_mod("road-ext-y", y, x, modulo=max(1, scale // 3)) - scale // 6
         canvas.blend_ellipse(
-            x * scale + scale // 3 + offset_x,
-            y * scale + scale // 3 + offset_y,
+            x * scale + scale // 2 + offset_x,
+            y * scale + scale // 2 + offset_y,
+            max(2, scale * 3 // 5),
             max(2, scale // 2),
-            max(2, scale // 3),
             self.BASE_COLORS["road_shoulder"],
-            alpha=0.10,
+            alpha=0.08,
         )
 
     def _draw_road_shoulder(
@@ -365,7 +372,7 @@ class PilotArtPreviewRenderer:
         scale: int,
         connections: dict[str, bool],
     ) -> None:
-        """Draw the broad faded dirt part of a road tile.
+        """Draw the broad faded dirt body of a continuous path.
 
         Args:
             canvas: RGB canvas.
@@ -376,21 +383,23 @@ class PilotArtPreviewRenderer:
         """
         left = x * scale
         top = y * scale
-        arm = max(2, scale * 5 // 8)
-        half = arm // 2
         center = scale // 2
+        connection_count = sum(connections.values())
+        body_width = max(4, scale * 3 // 4)
+        half = body_width // 2
         color = self.BASE_COLORS["road_shoulder"]
-        canvas.blend_ellipse(left + center, top + center, max(2, arm // 2), max(2, arm // 2), color, alpha=0.32)
+        alpha = 0.48 if connection_count >= 3 else 0.40
+        canvas.blend_ellipse(left + center, top + center, max(3, half), max(3, half), color, alpha=alpha)
         if connections["N"]:
-            canvas.blend_rect(left + center - half // 2, top, max(1, half), center + 1, color, alpha=0.30)
+            canvas.blend_rect(left + center - half, top, body_width, center + half, color, alpha=alpha)
         if connections["S"]:
-            canvas.blend_rect(left + center - half // 2, top + center, max(1, half), center + 1, color, alpha=0.30)
+            canvas.blend_rect(left + center - half, top + center - half, body_width, center + half + 1, color, alpha=alpha)
         if connections["W"]:
-            canvas.blend_rect(left, top + center - half // 2, center + 1, max(1, half), color, alpha=0.30)
+            canvas.blend_rect(left, top + center - half, center + half, body_width, color, alpha=alpha)
         if connections["E"]:
-            canvas.blend_rect(left + center, top + center - half // 2, center + 1, max(1, half), color, alpha=0.30)
-        if not any(connections.values()):
-            canvas.blend_ellipse(left + center, top + center, max(2, scale // 2), max(2, scale // 3), color, alpha=0.34)
+            canvas.blend_rect(left + center - half, top + center - half, center + half + 1, body_width, color, alpha=alpha)
+        if connection_count == 0:
+            canvas.blend_ellipse(left + center, top + center, max(3, scale * 2 // 5), max(3, scale // 3), color, alpha=0.38)
 
     def _draw_road_core(
         self,
@@ -401,7 +410,7 @@ class PilotArtPreviewRenderer:
         scale: int,
         connections: dict[str, bool],
     ) -> None:
-        """Draw the compact worn center of a road tile.
+        """Draw the continuous worn center of the path.
 
         Args:
             canvas: RGB canvas.
@@ -413,11 +422,12 @@ class PilotArtPreviewRenderer:
         left = x * scale
         top = y * scale
         center = scale // 2
-        core = max(2, scale // 3)
-        half = max(1, core // 2)
+        connection_count = sum(connections.values())
+        core = max(4, scale * 7 // 16)
+        half = max(2, core // 2)
         color = self.BASE_COLORS["road_core"]
-        alpha = 0.44 if sum(connections.values()) < 3 else 0.52
-        canvas.blend_ellipse(left + center, top + center, max(2, core), max(2, core), color, alpha=alpha)
+        alpha = 0.62 if connection_count < 3 else 0.70
+        canvas.blend_ellipse(left + center, top + center, max(3, half), max(3, half), color, alpha=alpha)
         if connections["N"]:
             canvas.blend_rect(left + center - half, top, core, center + half, color, alpha=alpha)
         if connections["S"]:
@@ -426,8 +436,10 @@ class PilotArtPreviewRenderer:
             canvas.blend_rect(left, top + center - half, center + half, core, color, alpha=alpha)
         if connections["E"]:
             canvas.blend_rect(left + center - half, top + center - half, center + half + 1, core, color, alpha=alpha)
-        if not any(connections.values()):
-            canvas.blend_ellipse(left + center, top + center, max(2, scale // 3), max(2, scale // 4), color, alpha=0.40)
+        if connection_count >= 3:
+            canvas.blend_ellipse(left + center, top + center, max(4, scale * 3 // 5), max(4, scale // 2), color, alpha=0.28)
+        if connection_count == 0:
+            canvas.blend_ellipse(left + center, top + center, max(3, scale * 2 // 5), max(2, scale // 3), color, alpha=0.50)
 
     def _draw_road_noise(
         self,
@@ -438,7 +450,7 @@ class PilotArtPreviewRenderer:
         scale: int,
         connections: dict[str, bool],
     ) -> int:
-        """Draw deterministic worn dirt details on a road tile.
+        """Draw sparse larger worn-dirt patches on a road tile.
 
         Args:
             canvas: RGB canvas.
@@ -450,26 +462,26 @@ class PilotArtPreviewRenderer:
         Returns:
             Number of noise marks drawn.
         """
-        marks = 1 if self._stable_mod("road-noise-a", x, y, modulo=2) == 0 else 0
-        if sum(connections.values()) >= 3:
+        marks = 1 if self._stable_mod("road-noise-a", x, y, modulo=4) == 0 else 0
+        if sum(connections.values()) >= 3 and self._stable_mod("road-noise-junction", x, y, modulo=2) == 0:
             marks += 1
         for mark_index in range(marks):
-            width = max(1, scale // (3 if mark_index == 0 else 4))
-            height = max(1, scale // 5)
+            width = max(2, scale // 2)
+            height = max(2, scale // 3)
             offset_x = self._stable_mod(f"road-noise-x-{mark_index}", x, y, modulo=max(1, scale - width))
             offset_y = self._stable_mod(f"road-noise-y-{mark_index}", y, x, modulo=max(1, scale - height))
-            canvas.blend_rect(
-                x * scale + offset_x,
-                y * scale + offset_y,
-                width,
-                height,
+            canvas.blend_ellipse(
+                x * scale + offset_x + width // 2,
+                y * scale + offset_y + height // 2,
+                max(1, width // 2),
+                max(1, height // 2),
                 self.BASE_COLORS["road_wet"],
-                alpha=0.22,
+                alpha=0.12,
             )
         return marks
 
     def _draw_road_grass_intrusions(self, *, canvas: _ArtCanvas, x: int, y: int, scale: int) -> int:
-        """Draw small grass patches intruding into the road body.
+        """Draw rare grass patches intruding into the road body.
 
         Args:
             canvas: RGB canvas.
@@ -480,20 +492,41 @@ class PilotArtPreviewRenderer:
         Returns:
             Number of grass intrusion marks drawn.
         """
-        if self._stable_mod("road-grass-skip", x, y, modulo=3) != 0:
+        if self._stable_mod("road-grass-skip", x, y, modulo=7) != 0:
             return 0
-        size = max(1, scale // 4)
-        offset_x = self._stable_mod("road-grass-x", x, y, modulo=max(1, scale - size))
-        offset_y = self._stable_mod("road-grass-y", y, x, modulo=max(1, scale - size))
-        canvas.blend_rect(
-            x * scale + offset_x,
-            y * scale + offset_y,
-            size,
-            max(1, size // 2),
+        width = max(2, scale // 3)
+        height = max(1, scale // 5)
+        offset_x = self._stable_mod("road-grass-x", x, y, modulo=max(1, scale - width))
+        offset_y = self._stable_mod("road-grass-y", y, x, modulo=max(1, scale - height))
+        canvas.blend_ellipse(
+            x * scale + offset_x + width // 2,
+            y * scale + offset_y + height // 2,
+            max(1, width // 2),
+            max(1, height // 2),
             self.BASE_COLORS["road_grass_intrusion"],
-            alpha=0.26,
+            alpha=0.12,
         )
         return 1
+
+    def _mask_connections(self, mask: list[list[bool]], *, x: int, y: int) -> dict[str, bool]:
+        """Return cardinal connections for a boolean mask cell.
+
+        Args:
+            mask: Boolean mask.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+
+        Returns:
+            Dictionary with N/E/S/W boolean connections.
+        """
+        height = len(mask)
+        width = len(mask[0]) if mask else 0
+        return {
+            "N": y > 0 and mask[y - 1][x],
+            "E": x + 1 < width and mask[y][x + 1],
+            "S": y + 1 < height and mask[y + 1][x],
+            "W": x > 0 and mask[y][x - 1],
+        }
 
     def _road_connections(self, road_mask: list[list[bool]], *, x: int, y: int) -> dict[str, bool]:
         """Return cardinal road connections for a road tile.
@@ -557,7 +590,7 @@ class PilotArtPreviewRenderer:
         rows: list[list[dict[str, Any]]],
         scale: int,
     ) -> dict[str, int]:
-        """Paint water and muddy lowland hints.
+        """Paint water as connected puddle blobs with muddy banks and reeds.
 
         Args:
             canvas: RGB canvas.
@@ -565,24 +598,265 @@ class PilotArtPreviewRenderer:
             scale: Preview pixels per tile.
 
         Returns:
-            Water detail counters.
+            Water painter counters.
         """
-        details = 0
-        for y, row in enumerate(rows):
-            for x, cell in enumerate(row):
-                primary = self._primary(cell)
-                if primary not in self.WATER_CONTEXTS:
+        water_mask = self._mask_for(rows, self.WATER_CONTEXTS)
+        water_tiles = 0
+        bank_tiles = 0
+        reeds = 0
+        dark_patches = 0
+        highlights = 0
+        height = len(rows)
+        width = len(rows[0]) if rows else 0
+
+        for y in range(height):
+            for x in range(width):
+                primary = self._primary(rows[y][x])
+                if water_mask[y][x]:
+                    water_tiles += 1
+                    connections = self._mask_connections(water_mask, x=x, y=y)
+                    self._draw_water_tile_body(
+                        canvas=canvas,
+                        x=x,
+                        y=y,
+                        scale=scale,
+                        connections=connections,
+                    )
+                    if self._touches_outside(water_mask, x=x, y=y):
+                        dark_patches += self._draw_water_edge_noise(canvas=canvas, x=x, y=y, scale=scale)
+                        reeds += self._draw_water_reeds(canvas=canvas, x=x, y=y, scale=scale, inside_water=True)
+                    else:
+                        highlights += self._draw_water_inner_highlight(canvas=canvas, x=x, y=y, scale=scale)
                     continue
-                details += 1
-                canvas.blend_rect(
-                    x * scale + scale // 5,
-                    y * scale + scale // 5,
-                    max(1, scale * 3 // 5),
-                    max(1, scale * 3 // 5),
-                    self.BASE_COLORS["water_deep"],
-                    alpha=0.34,
+
+                if self._touches_mask(water_mask, x=x, y=y) and self._allows_water_bank(primary):
+                    bank_tiles += 1
+                    self._draw_water_bank(canvas=canvas, x=x, y=y, scale=scale)
+                    reeds += self._draw_water_reeds(canvas=canvas, x=x, y=y, scale=scale, inside_water=False)
+
+        region_stats = self._paint_water_region_washes(
+            canvas=canvas,
+            water_mask=water_mask,
+            scale=scale,
+        )
+        return {
+            "water_details": water_tiles,
+            "water_tiles": water_tiles,
+            "water_bank_tiles": bank_tiles,
+            "water_reeds": reeds,
+            "water_dark_patches": dark_patches,
+            "water_highlights": highlights,
+            "water_region_washes": region_stats["water_region_washes"],
+            "water_regions_painted": region_stats["water_regions_painted"],
+        }
+
+    def _draw_water_tile_body(
+        self,
+        *,
+        canvas: _ArtCanvas,
+        x: int,
+        y: int,
+        scale: int,
+        connections: dict[str, bool],
+    ) -> None:
+        """Draw a continuous blob-like water body for one logical water tile.
+
+        Args:
+            canvas: RGB canvas.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+            scale: Preview pixels per tile.
+            connections: Cardinal water connections.
+        """
+        left = x * scale
+        top = y * scale
+        center = scale // 2
+        shallow = self._shift_color(
+            self.BASE_COLORS["water_shallow"],
+            self._stable_mod("water-shallow", x, y, modulo=9) - 4,
+        )
+        deep = self._shift_color(
+            self.BASE_COLORS["water_deep"],
+            self._stable_mod("water-deep", x, y, modulo=7) - 3,
+        )
+        outer_radius = max(3, scale * 7 // 16)
+        inner_radius_x = max(2, scale // 3)
+        inner_radius_y = max(2, scale // 4)
+        canvas.blend_ellipse(left + center, top + center, outer_radius, outer_radius, shallow, alpha=0.74)
+        if connections["N"]:
+            canvas.blend_rect(left + center - outer_radius, top, outer_radius * 2, center, shallow, alpha=0.64)
+        if connections["S"]:
+            canvas.blend_rect(left + center - outer_radius, top + center, outer_radius * 2, center + 1, shallow, alpha=0.64)
+        if connections["W"]:
+            canvas.blend_rect(left, top + center - outer_radius, center, outer_radius * 2, shallow, alpha=0.64)
+        if connections["E"]:
+            canvas.blend_rect(left + center, top + center - outer_radius, center + 1, outer_radius * 2, shallow, alpha=0.64)
+        canvas.blend_ellipse(left + center, top + center, inner_radius_x, inner_radius_y, deep, alpha=0.34)
+        if sum(connections.values()) == 0:
+            canvas.blend_ellipse(left + center, top + center, max(2, scale // 4), max(2, scale // 5), deep, alpha=0.42)
+
+    def _draw_water_bank(self, *, canvas: _ArtCanvas, x: int, y: int, scale: int) -> None:
+        """Draw a muddy transition patch on land adjacent to water.
+
+        Args:
+            canvas: RGB canvas.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+            scale: Preview pixels per tile.
+        """
+        if self._stable_mod("water-bank-skip", x, y, modulo=3) == 0:
+            return
+        offset_x = self._stable_mod("water-bank-x", x, y, modulo=max(1, scale // 2)) - scale // 4
+        offset_y = self._stable_mod("water-bank-y", y, x, modulo=max(1, scale // 2)) - scale // 4
+        radius_x = max(2, scale * (2 + self._stable_mod("water-bank-rx", x, y, modulo=2)) // 5)
+        radius_y = max(2, scale * (1 + self._stable_mod("water-bank-ry", y, x, modulo=2)) // 4)
+        canvas.blend_ellipse(
+            x * scale + scale // 2 + offset_x,
+            y * scale + scale // 2 + offset_y,
+            radius_x,
+            radius_y,
+            self.BASE_COLORS["wet_mud"],
+            alpha=0.18,
+        )
+
+    def _draw_water_edge_noise(self, *, canvas: _ArtCanvas, x: int, y: int, scale: int) -> int:
+        """Draw dark and muddy variation on a water edge tile.
+
+        Args:
+            canvas: RGB canvas.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+            scale: Preview pixels per tile.
+
+        Returns:
+            Number of patches drawn.
+        """
+        if self._stable_mod("water-edge-noise", x, y, modulo=2) != 0:
+            return 0
+        width = max(2, scale // 2)
+        height = max(2, scale // 4)
+        offset_x = self._stable_mod("water-edge-noise-x", x, y, modulo=max(1, scale - width))
+        offset_y = self._stable_mod("water-edge-noise-y", y, x, modulo=max(1, scale - height))
+        color = self.BASE_COLORS["wet_mud"] if self._stable_mod("water-edge-tone", x, y, modulo=3) == 0 else self.BASE_COLORS["water_deep"]
+        canvas.blend_ellipse(
+            x * scale + offset_x + width // 2,
+            y * scale + offset_y + height // 2,
+            max(1, width // 2),
+            max(1, height // 2),
+            color,
+            alpha=0.16,
+        )
+        return 1
+
+    def _draw_water_inner_highlight(self, *, canvas: _ArtCanvas, x: int, y: int, scale: int) -> int:
+        """Draw rare subtle highlights inside larger water blobs.
+
+        Args:
+            canvas: RGB canvas.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+            scale: Preview pixels per tile.
+
+        Returns:
+            Number of highlights drawn.
+        """
+        if self._stable_mod("water-highlight-skip", x, y, modulo=5) != 0:
+            return 0
+        width = max(2, scale // 3)
+        y_offset = self._stable_mod("water-highlight-y", x, y, modulo=max(1, scale // 2))
+        canvas.blend_rect(
+            x * scale + scale // 3,
+            y * scale + scale // 4 + y_offset,
+            width,
+            max(1, scale // 10),
+            self.BASE_COLORS["water_highlight"],
+            alpha=0.18,
+        )
+        return 1
+
+    def _draw_water_reeds(
+        self,
+        *,
+        canvas: _ArtCanvas,
+        x: int,
+        y: int,
+        scale: int,
+        inside_water: bool,
+    ) -> int:
+        """Draw sparse reed clusters near water edges.
+
+        Args:
+            canvas: RGB canvas.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+            scale: Preview pixels per tile.
+            inside_water: Whether the reed cluster is placed inside water.
+
+        Returns:
+            Number of reed clusters drawn.
+        """
+        modulo = 7 if inside_water else 5
+        if self._stable_mod("water-reeds-skip", x, y, modulo=modulo) != 0:
+            return 0
+        cluster_x = x * scale + self._stable_mod("water-reeds-x", x, y, modulo=max(1, scale - 3))
+        cluster_y = y * scale + self._stable_mod("water-reeds-y", y, x, modulo=max(1, scale - 5))
+        color = self.BASE_COLORS["reeds"]
+        for reed_index in range(3):
+            dx = reed_index - 1
+            height = max(2, scale // 3 + self._stable_mod(f"water-reed-h-{reed_index}", x, y, modulo=3))
+            canvas.blend_rect(cluster_x + dx, cluster_y - height // 2, 1, height, color, alpha=0.42)
+        return 1
+
+    def _paint_water_region_washes(
+        self,
+        *,
+        canvas: _ArtCanvas,
+        water_mask: list[list[bool]],
+        scale: int,
+    ) -> dict[str, int]:
+        """Paint soft wash blobs across connected water regions.
+
+        Args:
+            canvas: RGB canvas.
+            water_mask: True for water cells.
+            scale: Preview pixels per tile.
+
+        Returns:
+            Water-region wash counters.
+        """
+        washes = 0
+        regions_painted = 0
+        for region_index, cells in enumerate(self._connected_mask_regions(water_mask)):
+            if not cells:
+                continue
+            regions_painted += 1
+            budget = max(1, min(12, len(cells) // 3 + 1))
+            phase = self._stable_mod("water-region-phase", region_index, len(cells), modulo=max(1, len(cells)))
+            for wash_index in range(budget):
+                x, y = cells[(phase + wash_index * 5 + wash_index * wash_index) % len(cells)]
+                radius_x = max(3, scale * (1 + self._stable_mod("water-wash-rx", x, y, modulo=3)) // 2)
+                radius_y = max(3, scale * (1 + self._stable_mod("water-wash-ry", y, x, modulo=2)) // 2)
+                canvas.blend_ellipse(
+                    x * scale + scale // 2,
+                    y * scale + scale // 2,
+                    radius_x,
+                    radius_y,
+                    self.BASE_COLORS["water"],
+                    alpha=0.18,
                 )
-        return {"water_details": details}
+                washes += 1
+        return {"water_region_washes": washes, "water_regions_painted": regions_painted}
+
+    def _allows_water_bank(self, primary: str) -> bool:
+        """Return whether a terrain context may receive a muddy water bank.
+
+        Args:
+            primary: Primary terrain context.
+
+        Returns:
+            True when the context can receive visual-only water-edge treatment.
+        """
+        return primary not in self.FOREST_CONTEXTS and primary not in self.RUIN_CONTEXTS and primary not in {"ruin_wall", "blocked_structure"}
 
     def _paint_visual_objects(
         self,
@@ -900,7 +1174,7 @@ class PilotArtPreviewRenderer:
         if primary == "ruin_floor":
             return self._shift_color(self.BASE_COLORS["ruin_floor"], jitter)
         if primary in self.WATER_CONTEXTS:
-            return self._shift_color(self.BASE_COLORS["water"], jitter)
+            return self._shift_color(self.BASE_COLORS["water_bank"], jitter)
         if primary == "blocked_structure":
             return self._shift_color(self.BASE_COLORS["blocked_structure"], jitter)
         if primary == "clearing":
@@ -1087,6 +1361,12 @@ class PilotArtPreviewRenderer:
                 "road_grass_intrusions": road_stats.get("road_grass_intrusions", 0),
                 "ruin_details": ruin_stats.get("ruin_details", 0),
                 "water_details": water_stats.get("water_details", 0),
+                "water_bank_tiles": water_stats.get("water_bank_tiles", 0),
+                "water_reeds": water_stats.get("water_reeds", 0),
+                "water_dark_patches": water_stats.get("water_dark_patches", 0),
+                "water_highlights": water_stats.get("water_highlights", 0),
+                "water_region_washes": water_stats.get("water_region_washes", 0),
+                "water_regions_painted": water_stats.get("water_regions_painted", 0),
                 "normalized_objects": rendered_objects,
                 "dressing_objects": rendered_dressing,
                 "skipped_objects_without_position": (
@@ -1134,6 +1414,7 @@ class PilotArtPreviewRenderer:
             "rendering_policy": {
                 "forest": "Paint connected forest masks as region-scale canopy masses with deterministic brush blobs; do not draw explicit edge outlines.",
                 "roads": "Paint old-road masks as soft path regions with faded shoulders, dirt noise, junction wear, and grass intrusion hints while preserving logical road cells.",
+                "water": "Paint water masks as puddle-like blobs with muddy banks, sparse reeds, darker edge patches, and subtle highlights without changing walkability.",
                 "ruins": "Draw ruin floors and walls as readable gray structures with crack hints.",
                 "dressing": "Draw scene dressing as subdued details, not debug markers.",
                 "gameplay_changes": False,
