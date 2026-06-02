@@ -1006,3 +1006,9 @@
 - Pilot art forest rendering now uses region-scale canopy blobs instead of relying on per-tile forest marks.
 - Reduced local forest stamp density and softened forest-adjacent shadow to lower visible tile-grid artifacts.
 - Extended pilot art reports and summaries with forest region blob counters for visual iteration control.
+
+## v0.2.32 -> v0.2.33
+
+- Pilot art road rendering now paints old roads as soft path regions instead of full-tile brown strips.
+- Added faded road shoulders, dirt wear, junction emphasis, and grass-intrusion hints to reduce grid-like road artifacts.
+- Extended pilot art reports and summaries with road shoulder, dirt-noise, and grass-intrusion counters while preserving gameplay geometry.

@@ -50,8 +50,11 @@ class PilotArtPreviewRenderer:
         "clearing": (82, 110, 60),
         "blocked_structure": (54, 51, 45),
         "unknown": (76, 70, 66),
-        "road": (124, 100, 68),
-        "road_wet": (105, 86, 61),
+        "road": (112, 96, 66),
+        "road_core": (150, 121, 78),
+        "road_wet": (101, 84, 60),
+        "road_grass_intrusion": (91, 124, 69),
+        "road_shoulder": (130, 109, 75),
         "water": (36, 77, 88),
         "water_deep": (28, 58, 72),
         "ruin_floor": (92, 91, 84),
@@ -162,6 +165,8 @@ class PilotArtPreviewRenderer:
                 f"- forest paint stamps: {rendered.get('forest_stamps', 'unknown')}",
                 f"- forest region blobs: {rendered.get('forest_region_blobs', 'unknown')}",
                 f"- road details: {rendered.get('road_details', 'unknown')}",
+                f"- road shoulders: {rendered.get('road_external_shoulder_tiles', 'unknown')}",
+                f"- road grass intrusions: {rendered.get('road_grass_intrusions', 'unknown')}",
                 f"- ruin details: {rendered.get('ruin_details', 'unknown')}",
                 f"- water details: {rendered.get('water_details', 'unknown')}",
                 f"- rendered objects: {rendered.get('normalized_objects', 'unknown')}",
@@ -271,7 +276,7 @@ class PilotArtPreviewRenderer:
         rows: list[list[dict[str, Any]]],
         scale: int,
     ) -> dict[str, int]:
-        """Paint soft road detail hints.
+        """Paint roads as soft path regions instead of full-tile strips.
 
         Args:
             canvas: RGB canvas.
@@ -279,33 +284,236 @@ class PilotArtPreviewRenderer:
             scale: Preview pixels per tile.
 
         Returns:
-            Road detail counters.
+            Road painter counters.
         """
-        details = 0
-        for y, row in enumerate(rows):
-            for x, cell in enumerate(row):
-                primary = self._primary(cell)
-                if primary not in self.ROAD_CONTEXTS:
+        road_mask = self._mask_for(rows, self.ROAD_CONTEXTS)
+        road_tiles = 0
+        shoulder_tiles = 0
+        grass_intrusions = 0
+        junction_tiles = 0
+        dirt_noise = 0
+        height = len(rows)
+        width = len(rows[0]) if rows else 0
+
+        for y in range(height):
+            for x in range(width):
+                if not road_mask[y][x]:
+                    if self._touches_mask(road_mask, x=x, y=y):
+                        shoulder_tiles += 1
+                        self._draw_road_external_shoulder(canvas=canvas, x=x, y=y, scale=scale)
                     continue
-                details += 1
-                canvas.blend_rect(
-                    x * scale + max(1, scale // 8),
-                    y * scale + max(1, scale // 8),
-                    max(1, scale - scale // 4),
-                    max(1, scale - scale // 4),
-                    self.BASE_COLORS["road_detail"],
-                    alpha=0.22,
-                )
-                if self._stable_mod("road-noise", x, y, modulo=3) == 0:
-                    canvas.blend_rect(
-                        x * scale + scale // 3,
-                        y * scale + scale // 2,
-                        max(1, scale // 2),
-                        max(1, scale // 4),
-                        self.BASE_COLORS["road_wet"],
-                        alpha=0.24,
-                    )
-        return {"road_details": details}
+
+                road_tiles += 1
+                connections = self._road_connections(road_mask, x=x, y=y)
+                if sum(connections.values()) >= 3:
+                    junction_tiles += 1
+                self._draw_road_tile_base(canvas=canvas, x=x, y=y, scale=scale)
+                self._draw_road_shoulder(canvas=canvas, x=x, y=y, scale=scale, connections=connections)
+                self._draw_road_core(canvas=canvas, x=x, y=y, scale=scale, connections=connections)
+                dirt_noise += self._draw_road_noise(canvas=canvas, x=x, y=y, scale=scale, connections=connections)
+                grass_intrusions += self._draw_road_grass_intrusions(canvas=canvas, x=x, y=y, scale=scale)
+
+        return {
+            "road_details": road_tiles,
+            "road_tiles": road_tiles,
+            "road_external_shoulder_tiles": shoulder_tiles,
+            "road_junction_tiles": junction_tiles,
+            "road_dirt_noise": dirt_noise,
+            "road_grass_intrusions": grass_intrusions,
+        }
+
+    def _draw_road_tile_base(self, *, canvas: _ArtCanvas, x: int, y: int, scale: int) -> None:
+        """Blend a road tile back toward grass before painting the path.
+
+        Args:
+            canvas: RGB canvas.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+            scale: Preview pixels per tile.
+        """
+        base = self._shift_color(self.BASE_COLORS["clearing"], self._stable_mod("road-base", x, y, modulo=9) - 4)
+        canvas.blend_rect(x * scale, y * scale, scale, scale, base, alpha=0.55)
+
+    def _draw_road_external_shoulder(self, *, canvas: _ArtCanvas, x: int, y: int, scale: int) -> None:
+        """Draw a faint dirt shoulder on non-road cells adjacent to a road.
+
+        Args:
+            canvas: RGB canvas.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+            scale: Preview pixels per tile.
+        """
+        if self._stable_mod("road-ext-shoulder-skip", x, y, modulo=3) == 0:
+            return
+        offset_x = self._stable_mod("road-ext-x", x, y, modulo=max(1, scale // 2))
+        offset_y = self._stable_mod("road-ext-y", y, x, modulo=max(1, scale // 2))
+        canvas.blend_ellipse(
+            x * scale + scale // 3 + offset_x,
+            y * scale + scale // 3 + offset_y,
+            max(2, scale // 2),
+            max(2, scale // 3),
+            self.BASE_COLORS["road_shoulder"],
+            alpha=0.10,
+        )
+
+    def _draw_road_shoulder(
+        self,
+        *,
+        canvas: _ArtCanvas,
+        x: int,
+        y: int,
+        scale: int,
+        connections: dict[str, bool],
+    ) -> None:
+        """Draw the broad faded dirt part of a road tile.
+
+        Args:
+            canvas: RGB canvas.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+            scale: Preview pixels per tile.
+            connections: Cardinal road connections.
+        """
+        left = x * scale
+        top = y * scale
+        arm = max(2, scale * 5 // 8)
+        half = arm // 2
+        center = scale // 2
+        color = self.BASE_COLORS["road_shoulder"]
+        canvas.blend_ellipse(left + center, top + center, max(2, arm // 2), max(2, arm // 2), color, alpha=0.32)
+        if connections["N"]:
+            canvas.blend_rect(left + center - half // 2, top, max(1, half), center + 1, color, alpha=0.30)
+        if connections["S"]:
+            canvas.blend_rect(left + center - half // 2, top + center, max(1, half), center + 1, color, alpha=0.30)
+        if connections["W"]:
+            canvas.blend_rect(left, top + center - half // 2, center + 1, max(1, half), color, alpha=0.30)
+        if connections["E"]:
+            canvas.blend_rect(left + center, top + center - half // 2, center + 1, max(1, half), color, alpha=0.30)
+        if not any(connections.values()):
+            canvas.blend_ellipse(left + center, top + center, max(2, scale // 2), max(2, scale // 3), color, alpha=0.34)
+
+    def _draw_road_core(
+        self,
+        *,
+        canvas: _ArtCanvas,
+        x: int,
+        y: int,
+        scale: int,
+        connections: dict[str, bool],
+    ) -> None:
+        """Draw the compact worn center of a road tile.
+
+        Args:
+            canvas: RGB canvas.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+            scale: Preview pixels per tile.
+            connections: Cardinal road connections.
+        """
+        left = x * scale
+        top = y * scale
+        center = scale // 2
+        core = max(2, scale // 3)
+        half = max(1, core // 2)
+        color = self.BASE_COLORS["road_core"]
+        alpha = 0.44 if sum(connections.values()) < 3 else 0.52
+        canvas.blend_ellipse(left + center, top + center, max(2, core), max(2, core), color, alpha=alpha)
+        if connections["N"]:
+            canvas.blend_rect(left + center - half, top, core, center + half, color, alpha=alpha)
+        if connections["S"]:
+            canvas.blend_rect(left + center - half, top + center - half, core, center + half + 1, color, alpha=alpha)
+        if connections["W"]:
+            canvas.blend_rect(left, top + center - half, center + half, core, color, alpha=alpha)
+        if connections["E"]:
+            canvas.blend_rect(left + center - half, top + center - half, center + half + 1, core, color, alpha=alpha)
+        if not any(connections.values()):
+            canvas.blend_ellipse(left + center, top + center, max(2, scale // 3), max(2, scale // 4), color, alpha=0.40)
+
+    def _draw_road_noise(
+        self,
+        *,
+        canvas: _ArtCanvas,
+        x: int,
+        y: int,
+        scale: int,
+        connections: dict[str, bool],
+    ) -> int:
+        """Draw deterministic worn dirt details on a road tile.
+
+        Args:
+            canvas: RGB canvas.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+            scale: Preview pixels per tile.
+            connections: Cardinal road connections.
+
+        Returns:
+            Number of noise marks drawn.
+        """
+        marks = 1 if self._stable_mod("road-noise-a", x, y, modulo=2) == 0 else 0
+        if sum(connections.values()) >= 3:
+            marks += 1
+        for mark_index in range(marks):
+            width = max(1, scale // (3 if mark_index == 0 else 4))
+            height = max(1, scale // 5)
+            offset_x = self._stable_mod(f"road-noise-x-{mark_index}", x, y, modulo=max(1, scale - width))
+            offset_y = self._stable_mod(f"road-noise-y-{mark_index}", y, x, modulo=max(1, scale - height))
+            canvas.blend_rect(
+                x * scale + offset_x,
+                y * scale + offset_y,
+                width,
+                height,
+                self.BASE_COLORS["road_wet"],
+                alpha=0.22,
+            )
+        return marks
+
+    def _draw_road_grass_intrusions(self, *, canvas: _ArtCanvas, x: int, y: int, scale: int) -> int:
+        """Draw small grass patches intruding into the road body.
+
+        Args:
+            canvas: RGB canvas.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+            scale: Preview pixels per tile.
+
+        Returns:
+            Number of grass intrusion marks drawn.
+        """
+        if self._stable_mod("road-grass-skip", x, y, modulo=3) != 0:
+            return 0
+        size = max(1, scale // 4)
+        offset_x = self._stable_mod("road-grass-x", x, y, modulo=max(1, scale - size))
+        offset_y = self._stable_mod("road-grass-y", y, x, modulo=max(1, scale - size))
+        canvas.blend_rect(
+            x * scale + offset_x,
+            y * scale + offset_y,
+            size,
+            max(1, size // 2),
+            self.BASE_COLORS["road_grass_intrusion"],
+            alpha=0.26,
+        )
+        return 1
+
+    def _road_connections(self, road_mask: list[list[bool]], *, x: int, y: int) -> dict[str, bool]:
+        """Return cardinal road connections for a road tile.
+
+        Args:
+            road_mask: True for road cells.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+
+        Returns:
+            Dictionary with N/E/S/W boolean connections.
+        """
+        height = len(road_mask)
+        width = len(road_mask[0]) if road_mask else 0
+        return {
+            "N": y > 0 and road_mask[y - 1][x],
+            "E": x + 1 < width and road_mask[y][x + 1],
+            "S": y + 1 < height and road_mask[y + 1][x],
+            "W": x > 0 and road_mask[y][x - 1],
+        }
 
     def _paint_ruin_details(
         self,
@@ -873,6 +1081,10 @@ class PilotArtPreviewRenderer:
                 "forest_regions_painted": forest_stats.get("forest_regions_painted", 0),
                 "forest_shadow_tiles": forest_stats.get("soft_shadow_tiles", 0),
                 "road_details": road_stats.get("road_details", 0),
+                "road_external_shoulder_tiles": road_stats.get("road_external_shoulder_tiles", 0),
+                "road_junction_tiles": road_stats.get("road_junction_tiles", 0),
+                "road_dirt_noise": road_stats.get("road_dirt_noise", 0),
+                "road_grass_intrusions": road_stats.get("road_grass_intrusions", 0),
                 "ruin_details": ruin_stats.get("ruin_details", 0),
                 "water_details": water_stats.get("water_details", 0),
                 "normalized_objects": rendered_objects,
@@ -921,7 +1133,7 @@ class PilotArtPreviewRenderer:
             "colors_rgb": {key: list(value) for key, value in sorted(self.BASE_COLORS.items())},
             "rendering_policy": {
                 "forest": "Paint connected forest masks as region-scale canopy masses with deterministic brush blobs; do not draw explicit edge outlines.",
-                "roads": "Draw old roads as muted paths with low-contrast wear details.",
+                "roads": "Paint old-road masks as soft path regions with faded shoulders, dirt noise, junction wear, and grass intrusion hints while preserving logical road cells.",
                 "ruins": "Draw ruin floors and walls as readable gray structures with crack hints.",
                 "dressing": "Draw scene dressing as subdued details, not debug markers.",
                 "gameplay_changes": False,
