@@ -994,3 +994,15 @@
 - Added a deterministic prepared visual preview renderer for map preparation output.
 - `--prepare-map` now writes `prepared_preview.png`, `prepared_preview_legend.json`, `prepared_visual_preview_report.json`, and `prepared_visual_preview_summary.txt`.
 - Extended preparation reports and CLI summary with rendered normalized-object and dressing-object counts while keeping gameplay geometry, collision, and game renderers unchanged.
+
+## v0.2.30 -> v0.2.31
+
+- Added a non-debug pilot artistic preview renderer for prepared map output.
+- `--prepare-map` now writes `pilot_art_preview.png`, `pilot_art_preview_legend.json`, `pilot_art_preview_report.json`, and `pilot_art_preview_summary.txt`.
+- Pilot preview paints forest as connected region masses with deterministic internal crown structure instead of visible edge outlines, while keeping gameplay geometry, collision, and game renderers unchanged.
+
+## v0.2.31 -> v0.2.32
+
+- Pilot art forest rendering now uses region-scale canopy blobs instead of relying on per-tile forest marks.
+- Reduced local forest stamp density and softened forest-adjacent shadow to lower visible tile-grid artifacts.
+- Extended pilot art reports and summaries with forest region blob counters for visual iteration control.

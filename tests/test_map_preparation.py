@@ -206,11 +206,19 @@ def test_map_preparation_copies_structured_and_visual_artifacts(tmp_path: Path) 
     assert (output_dir / "visual_map/final_render.png").is_file()
     assert (output_dir / "visual_map/prepared_preview.png").is_file()
     assert (output_dir / "visual_map/prepared_preview_legend.json").is_file()
+    assert (output_dir / "visual_map/pilot_art_preview.png").is_file()
+    assert (output_dir / "visual_map/pilot_art_preview_legend.json").is_file()
     assert (
         output_dir / "reports/prepared_visual_preview_report.json"
     ).is_file()
     assert (
+        output_dir / "reports/pilot_art_preview_report.json"
+    ).is_file()
+    assert (
         output_dir / "visual_map/prepared_preview.png"
+    ).read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+    assert (
+        output_dir / "visual_map/pilot_art_preview.png"
     ).read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
 
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
@@ -224,7 +232,9 @@ def test_map_preparation_copies_structured_and_visual_artifacts(tmp_path: Path) 
     assert report["visual_map"]["chunks_count"] == 1
     assert report["visual_map"]["contract_status"] == "passed"
     assert report["prepared_visual_preview"]["status"] == "ok"
+    assert report["pilot_art_preview"]["status"] == "ok"
     assert "visual_map/prepared_preview.png" in report["output"]["generated_artifacts"]
+    assert "visual_map/pilot_art_preview.png" in report["output"]["generated_artifacts"]
 
     copied_package = MapPackageLoader().load(output_dir)
     assert copied_package.structured_map is not None

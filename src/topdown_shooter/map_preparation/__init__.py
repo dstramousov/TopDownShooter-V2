@@ -4,6 +4,10 @@ from topdown_shooter.map_preparation.prepared_visual_preview import (
     PreparedVisualPreviewRenderer,
     PreparedVisualPreviewResult,
 )
+from topdown_shooter.map_preparation.pilot_art_preview import (
+    PilotArtPreviewRenderer,
+    PilotArtPreviewResult,
+)
 from topdown_shooter.map_preparation.preparer import (
     MapPreparationService,
     PreparedMapResult,
@@ -35,6 +39,8 @@ from topdown_shooter.map_preparation.visual_context import (
 
 __all__ = [
     "MapPreparationService",
+    "PilotArtPreviewRenderer",
+    "PilotArtPreviewResult",
     "PreparedVisualPreviewRenderer",
     "PreparedVisualPreviewResult",
     "PreparedMapResult",
