@@ -1110,3 +1110,9 @@
 - Fixed prepared visual loading for visual micro-scene bounds serialized as `min_x/min_y/max_x/max_y`.
 - The prepared visual loader now normalizes micro-scene bounds to runtime `x/y/w/h` coordinates in memory.
 - Added compatibility for `preset_id` scene fields while keeping prepared visual rendering, gameplay, collision, and map preparation output unchanged.
+
+## v0.2.49 -> v0.2.50
+
+- Added a render-texture cache for prepared visual debug rendering static layers and visual-only objects.
+- `MapRenderer` now prepares prepared-visual static caches before entering 2D camera mode and unloads them safely.
+- Prepared visual debug mode keeps dynamic runtime objects drawable per frame while avoiding thousands of repeated static draw calls.

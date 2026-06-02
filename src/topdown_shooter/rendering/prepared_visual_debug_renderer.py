@@ -30,8 +30,8 @@ class PreparedVisualRenderStats:
 
     Attributes:
         visible_tiles: Number of tiles inside the clipped camera viewport.
-        drawn_layer_elements: Number of prepared visual layer elements drawn.
-        drawn_object_elements: Number of prepared visual object elements drawn.
+        drawn_layer_elements: Number of prepared visual layer elements represented.
+        drawn_object_elements: Number of prepared visual object elements represented.
         total_layer_elements: Total layer elements in the prepared visual map.
         total_object_elements: Total object elements in the prepared visual map.
     """
@@ -43,12 +43,125 @@ class PreparedVisualRenderStats:
     total_object_elements: int
 
 
+@dataclass(frozen=True, slots=True)
+class _PreparedVisualStaticCacheKey:
+    """Identity of a prepared visual static cache."""
+
+    width_tiles: int
+    height_tiles: int
+    tile_size_px: int
+    layer_elements: int
+    cached_object_elements: int
+
+    @classmethod
+    def from_prepared_visual_map(
+        cls,
+        prepared_visual_map: PreparedVisualMap,
+    ) -> "_PreparedVisualStaticCacheKey":
+        """Build a cache key from prepared visual static content counts."""
+        return cls(
+            width_tiles=prepared_visual_map.width_tiles,
+            height_tiles=prepared_visual_map.height_tiles,
+            tile_size_px=prepared_visual_map.tile_size_px,
+            layer_elements=len(prepared_visual_map.layers),
+            cached_object_elements=sum(1 for item in prepared_visual_map.objects if item.visual_only),
+        )
+
+
+@dataclass(slots=True)
+class _PreparedVisualStaticCache:
+    """Cached render texture containing immutable prepared visual primitives."""
+
+    key: _PreparedVisualStaticCacheKey
+    render_texture: Any
+    width_px: int
+    height_px: int
+    cached_layer_elements: int
+    cached_object_elements: int
+    unloaded: bool = False
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        renderer: "PreparedVisualDebugRenderer",
+        prepared_visual_map: PreparedVisualMap,
+        key: _PreparedVisualStaticCacheKey,
+    ) -> "_PreparedVisualStaticCache":
+        """Build a render texture for static prepared visual elements.
+
+        Args:
+            renderer: Parent renderer used for primitive drawing helpers.
+            prepared_visual_map: Prepared visual map to cache.
+            key: Cache identity.
+
+        Returns:
+            Built render texture cache.
+        """
+        raylib = renderer.raylib
+        width_px = prepared_visual_map.width_tiles * prepared_visual_map.tile_size_px
+        height_px = prepared_visual_map.height_tiles * prepared_visual_map.tile_size_px
+        render_texture = raylib.load_render_texture(width_px, height_px)
+        raylib.begin_texture_mode(render_texture)
+        try:
+            renderer.clear_cached_surface()
+            tile_size = prepared_visual_map.tile_size_px
+            layer_elements = renderer.sorted_layers(prepared_visual_map.layers)
+            cached_objects = renderer.sorted_objects(
+                item for item in prepared_visual_map.objects if item.visual_only
+            )
+            for item in layer_elements:
+                renderer.draw_layer_element(item, tile_size)
+            for item in cached_objects:
+                renderer.draw_object_element(item, tile_size)
+        finally:
+            raylib.end_texture_mode()
+        return cls(
+            key=key,
+            render_texture=render_texture,
+            width_px=width_px,
+            height_px=height_px,
+            cached_layer_elements=len(prepared_visual_map.layers),
+            cached_object_elements=sum(1 for item in prepared_visual_map.objects if item.visual_only),
+        )
+
+    def draw(self, raylib: object) -> None:
+        """Draw the cached prepared visual texture in world coordinates."""
+        texture = self.render_texture.texture
+        source = raylib.Rectangle(
+            0.0,
+            0.0,
+            float(self.width_px),
+            -float(self.height_px),
+        )
+        destination = raylib.Rectangle(
+            0.0,
+            0.0,
+            float(self.width_px),
+            float(self.height_px),
+        )
+        origin = raylib.Vector2(0.0, 0.0)
+        raylib.draw_texture_pro(texture, source, destination, origin, 0.0, raylib.WHITE)
+
+    def unload(self, raylib: object) -> None:
+        """Unload the cached render texture once."""
+        if self.unloaded:
+            return
+        try:
+            raylib.unload_render_texture(self.render_texture)
+        except (AttributeError, TypeError, ValueError, RuntimeError):
+            return
+        self.unloaded = True
+
+
 class PreparedVisualDebugRenderer:
     """Draw prepared visual layers with simple raylib primitives.
 
     This renderer is intentionally asset-free. It exists to validate that the
     runtime can consume prepared visual JSON and render it inside the game
-    window before production sprites are introduced.
+    window before production sprites are introduced. Static prepared visual
+    primitives are cached into one render texture when the active raylib backend
+    supports render textures.
     """
 
     def __init__(self, raylib: object) -> None:
@@ -59,6 +172,51 @@ class PreparedVisualDebugRenderer:
         """
         self._raylib = raylib
         self._palette_cache: dict[tuple[str, str, str], Any] = {}
+        self._static_cache: _PreparedVisualStaticCache | None = None
+
+    @property
+    def raylib(self) -> object:
+        """Return the underlying raylib module or test double."""
+        return self._raylib
+
+    def ensure_static_cache(self, prepared_visual_map: PreparedVisualMap) -> bool:
+        """Build the static prepared visual cache when possible.
+
+        This method must be called after the raylib window is initialized and
+        before entering 2D camera mode. If the current backend lacks render
+        texture support, the renderer falls back to per-frame primitive drawing.
+
+        Args:
+            prepared_visual_map: Prepared visual map to cache.
+
+        Returns:
+            True when a cache is available, otherwise False.
+        """
+        cache_key = _PreparedVisualStaticCacheKey.from_prepared_visual_map(prepared_visual_map)
+        cache = self._static_cache
+        if cache is not None and cache.key == cache_key:
+            return True
+        if cache is not None:
+            cache.unload(self._raylib)
+            self._static_cache = None
+        try:
+            cache = _PreparedVisualStaticCache.build(
+                renderer=self,
+                prepared_visual_map=prepared_visual_map,
+                key=cache_key,
+            )
+        except (AttributeError, TypeError, ValueError, RuntimeError):
+            return False
+        self._static_cache = cache
+        return True
+
+    def unload(self) -> None:
+        """Unload optional renderer-owned raylib resources."""
+        cache = self._static_cache
+        if cache is None:
+            return
+        cache.unload(self._raylib)
+        self._static_cache = None
 
     def draw(
         self,
@@ -85,6 +243,30 @@ class PreparedVisualDebugRenderer:
             window_config=window_config,
         )
         visible_tiles = max(0, max_x - min_x) * max(0, max_y - min_y)
+        cache = self._static_cache
+        if cache is not None and cache.key == _PreparedVisualStaticCacheKey.from_prepared_visual_map(
+            prepared_visual_map
+        ):
+            cache.draw(self._raylib)
+            dynamic_objects = self._visible_dynamic_objects(
+                prepared_visual_map=prepared_visual_map,
+                min_x=min_x,
+                max_x=max_x,
+                min_y=min_y,
+                max_y=max_y,
+                consumed_runtime_object_ids=consumed_runtime_object_ids,
+            )
+            tile_size = prepared_visual_map.tile_size_px
+            for item in dynamic_objects:
+                self._draw_object_element(item, tile_size)
+            return PreparedVisualRenderStats(
+                visible_tiles=visible_tiles,
+                drawn_layer_elements=cache.cached_layer_elements,
+                drawn_object_elements=cache.cached_object_elements + len(dynamic_objects),
+                total_layer_elements=len(prepared_visual_map.layers),
+                total_object_elements=len(prepared_visual_map.objects),
+            )
+
         layer_elements = self._visible_layers(
             prepared_visual_map=prepared_visual_map,
             min_x=min_x,
@@ -114,6 +296,52 @@ class PreparedVisualDebugRenderer:
             total_layer_elements=len(prepared_visual_map.layers),
             total_object_elements=len(prepared_visual_map.objects),
         )
+
+    def clear_cached_surface(self) -> None:
+        """Clear the offscreen prepared visual cache surface."""
+        try:
+            blank = self._raylib.BLANK
+        except AttributeError:
+            blank = self._raylib.Color(0, 0, 0, 0)
+        self._raylib.clear_background(blank)
+
+    def sorted_layers(
+        self,
+        items: tuple[PreparedVisualElement, ...],
+    ) -> list[PreparedVisualElement]:
+        """Return layer elements in deterministic draw order."""
+        return sorted(
+            items,
+            key=lambda item: (
+                _LAYER_ORDER.get(item.layer, 99),
+                item.y,
+                item.x,
+                item.element_id,
+            ),
+        )
+
+    def sorted_objects(
+        self,
+        items: Iterable[PreparedVisualObject],
+    ) -> list[PreparedVisualObject]:
+        """Return object elements in deterministic draw order."""
+        return sorted(
+            items,
+            key=lambda item: (
+                _LAYER_ORDER.get(item.layer, 99),
+                item.y,
+                item.x,
+                item.object_id,
+            ),
+        )
+
+    def draw_layer_element(self, item: PreparedVisualElement, tile_size: int) -> None:
+        """Draw one prepared visual layer element."""
+        self._draw_layer_element(item, tile_size)
+
+    def draw_object_element(self, item: PreparedVisualObject, tile_size: int) -> None:
+        """Draw one prepared visual object element."""
+        self._draw_object_element(item, tile_size)
 
     def _draw_layer_element(self, item: PreparedVisualElement, tile_size: int) -> None:
         """Draw one prepared visual layer element."""
@@ -212,19 +440,12 @@ class PreparedVisualDebugRenderer:
         max_y: int,
     ) -> list[PreparedVisualElement]:
         """Return visible layer elements in deterministic draw order."""
-        items = [
-            item
-            for item in prepared_visual_map.layers
-            if min_x <= item.x < max_x and min_y <= item.y < max_y
-        ]
-        return sorted(
-            items,
-            key=lambda item: (
-                _LAYER_ORDER.get(item.layer, 99),
-                item.y,
-                item.x,
-                item.element_id,
-            ),
+        return self.sorted_layers(
+            tuple(
+                item
+                for item in prepared_visual_map.layers
+                if min_x <= item.x < max_x and min_y <= item.y < max_y
+            )
         )
 
     def _visible_objects(
@@ -238,22 +459,59 @@ class PreparedVisualDebugRenderer:
         consumed_runtime_object_ids: frozenset[str],
     ) -> list[PreparedVisualObject]:
         """Return visible object elements in deterministic draw order."""
-        visible: list[PreparedVisualObject] = []
-        for item in prepared_visual_map.objects:
-            source_id = item.raw.get("source_object_id") or item.raw.get("source_object_type")
-            if isinstance(source_id, str) and source_id in consumed_runtime_object_ids:
-                continue
-            if min_x <= item.x < max_x and min_y <= item.y < max_y:
-                visible.append(item)
-        return sorted(
-            visible,
-            key=lambda item: (
-                _LAYER_ORDER.get(item.layer, 99),
-                item.y,
-                item.x,
-                item.object_id,
-            ),
+        return self.sorted_objects(
+            item
+            for item in prepared_visual_map.objects
+            if self._is_visible_object(
+                item=item,
+                min_x=min_x,
+                max_x=max_x,
+                min_y=min_y,
+                max_y=max_y,
+                consumed_runtime_object_ids=consumed_runtime_object_ids,
+            )
         )
+
+    def _visible_dynamic_objects(
+        self,
+        *,
+        prepared_visual_map: PreparedVisualMap,
+        min_x: int,
+        max_x: int,
+        min_y: int,
+        max_y: int,
+        consumed_runtime_object_ids: frozenset[str],
+    ) -> list[PreparedVisualObject]:
+        """Return visible non-cached object elements in draw order."""
+        return self.sorted_objects(
+            item
+            for item in prepared_visual_map.objects
+            if not item.visual_only
+            and self._is_visible_object(
+                item=item,
+                min_x=min_x,
+                max_x=max_x,
+                min_y=min_y,
+                max_y=max_y,
+                consumed_runtime_object_ids=consumed_runtime_object_ids,
+            )
+        )
+
+    def _is_visible_object(
+        self,
+        *,
+        item: PreparedVisualObject,
+        min_x: int,
+        max_x: int,
+        min_y: int,
+        max_y: int,
+        consumed_runtime_object_ids: frozenset[str],
+    ) -> bool:
+        """Return whether an object should be drawn in the current viewport."""
+        source_id = item.raw.get("source_object_id") or item.raw.get("source_object_type")
+        if isinstance(source_id, str) and source_id in consumed_runtime_object_ids:
+            return False
+        return min_x <= item.x < max_x and min_y <= item.y < max_y
 
     def _calculate_visible_tile_bounds(
         self,

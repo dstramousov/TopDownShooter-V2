@@ -152,13 +152,19 @@ class MapRenderer:
             PreparedVisualDebugRenderer(raylib) if prepared_visual_map is not None else None
         )
 
+    def prepare_frame_static_caches(self) -> None:
+        """Prepare optional static render caches before entering camera mode."""
+        if self._prepared_visual_map is not None and self._prepared_visual_renderer is not None:
+            self._prepared_visual_renderer.ensure_static_cache(self._prepared_visual_map)
+
     def unload(self) -> None:
         """Unload optional renderer-owned raylib resources."""
         cache = self._static_terrain_cache
-        if cache is None:
-            return
-        cache.unload(self._raylib)
-        self._static_terrain_cache = None
+        if cache is not None:
+            cache.unload(self._raylib)
+            self._static_terrain_cache = None
+        if self._prepared_visual_renderer is not None:
+            self._prepared_visual_renderer.unload()
 
     def draw(
         self,

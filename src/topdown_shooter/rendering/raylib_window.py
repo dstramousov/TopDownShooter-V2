@@ -317,6 +317,7 @@ class RaylibWindow:
                 with self._frame_profiler.section("draw_begin"):
                     raylib.begin_drawing()
                     raylib.clear_background(raylib.BLACK)
+                    self._renderer.prepare_frame_static_caches()
                     raylib.begin_mode_2d(camera)
                 with self._frame_profiler.section("draw_map"):
                     self._renderer.draw(
