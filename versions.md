@@ -1099,3 +1099,8 @@
 - Added an asset-free prepared visual debug renderer for runtime 2D rendering.
 - Runtime now tries to load prepared visual map artifacts and passes them to the 2D map renderer when available.
 - Prepared visual debug rendering draws visual art layers and objects in the game window without changing gameplay, collision, AI, or map preparation output.
+## v0.2.47 -> v0.2.48
+
+- Added explicit prepared visual render mode selection for runtime launches.
+- `--run` now supports `--visual-render legacy|prepared-debug|auto`, defaulting to legacy.
+- Prepared visual debug rendering no longer activates implicitly just because prepared visual JSON exists.

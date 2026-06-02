@@ -60,6 +60,16 @@ def build_parser() -> argparse.ArgumentParser:
         default="2d",
         help="Runtime renderer backend used by --run. Defaults to 2d.",
     )
+    parser.add_argument(
+        "--visual-render",
+        choices=("legacy", "prepared-debug", "auto"),
+        default="legacy",
+        help=(
+            "2D visual renderer mode used by --run. "
+            "legacy ignores prepared visual JSON, prepared-debug requires it, "
+            "and auto falls back to legacy when it is unavailable. Defaults to legacy."
+        ),
+    )
     return parser
 
 
@@ -88,7 +98,11 @@ def main(argv: list[str] | None = None) -> int:
             summary = prepare_map_package(args.map_package_dir, args.prepared_map_dir)
             sys.stdout.write(f"{summary}\n")
             return 0
-        run_game(args.map_package_dir, renderer=args.renderer)
+        run_game(
+            args.map_package_dir,
+            renderer=args.renderer,
+            visual_render=args.visual_render,
+        )
         return 0
     except MapPackageError as exc:
         sys.stderr.write(f"ERROR: Map package operation failed:\n{exc}\n")

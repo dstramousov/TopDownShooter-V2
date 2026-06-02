@@ -110,19 +110,33 @@ def test_cli_file_path_prints_directory_hint(
     assert "--map does not point to a single JSON file" in captured.err
 
 
-def test_cli_run_passes_renderer_to_runtime(
+def test_cli_run_passes_runtime_render_modes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """CLI should pass the selected renderer backend to run_game."""
-    calls: list[tuple[Path, str]] = []
+    """CLI should pass selected runtime and visual renderer modes."""
+    calls: list[tuple[Path, str, str]] = []
 
-    def fake_run_game(package_dir: Path, renderer: str = "2d") -> None:
-        calls.append((package_dir, renderer))
+    def fake_run_game(
+        package_dir: Path,
+        renderer: str = "2d",
+        visual_render: str = "legacy",
+    ) -> None:
+        calls.append((package_dir, renderer, visual_render))
 
     monkeypatch.setattr("topdown_shooter.app.cli.run_game", fake_run_game)
 
-    exit_code = main(["--map", str(tmp_path), "--run", "--renderer", "3d"])
+    exit_code = main(
+        [
+            "--map",
+            str(tmp_path),
+            "--run",
+            "--renderer",
+            "2d",
+            "--visual-render",
+            "prepared-debug",
+        ],
+    )
 
     assert exit_code == 0
-    assert calls == [(tmp_path, "3d")]
+    assert calls == [(tmp_path, "2d", "prepared-debug")]
