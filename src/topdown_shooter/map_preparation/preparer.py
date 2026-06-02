@@ -15,6 +15,10 @@ from topdown_shooter.map_preparation.pilot_art_preview import (
     PilotArtPreviewRenderer,
     PilotArtPreviewResult,
 )
+from topdown_shooter.map_preparation.pilot_scene_overlay import (
+    PilotSceneOverlayRenderer,
+    PilotSceneOverlayResult,
+)
 from topdown_shooter.map_preparation.prepared_visual_preview import (
     PreparedVisualPreviewRenderer,
     PreparedVisualPreviewResult,
@@ -112,6 +116,10 @@ class MapPreparationService:
     PILOT_ART_PREVIEW_LEGEND_FILE = "pilot_art_preview_legend.json"
     PILOT_ART_PREVIEW_REPORT_FILE = "pilot_art_preview_report.json"
     PILOT_ART_PREVIEW_SUMMARY_FILE = "pilot_art_preview_summary.txt"
+    PILOT_SCENE_OVERLAY_FILE = "pilot_art_preview_scenes.png"
+    PILOT_SCENE_OVERLAY_LEGEND_FILE = "pilot_art_preview_scenes_legend.json"
+    PILOT_SCENE_OVERLAY_REPORT_FILE = "pilot_scene_overlay_report.json"
+    PILOT_SCENE_OVERLAY_SUMMARY_FILE = "pilot_scene_overlay_summary.txt"
     VISUAL_ART_LAYERS_FILE = "visual_art_layers.json"
     VISUAL_ART_OBJECTS_FILE = "visual_art_objects.json"
     VISUAL_ART_CHUNKS_FILE = "visual_art_chunks.json"
@@ -131,6 +139,7 @@ class MapPreparationService:
         visual_scene_dressing_generator: VisualSceneDressingGenerator | None = None,
         prepared_visual_preview_renderer: PreparedVisualPreviewRenderer | None = None,
         pilot_art_preview_renderer: PilotArtPreviewRenderer | None = None,
+        pilot_scene_overlay_renderer: PilotSceneOverlayRenderer | None = None,
         visual_art_layer_builder: VisualArtLayerBuilder | None = None,
     ) -> None:
         """Initialize the preparation service.
@@ -149,6 +158,7 @@ class MapPreparationService:
             prepared_visual_preview_renderer: Optional prepared visual preview renderer
                 override for tests.
             pilot_art_preview_renderer: Optional pilot art preview renderer override for tests.
+            pilot_scene_overlay_renderer: Optional pilot scene overlay renderer override for tests.
             visual_art_layer_builder: Optional visual art layer builder override for tests.
         """
         self._loader = loader or MapPackageLoader()
@@ -169,6 +179,9 @@ class MapPreparationService:
             prepared_visual_preview_renderer or PreparedVisualPreviewRenderer()
         )
         self._pilot_art_preview_renderer = pilot_art_preview_renderer or PilotArtPreviewRenderer()
+        self._pilot_scene_overlay_renderer = (
+            pilot_scene_overlay_renderer or PilotSceneOverlayRenderer()
+        )
         self._visual_art_layer_builder = visual_art_layer_builder or VisualArtLayerBuilder()
 
     def prepare(self, source_dir: Path, output_dir: Path) -> PreparedMapResult:
@@ -238,6 +251,13 @@ class MapPreparationService:
             scene_dressing=visual_scene_dressing_result.scene_dressing,
             dressed_visual_objects=visual_scene_dressing_result.dressed_visual_objects,
         )
+        pilot_scene_overlay_result = self._pilot_scene_overlay_renderer.render(
+            pilot_art_preview_png=pilot_art_preview_result.preview_png,
+            scene_presets=visual_scene_preset_result.scene_presets,
+            preview_scale_px_per_tile=self._preview_scale_from_report(
+                pilot_art_preview_result.preview_report,
+            ),
+        )
         visual_art_layer_result = self._visual_art_layer_builder.build(
             visual_context=visual_context_result.context,
             scene_dressing=visual_scene_dressing_result.scene_dressing,
@@ -290,6 +310,12 @@ class MapPreparationService:
             ),
         )
         generated_artifacts.extend(
+            self._write_pilot_scene_overlay_artifacts(
+                output_dir=resolved_output_dir,
+                result=pilot_scene_overlay_result,
+            ),
+        )
+        generated_artifacts.extend(
             self._write_visual_art_layer_artifacts(
                 output_dir=resolved_output_dir,
                 result=visual_art_layer_result,
@@ -312,6 +338,7 @@ class MapPreparationService:
             visual_scene_dressing_report=visual_scene_dressing_result.dressing_report,
             prepared_visual_preview_report=prepared_visual_preview_result.preview_report,
             pilot_art_preview_report=pilot_art_preview_result.preview_report,
+            pilot_scene_overlay_report=pilot_scene_overlay_result.overlay_report,
             visual_art_layers_report=visual_art_layer_result.art_report,
         )
         manifest = self._build_prepared_manifest(
@@ -373,6 +400,8 @@ class MapPreparationService:
         preview_rendered = self._require_report_dict(prepared_visual_preview, "rendered")
         pilot_art_preview = self._require_report_dict(report, "pilot_art_preview")
         pilot_rendered = self._require_report_dict(pilot_art_preview, "rendered")
+        pilot_scene_overlay = self._require_report_dict(report, "pilot_scene_overlay")
+        pilot_scene_rendered = self._require_report_dict(pilot_scene_overlay, "rendered")
         visual_art_layers = self._require_report_dict(report, "visual_art_layers")
         visual_art_counts = self._require_report_dict(visual_art_layers, "counts")
         quality_scenes = self._require_report_dict(visual_quality, "scene_ranking")
@@ -479,6 +508,11 @@ class MapPreparationService:
                 (
                     "- pilot rendered dressing: "
                     f"{pilot_rendered.get('dressing_objects', 'unknown')}"
+                ),
+                f"- pilot scene overlay: {pilot_scene_overlay.get('status', 'unknown')}",
+                (
+                    "- pilot scene markers: "
+                    f"{pilot_scene_rendered.get('scene_markers', 'unknown')}"
                 ),
                 f"- visual art layers: {visual_art_layers.get('status', 'unknown')}",
                 (
@@ -818,6 +852,41 @@ class MapPreparationService:
         )
         return artifacts
 
+    def _write_pilot_scene_overlay_artifacts(
+        self,
+        *,
+        output_dir: Path,
+        result: PilotSceneOverlayResult,
+    ) -> list[str]:
+        """Write generated pilot scene overlay artifacts.
+
+        Args:
+            output_dir: Destination prepared-map directory.
+            result: Pilot scene overlay renderer result.
+
+        Returns:
+            Generated relative artifact paths.
+        """
+        visual_dir = output_dir / self.VISUAL_MAP_DIR
+        reports_dir = output_dir / self.REPORTS_DIR
+        artifacts = [
+            f"{self.VISUAL_MAP_DIR}/{self.PILOT_SCENE_OVERLAY_FILE}",
+            f"{self.VISUAL_MAP_DIR}/{self.PILOT_SCENE_OVERLAY_LEGEND_FILE}",
+            f"{self.REPORTS_DIR}/{self.PILOT_SCENE_OVERLAY_REPORT_FILE}",
+            f"{self.REPORTS_DIR}/{self.PILOT_SCENE_OVERLAY_SUMMARY_FILE}",
+        ]
+        self._write_bytes(visual_dir / self.PILOT_SCENE_OVERLAY_FILE, result.preview_png)
+        self._write_json(visual_dir / self.PILOT_SCENE_OVERLAY_LEGEND_FILE, result.legend)
+        self._write_json(
+            reports_dir / self.PILOT_SCENE_OVERLAY_REPORT_FILE,
+            result.overlay_report,
+        )
+        self._write_text(
+            reports_dir / self.PILOT_SCENE_OVERLAY_SUMMARY_FILE,
+            result.overlay_summary,
+        )
+        return artifacts
+
     def _write_visual_art_layer_artifacts(
         self,
         *,
@@ -1011,6 +1080,7 @@ class MapPreparationService:
         visual_scene_dressing_report: dict[str, Any],
         prepared_visual_preview_report: dict[str, Any],
         pilot_art_preview_report: dict[str, Any],
+        pilot_scene_overlay_report: dict[str, Any],
         visual_art_layers_report: dict[str, Any],
     ) -> dict[str, Any]:
         """Build the preparation report dictionary.
@@ -1030,6 +1100,7 @@ class MapPreparationService:
             visual_scene_dressing_report: Visual scene dressing generation report.
             prepared_visual_preview_report: Prepared visual preview renderer report.
             pilot_art_preview_report: Pilot art preview renderer report.
+            pilot_scene_overlay_report: Pilot scene overlay renderer report.
             visual_art_layers_report: Visual art layer export report.
 
         Returns:
@@ -1104,6 +1175,11 @@ class MapPreparationService:
                 "Pilot art preview must render a non-debug painter-style map preview.",
             ),
             self._check(
+                "pilot_scene_overlay_built",
+                str(pilot_scene_overlay_report.get("status", "failed")),
+                "Pilot scene overlay must annotate accepted scenes without changing clean art.",
+            ),
+            self._check(
                 "visual_art_layers_built",
                 str(visual_art_layers_report.get("status", "failed")),
                 "Visual art layer export must turn painter decisions into prepared render data.",
@@ -1150,6 +1226,7 @@ class MapPreparationService:
             "visual_scene_dressing": visual_scene_dressing_report,
             "prepared_visual_preview": prepared_visual_preview_report,
             "pilot_art_preview": pilot_art_preview_report,
+            "pilot_scene_overlay": pilot_scene_overlay_report,
             "visual_art_layers": visual_art_layers_report,
             "checks": checks,
             "output": {
@@ -1346,6 +1423,19 @@ class MapPreparationService:
             Boolean value, or ``None`` when the value is not boolean.
         """
         return value if isinstance(value, bool) else None
+
+    def _preview_scale_from_report(self, report: dict[str, Any]) -> int | None:
+        """Extract preview scale from a preview report.
+
+        Args:
+            report: Preview report dictionary.
+
+        Returns:
+            Preview scale or ``None`` when absent.
+        """
+        dimensions = self._require_report_dict(report, "dimensions")
+        scale = dimensions.get("preview_scale_px_per_tile")
+        return scale if isinstance(scale, int) and not isinstance(scale, bool) else None
 
     def _require_report_dict(self, report: dict[str, Any], key: str) -> dict[str, Any]:
         """Return a nested report dictionary.

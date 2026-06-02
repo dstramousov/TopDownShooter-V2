@@ -208,6 +208,8 @@ def test_map_preparation_copies_structured_and_visual_artifacts(tmp_path: Path) 
     assert (output_dir / "visual_map/prepared_preview_legend.json").is_file()
     assert (output_dir / "visual_map/pilot_art_preview.png").is_file()
     assert (output_dir / "visual_map/pilot_art_preview_legend.json").is_file()
+    assert (output_dir / "visual_map/pilot_art_preview_scenes.png").is_file()
+    assert (output_dir / "visual_map/pilot_art_preview_scenes_legend.json").is_file()
     assert (output_dir / "visual_map/visual_art_layers.json").is_file()
     assert (output_dir / "visual_map/visual_art_objects.json").is_file()
     assert (output_dir / "visual_map/visual_art_chunks.json").is_file()
@@ -218,6 +220,9 @@ def test_map_preparation_copies_structured_and_visual_artifacts(tmp_path: Path) 
         output_dir / "reports/pilot_art_preview_report.json"
     ).is_file()
     assert (
+        output_dir / "reports/pilot_scene_overlay_report.json"
+    ).is_file()
+    assert (
         output_dir / "reports/visual_art_layers_report.json"
     ).is_file()
     assert (
@@ -225,6 +230,9 @@ def test_map_preparation_copies_structured_and_visual_artifacts(tmp_path: Path) 
     ).read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
     assert (
         output_dir / "visual_map/pilot_art_preview.png"
+    ).read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+    assert (
+        output_dir / "visual_map/pilot_art_preview_scenes.png"
     ).read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
 
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
@@ -239,12 +247,21 @@ def test_map_preparation_copies_structured_and_visual_artifacts(tmp_path: Path) 
     assert report["visual_map"]["contract_status"] == "passed"
     assert report["prepared_visual_preview"]["status"] == "ok"
     assert report["pilot_art_preview"]["status"] == "ok"
+    assert report["pilot_scene_overlay"]["status"] == "ok"
     assert report["visual_art_layers"]["status"] == "ok"
     assert "visual_map/prepared_preview.png" in report["output"]["generated_artifacts"]
     assert "visual_map/pilot_art_preview.png" in report["output"]["generated_artifacts"]
+    assert "visual_map/pilot_art_preview_scenes.png" in report["output"]["generated_artifacts"]
     assert "visual_map/visual_art_layers.json" in report["output"]["generated_artifacts"]
     assert "visual_map/visual_art_objects.json" in report["output"]["generated_artifacts"]
     assert "visual_map/visual_art_chunks.json" in report["output"]["generated_artifacts"]
+
+    scene_overlay_legend = json.loads(
+        (output_dir / "visual_map/pilot_art_preview_scenes_legend.json").read_text(
+            encoding="utf-8",
+        ),
+    )
+    assert scene_overlay_legend["schema_version"] == "pilot-scene-overlay-legend-v1"
 
     art_layers = json.loads((output_dir / "visual_map/visual_art_layers.json").read_text(encoding="utf-8"))
     art_objects = json.loads((output_dir / "visual_map/visual_art_objects.json").read_text(encoding="utf-8"))

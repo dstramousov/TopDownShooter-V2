@@ -1043,3 +1043,9 @@
 - Added `VisualArtLayerBuilder` to export pilot painter decisions as prepared visual art JSON.
 - `--prepare-map` now writes `visual_art_layers.json`, `visual_art_objects.json`, `visual_art_chunks.json`, and matching reports.
 - Extended preparation reports and CLI summary with visual art layer/object/chunk counts without changing gameplay geometry or runtime renderers.
+
+## v0.2.38 -> v0.2.39
+
+- Added a pilot scene overlay preview that annotates accepted scene presets over the clean pilot art preview.
+- `--prepare-map` now writes `pilot_art_preview_scenes.png`, `pilot_art_preview_scenes_legend.json`, and matching scene-overlay reports.
+- Kept the clean `pilot_art_preview.png` unchanged while making scene bounds, centers, and preset-family markers reviewable in a separate debug artifact.
