@@ -72,6 +72,7 @@ class VisualArtLayerBuilder:
         road_counts = self._add_road_elements(layers=layers, rows=rows)
         water_counts = self._add_water_elements(layers=layers, rows=rows)
         ruin_counts = self._add_ruin_elements(layers=layers, rows=rows)
+        smoothing_counts = self._add_shape_smoothing_elements(layers=layers, rows=rows)
         object_counts = self._add_visual_objects(
             objects=objects,
             dressed_visual_objects=dressed_visual_objects,
@@ -130,6 +131,7 @@ class VisualArtLayerBuilder:
             road_counts=road_counts,
             water_counts=water_counts,
             ruin_counts=ruin_counts,
+            smoothing_counts=smoothing_counts,
             object_counts=object_counts,
             dressing_counts=dressing_counts,
         )
@@ -170,6 +172,7 @@ class VisualArtLayerBuilder:
                 f"- ruin elements: {counts.get('ruin_elements', 'unknown')}",
                 f"- ruin rubble: {counts.get('ruin_rubble', 'unknown')}",
                 f"- ruin moss: {counts.get('ruin_moss', 'unknown')}",
+                f"- shape smoothing elements: {counts.get('shape_smoothing_elements', 'unknown')}",
                 f"- runtime objects: {counts.get('runtime_objects', 'unknown')}",
                 f"- dressing objects: {counts.get('dressing_objects', 'unknown')}",
             ],
@@ -733,6 +736,88 @@ class VisualArtLayerBuilder:
         """
         return primary in {"clearing", "ruin_floor", "blocked_structure"}
 
+    def _add_shape_smoothing_elements(
+        self,
+        *,
+        layers: list[dict[str, Any]],
+        rows: list[list[dict[str, Any]]],
+    ) -> dict[str, int]:
+        """Add visual shape smoothing elements over terrain masks.
+
+        These elements are the first runtime-facing approximation layer. They
+        keep gameplay tiles untouched, but give the renderer corner, side, and
+        diagonal hints so large terrain areas can be drawn as smoothed blobs
+        instead of visible square cells.
+
+        Args:
+            layers: Mutable terrain element list.
+            rows: Context rows.
+
+        Returns:
+            Counts by smoothed terrain family.
+        """
+        counts: Counter[str] = Counter()
+        specs = (
+            {
+                "name": "forest",
+                "contexts": self.FOREST_CONTEXTS,
+                "family": "forest_shape_smoothing",
+                "kind_prefix": "forest_blob",
+                "alpha": 0.24,
+                "allowed_primary": {"clearing", "road_straight", "road_turn", "road_junction", "road_dead_end", "road_isolated", "water_patch", "water_single", "ruin_floor"},
+            },
+            {
+                "name": "road",
+                "contexts": self.ROAD_CONTEXTS,
+                "family": "road_shape_smoothing",
+                "kind_prefix": "road_path",
+                "alpha": 0.18,
+                "allowed_primary": {"clearing", "water_patch", "water_single", "ruin_floor", "forest_edge", "forest_outer_corner"},
+            },
+            {
+                "name": "water",
+                "contexts": self.WATER_CONTEXTS,
+                "family": "water_shape_smoothing",
+                "kind_prefix": "water_puddle",
+                "alpha": 0.30,
+                "allowed_primary": {"clearing", "road_straight", "road_turn", "road_junction", "road_dead_end", "road_isolated", "ruin_floor"},
+            },
+        )
+        for spec in specs:
+            mask = self._mask_for(rows, spec["contexts"])
+            allowed_primary = spec["allowed_primary"]
+            for y, row in enumerate(mask):
+                for x, is_inside in enumerate(row):
+                    if is_inside:
+                        continue
+                    primary = self._primary(rows[y][x])
+                    if primary not in allowed_primary:
+                        continue
+                    neighbors = self._mask8_connections(mask, x=x, y=y)
+                    if not any(neighbors.values()):
+                        continue
+                    shape = self._shape_name_from_neighbors(neighbors)
+                    counts[str(spec["name"])] += 1
+                    layers.append(
+                        self._tile_element(
+                            element_id=f"{spec['name']}_shape_{x:04d}_{y:04d}",
+                            layer="terrain_transitions",
+                            family=str(spec["family"]),
+                            kind=f"{spec['kind_prefix']}_{shape}",
+                            x=x,
+                            y=y,
+                            variant=self._stable_mod(f"{spec['name']}-shape", x, y, modulo=8),
+                            alpha=float(spec["alpha"]),
+                            extra={
+                                "shape": shape,
+                                "neighbors": neighbors,
+                                "source_primary": primary,
+                            },
+                        ),
+                    )
+        counts["total"] = sum(value for key, value in counts.items() if key != "total")
+        return dict(sorted(counts.items()))
+
     def _add_visual_objects(
         self,
         *,
@@ -918,6 +1003,7 @@ class VisualArtLayerBuilder:
         road_counts: dict[str, int],
         water_counts: dict[str, int],
         ruin_counts: dict[str, int],
+        smoothing_counts: dict[str, int],
         object_counts: dict[str, Any],
         dressing_counts: dict[str, Any],
     ) -> dict[str, Any]:
@@ -935,6 +1021,7 @@ class VisualArtLayerBuilder:
             road_counts: Road counters.
             water_counts: Water counters.
             ruin_counts: Ruin counters.
+            smoothing_counts: Visual shape smoothing counters.
             object_counts: Runtime object counters.
             dressing_counts: Dressing object counters.
 
@@ -957,6 +1044,7 @@ class VisualArtLayerBuilder:
                 "ruin_rubble": self._int_value(ruin_counts.get("ruin_rubble"), default=0),
                 "ruin_moss": self._int_value(ruin_counts.get("ruin_moss"), default=0),
                 "ruin_wall_shadows": self._int_value(ruin_counts.get("ruin_wall_shadows"), default=0),
+                "shape_smoothing_elements": self._int_value(smoothing_counts.get("total"), default=0),
                 "runtime_objects": self._int_value(object_counts.get("runtime_objects"), default=0),
                 "dressing_objects": self._int_value(dressing_counts.get("dressing_objects"), default=0),
             },
@@ -967,6 +1055,7 @@ class VisualArtLayerBuilder:
             "road": road_counts,
             "water": water_counts,
             "ruins": ruin_counts,
+            "shape_smoothing": smoothing_counts,
             "runtime_objects": object_counts,
             "scene_dressing": dressing_counts,
         }
@@ -1185,6 +1274,62 @@ class VisualArtLayerBuilder:
             "S": y + 1 < height and mask[y + 1][x],
             "W": x > 0 and mask[y][x - 1],
         }
+
+    def _mask8_connections(self, mask: list[list[bool]], *, x: int, y: int) -> dict[str, bool]:
+        """Return 8-neighbor mask connections for a tile.
+
+        Args:
+            mask: Boolean mask.
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+
+        Returns:
+            Dictionary with N/NE/E/SE/S/SW/W/NW connection flags.
+        """
+        height = len(mask)
+        width = len(mask[0]) if mask else 0
+        offsets = {
+            "N": (0, -1),
+            "NE": (1, -1),
+            "E": (1, 0),
+            "SE": (1, 1),
+            "S": (0, 1),
+            "SW": (-1, 1),
+            "W": (-1, 0),
+            "NW": (-1, -1),
+        }
+        result: dict[str, bool] = {}
+        for name, (dx, dy) in offsets.items():
+            nx = x + dx
+            ny = y + dy
+            result[name] = 0 <= nx < width and 0 <= ny < height and mask[ny][nx]
+        return result
+
+    def _shape_name_from_neighbors(self, neighbors: dict[str, bool]) -> str:
+        """Return a compact visual smoothing shape name.
+
+        Args:
+            neighbors: 8-neighbor mask dictionary.
+
+        Returns:
+            Shape name used by runtime renderers.
+        """
+        cardinal = tuple(name for name in ("N", "E", "S", "W") if neighbors.get(name, False))
+        if len(cardinal) >= 3:
+            return "wrap"
+        if len(cardinal) == 2:
+            pair = frozenset(cardinal)
+            if pair == {"N", "S"}:
+                return "vertical_corridor"
+            if pair == {"E", "W"}:
+                return "horizontal_corridor"
+            return "corner_" + "".join(cardinal).lower()
+        if len(cardinal) == 1:
+            return "side_" + cardinal[0].lower()
+        diagonal = tuple(name for name in ("NE", "SE", "SW", "NW") if neighbors.get(name, False))
+        if diagonal:
+            return "diagonal_" + diagonal[0].lower()
+        return "isolated"
 
     def _touches_mask(self, mask: list[list[bool]], *, x: int, y: int) -> bool:
         """Return whether a non-mask tile touches a true mask tile.

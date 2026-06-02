@@ -1123,3 +1123,9 @@
 - Reworked the prepared visual runtime renderer from debug rectangles toward painter-style cached primitives.
 - Runtime prepared visual mode now draws forest masses, road bodies, water puddles, reeds, ruin floors/walls, and scene dressing with shape-specific primitives instead of mostly full-tile squares.
 - Kept the renderer asset-free and cached, without changing gameplay, collision, map preparation output, or legacy rendering.
+
+## v0.2.51 -> v0.2.52
+
+- Added prepared visual shape smoothing elements for forest, road, and water masks.
+- Runtime prepared visual painter now uses side/corner/diagonal smoothing hints instead of relying only on tile-anchored rectangles.
+- Extended visual art layer reports and summaries with shape smoothing element counts while preserving gameplay geometry and collision.

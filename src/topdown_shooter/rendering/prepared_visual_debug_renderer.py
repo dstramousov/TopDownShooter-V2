@@ -357,6 +357,9 @@ class PreparedVisualDebugRenderer:
         if family == "forest_soft_shadow":
             self._draw_soft_tile_wash(item, tile_size, inset_ratio=0.0, roundness=0.35)
             return
+        if family in {"forest_shape_smoothing", "road_shape_smoothing", "water_shape_smoothing"}:
+            self._draw_shape_smoothing(item, tile_size)
+            return
         if family in {"road_painted_body", "road_base"}:
             self._draw_road_body(item, tile_size)
             return
@@ -415,6 +418,67 @@ class PreparedVisualDebugRenderer:
             self._draw_object_patch(item, tile_size, radius_ratio=0.18)
             return
         self._draw_runtime_object_marker(item, tile_size)
+
+    def _draw_shape_smoothing(self, item: PreparedVisualElement, tile_size: int) -> None:
+        """Draw terrain mask smoothing over neighboring non-mask tiles."""
+        raylib = self._raylib
+        color = self._color_for(layer=item.layer, family=item.family, kind=item.kind, alpha=item.alpha)
+        x = item.x * tile_size
+        y = item.y * tile_size
+        neighbors = self._raw_dict(item.raw, "neighbors")
+        shape = str(item.raw.get("shape") or "isolated")
+        half = tile_size // 2
+        third = max(1, tile_size // 3)
+        side_width = max(2, tile_size // 2)
+
+        if neighbors.get("N"):
+            raylib.draw_rectangle_rounded(
+                raylib.Rectangle(float(x + third // 2), float(y), float(tile_size - third), float(side_width)),
+                0.40,
+                5,
+                color,
+            )
+        if neighbors.get("S"):
+            raylib.draw_rectangle_rounded(
+                raylib.Rectangle(float(x + third // 2), float(y + tile_size - side_width), float(tile_size - third), float(side_width)),
+                0.40,
+                5,
+                color,
+            )
+        if neighbors.get("W"):
+            raylib.draw_rectangle_rounded(
+                raylib.Rectangle(float(x), float(y + third // 2), float(side_width), float(tile_size - third)),
+                0.40,
+                5,
+                color,
+            )
+        if neighbors.get("E"):
+            raylib.draw_rectangle_rounded(
+                raylib.Rectangle(float(x + tile_size - side_width), float(y + third // 2), float(side_width), float(tile_size - third)),
+                0.40,
+                5,
+                color,
+            )
+
+        corner_radius = max(2.0, tile_size * 0.36)
+        if neighbors.get("NE") or shape in {"corner_ne", "corner_en"}:
+            raylib.draw_circle(x + tile_size, y, corner_radius, color)
+        if neighbors.get("SE") or shape in {"corner_es", "corner_se"}:
+            raylib.draw_circle(x + tile_size, y + tile_size, corner_radius, color)
+        if neighbors.get("SW") or shape in {"corner_sw", "corner_ws"}:
+            raylib.draw_circle(x, y + tile_size, corner_radius, color)
+        if neighbors.get("NW") or shape in {"corner_nw", "corner_wn"}:
+            raylib.draw_circle(x, y, corner_radius, color)
+
+        if shape == "wrap":
+            raylib.draw_circle(x + half, y + half, max(2.0, tile_size * 0.32), color)
+        elif shape.endswith("corridor"):
+            raylib.draw_rectangle_rounded(
+                raylib.Rectangle(float(x + tile_size * 0.18), float(y + tile_size * 0.18), float(tile_size * 0.64), float(tile_size * 0.64)),
+                0.45,
+                5,
+                color,
+            )
 
     def _draw_plain_tile(self, item: PreparedVisualElement, tile_size: int) -> None:
         """Draw a simple full-tile fallback."""
@@ -901,16 +965,22 @@ class PreparedVisualDebugRenderer:
     def _base_color(self, *, layer: str, family: str, kind: str) -> tuple[int, int, int]:
         """Map prepared visual families to debug colors."""
         if family.startswith("forest"):
+            if family == "forest_shape_smoothing":
+                return (37, 82, 45)
             if family == "forest_region_mass":
                 return (23, 55, 34)
             if family == "forest_canopy_blob":
                 return (42, 92, 50)
             return (31, 73, 42)
         if family.startswith("road"):
+            if family == "road_shape_smoothing":
+                return (128, 99, 61)
             if "shoulder" in family:
                 return (122, 93, 58)
             return (143, 104, 61)
         if family.startswith("water"):
+            if family == "water_shape_smoothing":
+                return (54, 82, 78)
             return (43, 81, 88)
         if family in {"muddy_water_bank", "reed_cluster"}:
             return (91, 92, 54) if family == "reed_cluster" else (82, 73, 50)
