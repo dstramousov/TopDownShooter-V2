@@ -1025,3 +1025,9 @@
 - Pilot art water rendering now paints water masks as connected puddle-like blobs instead of blue tile blocks.
 - Added muddy bank washes, darker water-edge patches, subtle highlights, and sparse reed clusters around water while preserving gameplay geometry.
 - Extended pilot art reports and summaries with water bank, reed, highlight, and region-wash counters.
+
+## v0.2.35 -> v0.2.36
+
+- Refined pilot water rendering so water patches read as more cohesive puddle bodies instead of scattered blue cells.
+- Added broader soft muddy banks, stronger connected water-body fills, and larger but sparser reed clusters around water edges.
+- Extended pilot art preview reports with water-region body/fill counters while keeping tile geometry, collision, movement, and runtime renderers unchanged.
