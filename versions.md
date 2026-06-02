@@ -1129,3 +1129,9 @@
 - Added prepared visual shape smoothing elements for forest, road, and water masks.
 - Runtime prepared visual painter now uses side/corner/diagonal smoothing hints instead of relying only on tile-anchored rectangles.
 - Extended visual art layer reports and summaries with shape smoothing element counts while preserving gameplay geometry and collision.
+
+## v0.2.52 -> v0.2.53
+
+- Added `docs/visual_normalizer_status.md` as the final branch handoff report for the prepared visual normalizer work.
+- Documented implemented preparation stages, runtime-facing JSON outputs, runtime render status, prototype limitations, and merge readiness.
+- Captured the recommended next direction: asset-rule resolving and a tileset-backed prepared visual renderer instead of further primitive-renderer polishing.
