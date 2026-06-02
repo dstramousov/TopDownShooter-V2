@@ -39,6 +39,10 @@ from topdown_shooter.map_preparation.visual_object_family import (
     VisualObjectFamilyResolver,
     VisualObjectFamilyResult,
 )
+from topdown_shooter.map_preparation.visual_micro_scenes import (
+    VisualMicroSceneExporter,
+    VisualMicroSceneResult,
+)
 from topdown_shooter.map_preparation.visual_object_normalization import (
     VisualObjectNormalizationResult,
     VisualObjectNormalizer,
@@ -125,6 +129,9 @@ class MapPreparationService:
     VISUAL_ART_CHUNKS_FILE = "visual_art_chunks.json"
     VISUAL_ART_LAYERS_REPORT_FILE = "visual_art_layers_report.json"
     VISUAL_ART_LAYERS_SUMMARY_FILE = "visual_art_layers_summary.txt"
+    VISUAL_MICRO_SCENES_FILE = "visual_micro_scenes.json"
+    VISUAL_MICRO_SCENES_REPORT_FILE = "visual_micro_scenes_report.json"
+    VISUAL_MICRO_SCENES_SUMMARY_FILE = "visual_micro_scenes_summary.txt"
 
     def __init__(
         self,
@@ -141,6 +148,7 @@ class MapPreparationService:
         pilot_art_preview_renderer: PilotArtPreviewRenderer | None = None,
         pilot_scene_overlay_renderer: PilotSceneOverlayRenderer | None = None,
         visual_art_layer_builder: VisualArtLayerBuilder | None = None,
+        visual_micro_scene_exporter: VisualMicroSceneExporter | None = None,
     ) -> None:
         """Initialize the preparation service.
 
@@ -160,6 +168,7 @@ class MapPreparationService:
             pilot_art_preview_renderer: Optional pilot art preview renderer override for tests.
             pilot_scene_overlay_renderer: Optional pilot scene overlay renderer override for tests.
             visual_art_layer_builder: Optional visual art layer builder override for tests.
+            visual_micro_scene_exporter: Optional visual micro-scene exporter override for tests.
         """
         self._loader = loader or MapPackageLoader()
         self._runtime_builder = runtime_builder or RuntimeMapBuilder()
@@ -183,6 +192,9 @@ class MapPreparationService:
             pilot_scene_overlay_renderer or PilotSceneOverlayRenderer()
         )
         self._visual_art_layer_builder = visual_art_layer_builder or VisualArtLayerBuilder()
+        self._visual_micro_scene_exporter = (
+            visual_micro_scene_exporter or VisualMicroSceneExporter()
+        )
 
     def prepare(self, source_dir: Path, output_dir: Path) -> PreparedMapResult:
         """Prepare a generated map package for runtime consumption.
@@ -263,6 +275,12 @@ class MapPreparationService:
             scene_dressing=visual_scene_dressing_result.scene_dressing,
             dressed_visual_objects=visual_scene_dressing_result.dressed_visual_objects,
         )
+        visual_micro_scene_result = self._visual_micro_scene_exporter.export(
+            scene_presets=visual_scene_preset_result.scene_presets,
+            scene_dressing=visual_scene_dressing_result.scene_dressing,
+            visual_art_layers=visual_art_layer_result.visual_art_layers,
+            visual_art_objects=visual_art_layer_result.visual_art_objects,
+        )
         generated_artifacts = self._write_visual_context_artifacts(
             output_dir=resolved_output_dir,
             result=visual_context_result,
@@ -321,6 +339,12 @@ class MapPreparationService:
                 result=visual_art_layer_result,
             ),
         )
+        generated_artifacts.extend(
+            self._write_visual_micro_scene_artifacts(
+                output_dir=resolved_output_dir,
+                result=visual_micro_scene_result,
+            ),
+        )
         report = self._build_preparation_report(
             package=package,
             runtime_map=runtime_map,
@@ -340,6 +364,7 @@ class MapPreparationService:
             pilot_art_preview_report=pilot_art_preview_result.preview_report,
             pilot_scene_overlay_report=pilot_scene_overlay_result.overlay_report,
             visual_art_layers_report=visual_art_layer_result.art_report,
+            visual_micro_scenes_report=visual_micro_scene_result.micro_scene_report,
         )
         manifest = self._build_prepared_manifest(
             package=package,
@@ -404,6 +429,8 @@ class MapPreparationService:
         pilot_scene_rendered = self._require_report_dict(pilot_scene_overlay, "rendered")
         visual_art_layers = self._require_report_dict(report, "visual_art_layers")
         visual_art_counts = self._require_report_dict(visual_art_layers, "counts")
+        visual_micro_scenes = self._require_report_dict(report, "visual_micro_scenes")
+        visual_micro_scene_counts = self._require_report_dict(visual_micro_scenes, "counts")
         quality_scenes = self._require_report_dict(visual_quality, "scene_ranking")
         quality_generic = self._require_report_dict(visual_quality, "generic_objects")
         family_generic = self._require_report_dict(visual_families, "generic_objects")
@@ -521,6 +548,13 @@ class MapPreparationService:
                     f"{visual_art_counts.get('object_elements', 'unknown')} objects"
                 ),
                 f"- visual art chunks: {visual_art_counts.get('chunks', 'unknown')}",
+                f"- visual micro-scenes: {visual_micro_scenes.get('status', 'unknown')}",
+                (
+                    "- visual micro-scene links: "
+                    f"{visual_micro_scene_counts.get('scenes', 'unknown')} scenes / "
+                    f"{visual_micro_scene_counts.get('linked_dressing_objects', 'unknown')} dressing / "
+                    f"{visual_micro_scene_counts.get('linked_runtime_objects', 'unknown')} runtime"
+                ),
                 f"- copied artifacts: {copied_count}",
                 f"- output: {output.get('path', 'unknown')}",
                 f"- report: {output.get('report_path', 'unknown')}",
@@ -918,6 +952,39 @@ class MapPreparationService:
         self._write_text(reports_dir / self.VISUAL_ART_LAYERS_SUMMARY_FILE, result.art_summary)
         return artifacts
 
+    def _write_visual_micro_scene_artifacts(
+        self,
+        *,
+        output_dir: Path,
+        result: VisualMicroSceneResult,
+    ) -> list[str]:
+        """Write generated visual micro-scene artifacts.
+
+        Args:
+            output_dir: Destination prepared-map directory.
+            result: Visual micro-scene export result.
+
+        Returns:
+            Generated relative artifact paths.
+        """
+        visual_dir = output_dir / self.VISUAL_MAP_DIR
+        reports_dir = output_dir / self.REPORTS_DIR
+        artifacts = [
+            f"{self.VISUAL_MAP_DIR}/{self.VISUAL_MICRO_SCENES_FILE}",
+            f"{self.REPORTS_DIR}/{self.VISUAL_MICRO_SCENES_REPORT_FILE}",
+            f"{self.REPORTS_DIR}/{self.VISUAL_MICRO_SCENES_SUMMARY_FILE}",
+        ]
+        self._write_json(visual_dir / self.VISUAL_MICRO_SCENES_FILE, result.micro_scenes)
+        self._write_json(
+            reports_dir / self.VISUAL_MICRO_SCENES_REPORT_FILE,
+            result.micro_scene_report,
+        )
+        self._write_text(
+            reports_dir / self.VISUAL_MICRO_SCENES_SUMMARY_FILE,
+            result.micro_scene_summary,
+        )
+        return artifacts
+
     def _write_visual_quality_artifacts(
         self,
         *,
@@ -1082,6 +1149,7 @@ class MapPreparationService:
         pilot_art_preview_report: dict[str, Any],
         pilot_scene_overlay_report: dict[str, Any],
         visual_art_layers_report: dict[str, Any],
+        visual_micro_scenes_report: dict[str, Any],
     ) -> dict[str, Any]:
         """Build the preparation report dictionary.
 
@@ -1102,6 +1170,7 @@ class MapPreparationService:
             pilot_art_preview_report: Pilot art preview renderer report.
             pilot_scene_overlay_report: Pilot scene overlay renderer report.
             visual_art_layers_report: Visual art layer export report.
+            visual_micro_scenes_report: Visual micro-scene export report.
 
         Returns:
             Preparation report dictionary.
@@ -1184,6 +1253,11 @@ class MapPreparationService:
                 str(visual_art_layers_report.get("status", "failed")),
                 "Visual art layer export must turn painter decisions into prepared render data.",
             ),
+            self._check(
+                "visual_micro_scenes_built",
+                str(visual_micro_scenes_report.get("status", "failed")),
+                "Visual micro-scene export must expose accepted scenes as runtime data.",
+            ),
         ]
         status = self._build_overall_status(checks)
         report_path = output_dir / self.REPORTS_DIR / self.PREPARATION_REPORT_FILE
@@ -1228,6 +1302,7 @@ class MapPreparationService:
             "pilot_art_preview": pilot_art_preview_report,
             "pilot_scene_overlay": pilot_scene_overlay_report,
             "visual_art_layers": visual_art_layers_report,
+            "visual_micro_scenes": visual_micro_scenes_report,
             "checks": checks,
             "output": {
                 "path": str(output_dir),

@@ -32,6 +32,10 @@ from topdown_shooter.map_preparation.visual_scene_dressing import (
     VisualSceneDressingGenerator,
     VisualSceneDressingResult,
 )
+from topdown_shooter.map_preparation.visual_micro_scenes import (
+    VisualMicroSceneExporter,
+    VisualMicroSceneResult,
+)
 from topdown_shooter.map_preparation.visual_object_normalization import (
     VisualObjectNormalizationResult,
     VisualObjectNormalizer,
@@ -58,6 +62,8 @@ __all__ = [
     "VisualArtLayerResult",
     "VisualContextAnalyzer",
     "VisualContextResult",
+    "VisualMicroSceneExporter",
+    "VisualMicroSceneResult",
     "VisualObjectFamilyResolver",
     "VisualObjectFamilyResult",
     "VisualObjectNormalizationResult",

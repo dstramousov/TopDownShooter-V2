@@ -1049,3 +1049,9 @@
 - Added a pilot scene overlay preview that annotates accepted scene presets over the clean pilot art preview.
 - `--prepare-map` now writes `pilot_art_preview_scenes.png`, `pilot_art_preview_scenes_legend.json`, and matching scene-overlay reports.
 - Kept the clean `pilot_art_preview.png` unchanged while making scene bounds, centers, and preset-family markers reviewable in a separate debug artifact.
+
+## v0.2.39 -> v0.2.40
+
+- Added visual micro-scenes export for prepared maps.
+- `--prepare-map` now writes `visual_micro_scenes.json`, `visual_micro_scenes_report.json`, and `visual_micro_scenes_summary.txt`.
+- Linked scene presets, dressing objects, runtime objects, and visual art layer references into runtime-readable visual scene entities without changing gameplay geometry.

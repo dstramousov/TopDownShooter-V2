@@ -213,6 +213,7 @@ def test_map_preparation_copies_structured_and_visual_artifacts(tmp_path: Path) 
     assert (output_dir / "visual_map/visual_art_layers.json").is_file()
     assert (output_dir / "visual_map/visual_art_objects.json").is_file()
     assert (output_dir / "visual_map/visual_art_chunks.json").is_file()
+    assert (output_dir / "visual_map/visual_micro_scenes.json").is_file()
     assert (
         output_dir / "reports/prepared_visual_preview_report.json"
     ).is_file()
@@ -224,6 +225,9 @@ def test_map_preparation_copies_structured_and_visual_artifacts(tmp_path: Path) 
     ).is_file()
     assert (
         output_dir / "reports/visual_art_layers_report.json"
+    ).is_file()
+    assert (
+        output_dir / "reports/visual_micro_scenes_report.json"
     ).is_file()
     assert (
         output_dir / "visual_map/prepared_preview.png"
@@ -255,6 +259,8 @@ def test_map_preparation_copies_structured_and_visual_artifacts(tmp_path: Path) 
     assert "visual_map/visual_art_layers.json" in report["output"]["generated_artifacts"]
     assert "visual_map/visual_art_objects.json" in report["output"]["generated_artifacts"]
     assert "visual_map/visual_art_chunks.json" in report["output"]["generated_artifacts"]
+    assert "visual_map/visual_micro_scenes.json" in report["output"]["generated_artifacts"]
+    assert report["visual_micro_scenes"]["status"] == "ok"
 
     scene_overlay_legend = json.loads(
         (output_dir / "visual_map/pilot_art_preview_scenes_legend.json").read_text(
@@ -266,10 +272,13 @@ def test_map_preparation_copies_structured_and_visual_artifacts(tmp_path: Path) 
     art_layers = json.loads((output_dir / "visual_map/visual_art_layers.json").read_text(encoding="utf-8"))
     art_objects = json.loads((output_dir / "visual_map/visual_art_objects.json").read_text(encoding="utf-8"))
     art_chunks = json.loads((output_dir / "visual_map/visual_art_chunks.json").read_text(encoding="utf-8"))
+    micro_scenes = json.loads((output_dir / "visual_map/visual_micro_scenes.json").read_text(encoding="utf-8"))
     assert art_layers["schema_version"] == "visual-art-layers-v1"
     assert art_objects["schema_version"] == "visual-art-objects-v1"
     assert art_chunks["schema_version"] == "visual-art-chunks-v1"
+    assert micro_scenes["schema_version"] == "visual-micro-scenes-v1"
     assert art_layers["contract"]["changes_gameplay"] is False
+    assert micro_scenes["contract"]["changes_gameplay"] is False
     assert len(art_layers["layers"]) > 0
     assert len(art_chunks["chunks"]) > 0
 
@@ -381,6 +390,9 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
     dressed_objects_path = output_dir / "visual_map/visual_objects_dressed.json"
     scene_dressing_report_path = output_dir / "reports/visual_scene_dressing_report.json"
     scene_dressing_summary_path = output_dir / "reports/visual_scene_dressing_summary.txt"
+    micro_scenes_path = output_dir / "visual_map/visual_micro_scenes.json"
+    micro_scenes_report_path = output_dir / "reports/visual_micro_scenes_report.json"
+    micro_scenes_summary_path = output_dir / "reports/visual_micro_scenes_summary.txt"
     assert result.status == "passed"
     assert context_path.is_file()
     assert regions_path.is_file()
@@ -402,6 +414,9 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
     assert dressed_objects_path.is_file()
     assert scene_dressing_report_path.is_file()
     assert scene_dressing_summary_path.is_file()
+    assert micro_scenes_path.is_file()
+    assert micro_scenes_report_path.is_file()
+    assert micro_scenes_summary_path.is_file()
 
     context = json.loads(context_path.read_text(encoding="utf-8"))
     regions = json.loads(regions_path.read_text(encoding="utf-8"))
@@ -422,6 +437,9 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
     dressed_objects = json.loads(dressed_objects_path.read_text(encoding="utf-8"))
     scene_dressing_report = json.loads(scene_dressing_report_path.read_text(encoding="utf-8"))
     scene_dressing_summary = scene_dressing_summary_path.read_text(encoding="utf-8")
+    micro_scenes = json.loads(micro_scenes_path.read_text(encoding="utf-8"))
+    micro_scenes_report = json.loads(micro_scenes_report_path.read_text(encoding="utf-8"))
+    micro_scenes_summary = micro_scenes_summary_path.read_text(encoding="utf-8")
     preparation_report = json.loads(result.report_path.read_text(encoding="utf-8"))
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
 
@@ -482,6 +500,13 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
     assert "Visual scene dressing" in scene_dressing_summary
     assert dressed_objects["schema_version"] == "visual-objects-dressed-v1"
     assert dressed_objects["scene_dressing"]["dressing_objects"] >= 1
+    assert micro_scenes["schema_version"] == "visual-micro-scenes-v1"
+    assert micro_scenes["contract"]["changes_gameplay"] is False
+    assert micro_scenes["summary"]["scenes"] >= 1
+    assert micro_scenes["scenes"][0]["constraints"]["changes_gameplay"] is False
+    assert micro_scenes_report["schema_version"] == "visual-micro-scenes-report-v1"
+    assert micro_scenes_report["status"] == "ok"
+    assert "Visual micro-scenes" in micro_scenes_summary
     assert preparation_report["visual_context"]["status"] == "passed"
     assert preparation_report["visual_context"]["regions"]["forest_regions"] == 1
     assert preparation_report["visual_object_families"]["status"] == "needs_work"
@@ -490,6 +515,7 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
     assert preparation_report["visual_quality"]["generic_objects"]["generic_objects"] == 1
     assert preparation_report["visual_scene_presets"]["status"] == "ok"
     assert preparation_report["visual_scene_dressing"]["status"] == "ok"
+    assert preparation_report["visual_micro_scenes"]["status"] == "ok"
     check_codes = {check["code"] for check in preparation_report["checks"]}
     assert "visual_context_built" in check_codes
     assert "visual_object_families_built" in check_codes
@@ -497,6 +523,7 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
     assert "visual_quality_built" in check_codes
     assert "visual_scene_presets_built" in check_codes
     assert "visual_scene_dressing_built" in check_codes
+    assert "visual_micro_scenes_built" in check_codes
     assert "visual_map/visual_context.json" in manifest["artifacts"]["generated"]
     assert "visual_map/visual_scene_ranking.json" in manifest["artifacts"]["generated"]
     assert "visual_map/visual_object_families.json" in manifest["artifacts"]["generated"]
@@ -509,3 +536,5 @@ def test_map_preparation_writes_visual_context_artifacts(tmp_path: Path) -> None
     assert "visual_map/visual_scene_dressing.json" in manifest["artifacts"]["generated"]
     assert "visual_map/visual_objects_dressed.json" in manifest["artifacts"]["generated"]
     assert "reports/visual_scene_dressing_report.json" in manifest["artifacts"]["generated"]
+    assert "visual_map/visual_micro_scenes.json" in manifest["artifacts"]["generated"]
+    assert "reports/visual_micro_scenes_report.json" in manifest["artifacts"]["generated"]
