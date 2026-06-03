@@ -15,6 +15,7 @@ from topdown_shooter.visual_pipeline.context import VisualPipelineContext
 from topdown_shooter.visual_pipeline.reports import PipelineStepReport
 from topdown_shooter.visual_pipeline.steps.base import VisualPipelineStep
 from topdown_shooter.visual_pipeline.steps.ingest_validation import IngestValidationStep
+from topdown_shooter.visual_pipeline.steps.semantic_extraction import SemanticExtractionStep
 from topdown_shooter.visual_pipeline.steps.placeholders import PlaceholderStep
 from topdown_shooter.world.runtime_map import RuntimeMap
 
@@ -75,7 +76,7 @@ class VisualPipeline:
         """
         return (
             IngestValidationStep(),
-            PlaceholderStep("01_semantic_extraction"),
+            SemanticExtractionStep(),
             PlaceholderStep("02_mask_cleanup_morphology"),
             PlaceholderStep("03_region_analysis"),
             PlaceholderStep("04_terrain_transitions"),
@@ -118,15 +119,64 @@ class VisualPipeline:
 
         report = self._build_report(context)
         report_path = output_dir / self.REPORTS_DIR / self.REPORT_FILE
-        generated_artifacts = (f"{self.REPORTS_DIR}/{self.REPORT_FILE}",)
         if self._config.write_report:
             self._write_report(report_path, report)
+        generated_artifacts = self._build_generated_artifacts(
+            output_dir=output_dir,
+            report_path=report_path,
+            context=context,
+        )
         return VisualPipelineResult(
             report_path=report_path,
             status=str(report["status"]),
             generated_artifacts=generated_artifacts,
             report=report,
         )
+
+
+    def _build_generated_artifacts(
+        self,
+        *,
+        output_dir: Path,
+        report_path: Path,
+        context: VisualPipelineContext,
+    ) -> tuple[str, ...]:
+        """Build relative generated artifact paths for persisted files.
+
+        Args:
+            output_dir: Prepared-map output directory.
+            report_path: Persisted pipeline report path.
+            context: Final pipeline context.
+
+        Returns:
+            Relative artifact paths in deterministic order.
+        """
+        artifacts: list[str] = [self._relative_path(report_path, output_dir=output_dir)]
+        seen = set(artifacts)
+        for artifact in context.artifacts.values():
+            if artifact.path is None:
+                continue
+            relative_path = self._relative_path(artifact.path, output_dir=output_dir)
+            if relative_path in seen:
+                continue
+            seen.add(relative_path)
+            artifacts.append(relative_path)
+        return tuple(artifacts)
+
+    def _relative_path(self, path: Path, *, output_dir: Path) -> str:
+        """Return a path relative to the output directory when possible.
+
+        Args:
+            path: Path to serialize.
+            output_dir: Prepared-map output directory.
+
+        Returns:
+            Relative path string when the path is inside ``output_dir``.
+        """
+        try:
+            return str(path.relative_to(output_dir))
+        except ValueError:
+            return str(path)
 
     def _build_report(self, context: VisualPipelineContext) -> dict[str, Any]:
         """Build the full pipeline report dictionary.

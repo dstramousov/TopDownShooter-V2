@@ -1141,3 +1141,9 @@
 - Added the `visual_pipeline` package as an explicit ordered skeleton for the full `visual_normalizer_v1` process.
 - Added visual pipeline context, artifact, step report, and runner contracts with `00_ingest_validation` implemented and later stages reported as skipped.
 - Map preparation now writes `reports/visual_pipeline_report.json` without changing generator output, gameplay layers, collision, or runtime rendering.
+
+## v0.2.54 -> v0.2.55
+
+- Implemented `01_semantic_extraction` as the first content-producing visual pipeline step.
+- The visual pipeline now exports forest, road, ruin, collision, and open-area semantic masks plus a combined debug PNG under `visual_map/`.
+- Extended pipeline reports with semantic mask artifacts and counts while keeping generator output, gameplay layers, collision, and runtime rendering unchanged.

@@ -1,6 +1,6 @@
 # Visual Pipeline Plan
 
-Статус: архитектурный каркас для `visual_normalizer_v1`.
+Статус: MVP-1 semantic extraction встроен в каркас `visual_normalizer_v1`.
 
 ## Цель
 
@@ -47,30 +47,30 @@ stats
 
 ## Текущий MVP-0
 
-В `v0.2.54` добавлен только архитектурный каркас:
+В `v0.2.54` добавлен архитектурный каркас:
 
 ```text
 src/topdown_shooter/visual_pipeline/
 ```
 
-Реализован настоящий шаг:
+Реализованные настоящие шаги:
 
 ```text
 00_ingest_validation
+01_semantic_extraction
 ```
 
 Остальные шаги зарегистрированы как `skipped`, чтобы порядок ТЗ был уже зафиксирован в отчёте.
 
-## Следующий MVP-1
+## Текущий MVP-1
 
-Следующий patch должен реализовать:
+В `v0.2.55` реализован:
 
 ```text
 01_semantic_extraction
-13_export_debug_output частично
 ```
 
-Минимальные outputs:
+Outputs:
 
 ```text
 visual_map/semantic_masks/forest_mask.png
@@ -80,8 +80,19 @@ visual_map/semantic_masks/collision_mask.png
 visual_map/semantic_masks/open_area_mask.png
 visual_map/semantic_masks/semantic_masks.json
 visual_map/debug/01_semantic_masks.png
-reports/semantic_masks_report.json
 ```
+
+`collision_mask` строится через `RuntimeMap.is_tile_walkable()`, чтобы использовать gameplay truth: runtime grids, movement rules и runtime object blockers.
+
+## Следующий MVP-2
+
+Следующий patch должен реализовать отдельный шаг:
+
+```text
+02_mask_cleanup_morphology
+```
+
+Он должен работать с visual masks и не менять gameplay collision.
 
 ## Что пока не удалять
 

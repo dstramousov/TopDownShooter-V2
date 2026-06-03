@@ -113,16 +113,23 @@ def test_visual_pipeline_writes_report_with_step_io(tmp_path: Path) -> None:
 
     report = json.loads(result.report_path.read_text(encoding="utf-8"))
     assert result.status == "ok"
-    assert result.generated_artifacts == ("reports/visual_pipeline_report.json",)
+    assert "reports/visual_pipeline_report.json" in result.generated_artifacts
+    assert "visual_map/semantic_masks/semantic_masks.json" in result.generated_artifacts
+    assert "visual_map/debug/01_semantic_masks.png" in result.generated_artifacts
     assert report["schema_version"] == "visual-pipeline-report-v1"
-    assert report["pipeline"]["implemented_steps"] == 1
-    assert report["pipeline"]["skipped_steps"] == 13
+    assert report["pipeline"]["implemented_steps"] == 2
+    assert report["pipeline"]["skipped_steps"] == 12
     assert report["steps"][0]["step_id"] == "00_ingest_validation"
     assert report["steps"][0]["status"] == "ok"
     assert report["steps"][0]["inputs"] == ["source_package", "runtime_map"]
     assert report["steps"][0]["outputs"][0]["artifact_id"] == "validated_runtime_map"
     assert report["steps"][1]["step_id"] == "01_semantic_extraction"
-    assert report["steps"][1]["status"] == "skipped"
+    assert report["steps"][1]["status"] == "ok"
+    assert report["steps"][1]["inputs"] == ["validated_runtime_map"]
+    assert report["steps"][1]["stats"]["open_area_mask_tiles"] == 4
+    assert (output_dir / "visual_map/semantic_masks/open_area_mask.png").read_bytes().startswith(
+        b"\x89PNG\r\n\x1a\n",
+    )
 
 
 def test_map_preparation_writes_visual_pipeline_report(tmp_path: Path) -> None:
@@ -141,6 +148,9 @@ def test_map_preparation_writes_visual_pipeline_report(tmp_path: Path) -> None:
     assert "reports/visual_pipeline_report.json" in preparation_report["output"][
         "generated_artifacts"
     ]
+    assert "visual_map/semantic_masks/semantic_masks.json" in preparation_report["output"][
+        "generated_artifacts"
+    ]
     assert pipeline_report["steps"][0]["step_id"] == "00_ingest_validation"
     assert preparation_report["visual_pipeline"]["schema_version"] == (
         "visual-pipeline-report-v1"
@@ -149,3 +159,97 @@ def test_map_preparation_writes_visual_pipeline_report(tmp_path: Path) -> None:
         check["code"] == "visual_pipeline_registered"
         for check in preparation_report["checks"]
     )
+
+
+def _write_semantic_structured_package(package_dir: Path) -> None:
+    """Write a structured package with every MVP-1 semantic class."""
+    map_package_dir = package_dir / "map_package"
+    rows = ["S+wT.R#G"]
+    _write_json(
+        package_dir / "_manifest.json",
+        {
+            "schema_version": "generation-manifest-v39",
+            "versions": {
+                "generator": "0.0.75",
+                "pipeline": "pipeline-v1",
+                "schemas": {"map_package": "map-package-v1"},
+            },
+            "profile": "dark_forest",
+            "seed": "semantic-test",
+            "resolved_seed": 67890,
+            "dimensions": {"width_tiles": 8, "height_tiles": 1, "tile_size_px": 16},
+            "primary_outputs": [
+                {
+                    "path": "map_package/map.json",
+                    "kind": "map_package:index",
+                    "primary": True,
+                    "debug_only": False,
+                },
+            ],
+        },
+    )
+    _write_json(package_dir / "validation_report.json", {"status": "passed"})
+    _write_json(
+        map_package_dir / "map.json",
+        {
+            "schema_version": "map-package-map-v11",
+            "package_schema_version": "map-package-v1",
+            "dimensions": {"width_tiles": 8, "height_tiles": 1, "tile_size_px": 16},
+            "layers": {
+                "tile_grid": "layers/tile_grid.json",
+                "movement_costs": "layers/movement_costs.json",
+            },
+        },
+    )
+    _write_json(
+        map_package_dir / "layers/tile_grid.json",
+        {
+            "schema_version": "tile-grid-layer-v1",
+            "kind": "tile_grid",
+            "width": 8,
+            "height": 1,
+            "format": "ascii_rows",
+            "rows": rows,
+        },
+    )
+    _write_json(
+        map_package_dir / "layers/movement_costs.json",
+        {
+            "schema_version": "movement-layer-v1",
+            "kind": "movement_costs",
+            "width": 8,
+            "height": 1,
+            "costs_by_tile": {"S": 1, "G": 1, "+": 1, ".": 1, "R": 1, "w": 3},
+        },
+    )
+
+
+def test_semantic_extraction_writes_masks_and_debug_pngs(tmp_path: Path) -> None:
+    """Semantic extraction should persist MVP-1 masks from runtime truth."""
+    source_dir = tmp_path / "source_semantic"
+    output_dir = tmp_path / "prepared_semantic"
+    _write_semantic_structured_package(source_dir)
+    package = MapPackageLoader().load(source_dir)
+    runtime_map = RuntimeMapBuilder().build(package)
+
+    result = VisualPipeline().run(
+        package=package,
+        runtime_map=runtime_map,
+        output_dir=output_dir,
+    )
+
+    semantic_path = output_dir / "visual_map/semantic_masks/semantic_masks.json"
+    combined_debug_path = output_dir / "visual_map/debug/01_semantic_masks.png"
+    semantic = json.loads(semantic_path.read_text(encoding="utf-8"))
+    masks = {mask["mask_id"]: mask for mask in semantic["masks"]}
+
+    assert result.status == "ok"
+    assert semantic["schema_version"] == "semantic-masks-v1"
+    assert semantic["dimensions"] == {"width_tiles": 8, "height_tiles": 1}
+    assert masks["forest_mask"]["active_tiles"] == 1
+    assert masks["road_mask"]["rows"] == ["00001000"]
+    assert masks["ruin_mask"]["active_tiles"] == 2
+    assert masks["collision_mask"]["rows"] == ["00010010"]
+    assert masks["open_area_mask"]["rows"] == ["11000001"]
+    assert (output_dir / "visual_map/semantic_masks/forest_mask.png").is_file()
+    assert combined_debug_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
