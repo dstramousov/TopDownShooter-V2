@@ -1,6 +1,6 @@
 # Visual Pipeline Plan
 
-Статус: MVP-2 visual-only mask cleanup/morphology встроен в каркас `visual_normalizer_v1`.
+Статус: MVP-3 region analysis встроен в каркас `visual_normalizer_v1`.
 
 ## Цель
 
@@ -59,6 +59,7 @@ src/topdown_shooter/visual_pipeline/
 00_ingest_validation
 01_semantic_extraction
 02_mask_cleanup_morphology
+03_region_analysis
 ```
 
 Остальные шаги зарегистрированы как `skipped`, чтобы порядок ТЗ был уже зафиксирован в отчёте.
@@ -110,15 +111,32 @@ visual_map/debug/02_mask_cleanup_morphology.png
 
 Шаг работает только с visual-derived masks. Исходные semantic masks и gameplay collision не изменяются.
 
-## Следующий MVP-3
+## Текущий MVP-3
 
-Следующий patch должен реализовать отдельный шаг:
+В `v0.2.57` реализован:
 
 ```text
 03_region_analysis
 ```
 
-Он должен читать `visual_masks`, находить connected components для forest/road/ruin/open areas и сохранять region JSON + debug overlay.
+Шаг читает `visual_masks`, находит 4-connected components для forest/road/ruin/open areas и сохраняет:
+
+```text
+visual_map/regions/region_analysis.json
+visual_map/debug/03_region_analysis.png
+```
+
+Region analysis работает только как visual-derived metadata и не меняет gameplay collision.
+
+## Следующий MVP-4
+
+Следующий patch должен реализовать отдельный шаг:
+
+```text
+04_terrain_transitions
+```
+
+Он должен читать `visual_masks` и `region_analysis`, строить transition metadata/debug output без изменения gameplay geometry.
 
 ## Что пока не удалять
 

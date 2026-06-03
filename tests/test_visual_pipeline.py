@@ -119,8 +119,8 @@ def test_visual_pipeline_writes_report_with_step_io(tmp_path: Path) -> None:
     assert "visual_map/visual_masks/visual_masks.json" in result.generated_artifacts
     assert "visual_map/debug/02_mask_cleanup_morphology.png" in result.generated_artifacts
     assert report["schema_version"] == "visual-pipeline-report-v1"
-    assert report["pipeline"]["implemented_steps"] == 3
-    assert report["pipeline"]["skipped_steps"] == 11
+    assert report["pipeline"]["implemented_steps"] == 4
+    assert report["pipeline"]["skipped_steps"] == 10
     assert report["steps"][0]["step_id"] == "00_ingest_validation"
     assert report["steps"][0]["status"] == "ok"
     assert report["steps"][0]["inputs"] == ["source_package", "runtime_map"]
@@ -372,7 +372,122 @@ def test_mask_cleanup_morphology_writes_visual_masks(tmp_path: Path) -> None:
     ]
     assert masks["collision_lock_mask"]["active_tiles"] == 9
     assert masks["open_area_visual_mask"]["active_tiles"] == 16
-    assert report["pipeline"]["implemented_steps"] == 3
-    assert report["pipeline"]["skipped_steps"] == 11
+    assert report["pipeline"]["implemented_steps"] == 4
+    assert report["pipeline"]["skipped_steps"] == 10
     assert report["steps"][2]["stats"]["changes_gameplay_collision"] is False
+    assert combined_debug_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def _write_region_structured_package(package_dir: Path) -> None:
+    """Write a package with each region-analysis source class."""
+    map_package_dir = package_dir / "map_package"
+    rows = [
+        "S+T++.",
+        "++T++.",
+        "++++++",
+        "RR##++",
+        "+++++G",
+    ]
+    _write_json(
+        package_dir / "_manifest.json",
+        {
+            "schema_version": "generation-manifest-v39",
+            "versions": {
+                "generator": "0.0.75",
+                "pipeline": "pipeline-v1",
+                "schemas": {"map_package": "map-package-v1"},
+            },
+            "profile": "dark_forest",
+            "seed": "region-test",
+            "resolved_seed": 24680,
+            "dimensions": {"width_tiles": 6, "height_tiles": 5, "tile_size_px": 16},
+            "primary_outputs": [
+                {
+                    "path": "map_package/map.json",
+                    "kind": "map_package:index",
+                    "primary": True,
+                    "debug_only": False,
+                },
+            ],
+        },
+    )
+    _write_json(package_dir / "validation_report.json", {"status": "passed"})
+    _write_json(
+        map_package_dir / "map.json",
+        {
+            "schema_version": "map-package-map-v11",
+            "package_schema_version": "map-package-v1",
+            "dimensions": {"width_tiles": 6, "height_tiles": 5, "tile_size_px": 16},
+            "layers": {
+                "tile_grid": "layers/tile_grid.json",
+                "movement_costs": "layers/movement_costs.json",
+            },
+        },
+    )
+    _write_json(
+        map_package_dir / "layers/tile_grid.json",
+        {
+            "schema_version": "tile-grid-layer-v1",
+            "kind": "tile_grid",
+            "width": 6,
+            "height": 5,
+            "format": "ascii_rows",
+            "rows": rows,
+        },
+    )
+    _write_json(
+        map_package_dir / "layers/movement_costs.json",
+        {
+            "schema_version": "movement-layer-v1",
+            "kind": "movement_costs",
+            "width": 6,
+            "height": 5,
+            "costs_by_tile": {"S": 1, "G": 1, "+": 1, ".": 1, "R": 1},
+        },
+    )
+
+
+def test_region_analysis_writes_regions_and_debug_png(tmp_path: Path) -> None:
+    """Region analysis should persist connected components from visual masks."""
+    source_dir = tmp_path / "source_regions"
+    output_dir = tmp_path / "prepared_regions"
+    _write_region_structured_package(source_dir)
+    package = MapPackageLoader().load(source_dir)
+    runtime_map = RuntimeMapBuilder().build(package)
+
+    result = VisualPipeline().run(
+        package=package,
+        runtime_map=runtime_map,
+        output_dir=output_dir,
+    )
+
+    regions_path = output_dir / "visual_map/regions/region_analysis.json"
+    combined_debug_path = output_dir / "visual_map/debug/03_region_analysis.png"
+    regions = json.loads(regions_path.read_text(encoding="utf-8"))
+    summary = regions["summary"]
+    by_id = {region["region_id"]: region for region in regions["regions"]}
+
+    assert result.status == "ok"
+    assert result.report["pipeline"]["implemented_steps"] == 4
+    assert result.report["pipeline"]["skipped_steps"] == 10
+    assert result.report["steps"][3]["step_id"] == "03_region_analysis"
+    assert result.report["steps"][3]["inputs"] == ["visual_masks"]
+    assert result.report["steps"][3]["stats"]["changes_gameplay_collision"] is False
+    assert "visual_map/regions/region_analysis.json" in result.generated_artifacts
+    assert "visual_map/debug/03_region_analysis.png" in result.generated_artifacts
+    assert regions["schema_version"] == "region-analysis-v1"
+    assert regions["source"]["changes_gameplay_collision"] is False
+    assert summary["forest_region_count"] == 1
+    assert summary["road_component_count"] == 1
+    assert summary["ruin_component_count"] == 1
+    assert summary["open_area_count"] == 1
+    assert by_id["forest_region_0001"]["area_tiles"] == 2
+    assert by_id["forest_region_0001"]["bbox"] == {
+        "min_x": 2,
+        "min_y": 0,
+        "max_x": 2,
+        "max_y": 1,
+    }
+    assert by_id["road_component_0001"]["area_tiles"] == 2
+    assert by_id["ruin_component_0001"]["area_tiles"] == 4
     assert combined_debug_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")

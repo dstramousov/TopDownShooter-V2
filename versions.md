@@ -1153,3 +1153,9 @@
 - Implemented `02_mask_cleanup_morphology` as a visual-only pipeline step after semantic extraction.
 - Added derived visual masks for forest core, forest edge, forest shadow band, preserved road/ruin masks, collision lock, and open-area visual placement data.
 - Exported `visual_masks.json`, individual visual-mask debug PNGs, and `02_mask_cleanup_morphology.png` while keeping gameplay collision unchanged.
+
+## v0.2.56 -> v0.2.57
+
+- Implemented `03_region_analysis` as a visual-only connected component analysis step after mask cleanup.
+- Added region metadata export for forest regions, road components, ruin components, and open areas under `visual_map/regions/region_analysis.json`.
+- Added `03_region_analysis.png` debug output and pipeline report stats while keeping gameplay collision unchanged.

@@ -20,6 +20,7 @@ from topdown_shooter.visual_pipeline.steps.mask_cleanup_morphology import (
     MaskCleanupMorphologyStep,
 )
 from topdown_shooter.visual_pipeline.steps.placeholders import PlaceholderStep
+from topdown_shooter.visual_pipeline.steps.region_analysis import RegionAnalysisStep
 from topdown_shooter.world.runtime_map import RuntimeMap
 
 
@@ -81,7 +82,7 @@ class VisualPipeline:
             IngestValidationStep(),
             SemanticExtractionStep(),
             MaskCleanupMorphologyStep(),
-            PlaceholderStep("03_region_analysis"),
+            RegionAnalysisStep(),
             PlaceholderStep("04_terrain_transitions"),
             PlaceholderStep("05_forest_mass_renderer"),
             PlaceholderStep("06_road_brush_renderer"),
@@ -135,7 +136,6 @@ class VisualPipeline:
             generated_artifacts=generated_artifacts,
             report=report,
         )
-
 
     def _build_generated_artifacts(
         self,
