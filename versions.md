@@ -1135,3 +1135,9 @@
 - Added `docs/visual_normalizer_status.md` as the final branch handoff report for the prepared visual normalizer work.
 - Documented implemented preparation stages, runtime-facing JSON outputs, runtime render status, prototype limitations, and merge readiness.
 - Captured the recommended next direction: asset-rule resolving and a tileset-backed prepared visual renderer instead of further primitive-renderer polishing.
+
+## v0.2.53 -> v0.2.54
+
+- Added the `visual_pipeline` package as an explicit ordered skeleton for the full `visual_normalizer_v1` process.
+- Added visual pipeline context, artifact, step report, and runner contracts with `00_ingest_validation` implemented and later stages reported as skipped.
+- Map preparation now writes `reports/visual_pipeline_report.json` without changing generator output, gameplay layers, collision, or runtime rendering.

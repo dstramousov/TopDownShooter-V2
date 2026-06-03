@@ -63,6 +63,7 @@ from topdown_shooter.map_preparation.visual_scene_preset import (
     VisualScenePresetAssigner,
     VisualScenePresetResult,
 )
+from topdown_shooter.visual_pipeline import VisualPipeline
 from topdown_shooter.world.runtime_map import RuntimeMap
 from topdown_shooter.world.runtime_map_builder import RuntimeMapBuilder
 
@@ -146,6 +147,7 @@ class MapPreparationService:
     VISUAL_MICRO_SCENE_LAYOUT_SUMMARY_FILE = "visual_micro_scene_layout_summary.txt"
     PREPARED_VISUAL_RUNTIME_CONTRACT_REPORT_FILE = "prepared_visual_runtime_contract_report.json"
     PREPARED_VISUAL_RUNTIME_CONTRACT_SUMMARY_FILE = "prepared_visual_runtime_contract_summary.txt"
+    VISUAL_PIPELINE_REPORT_FILE = "visual_pipeline_report.json"
 
     def __init__(
         self,
@@ -165,6 +167,7 @@ class MapPreparationService:
         visual_micro_scene_exporter: VisualMicroSceneExporter | None = None,
         visual_micro_scene_layout_builder: VisualMicroSceneLayoutBuilder | None = None,
         visual_runtime_contract_validator: PreparedVisualRuntimeContractValidator | None = None,
+        visual_pipeline: VisualPipeline | None = None,
     ) -> None:
         """Initialize the preparation service.
 
@@ -189,6 +192,7 @@ class MapPreparationService:
                 override for tests.
             visual_runtime_contract_validator: Optional prepared visual runtime contract
                 validator override for tests.
+            visual_pipeline: Optional visual pipeline override for tests.
         """
         self._loader = loader or MapPackageLoader()
         self._runtime_builder = runtime_builder or RuntimeMapBuilder()
@@ -221,6 +225,7 @@ class MapPreparationService:
         self._visual_runtime_contract_validator = (
             visual_runtime_contract_validator or PreparedVisualRuntimeContractValidator()
         )
+        self._visual_pipeline = visual_pipeline or VisualPipeline()
 
     def prepare(self, source_dir: Path, output_dir: Path) -> PreparedMapResult:
         """Prepare a generated map package for runtime consumption.
@@ -323,9 +328,17 @@ class MapPreparationService:
             visual_micro_scene_layouts=visual_micro_scene_layout_result.layouts,
             visual_micro_scene_objects=visual_micro_scene_layout_result.scene_objects,
         )
-        generated_artifacts = self._write_visual_context_artifacts(
+        visual_pipeline_result = self._visual_pipeline.run(
+            package=package,
+            runtime_map=runtime_map,
             output_dir=resolved_output_dir,
-            result=visual_context_result,
+        )
+        generated_artifacts = list(visual_pipeline_result.generated_artifacts)
+        generated_artifacts.extend(
+            self._write_visual_context_artifacts(
+                output_dir=resolved_output_dir,
+                result=visual_context_result,
+            ),
         )
         generated_artifacts.extend(
             self._write_visual_object_family_artifacts(
@@ -421,6 +434,7 @@ class MapPreparationService:
             visual_micro_scenes_report=visual_micro_scene_result.micro_scene_report,
             visual_micro_scene_layout_report=visual_micro_scene_layout_result.layout_report,
             visual_runtime_contract_report=visual_runtime_contract_result.contract_report,
+            visual_pipeline_report=visual_pipeline_result.report,
         )
         manifest = self._build_prepared_manifest(
             package=package,
@@ -1299,6 +1313,7 @@ class MapPreparationService:
         visual_micro_scenes_report: dict[str, Any],
         visual_micro_scene_layout_report: dict[str, Any],
         visual_runtime_contract_report: dict[str, Any],
+        visual_pipeline_report: dict[str, Any],
     ) -> dict[str, Any]:
         """Build the preparation report dictionary.
 
@@ -1322,6 +1337,7 @@ class MapPreparationService:
             visual_micro_scenes_report: Visual micro-scene export report.
             visual_micro_scene_layout_report: Visual micro-scene layout report.
             visual_runtime_contract_report: Prepared visual runtime contract report.
+            visual_pipeline_report: Visual pipeline step execution report.
 
         Returns:
             Preparation report dictionary.
@@ -1358,6 +1374,11 @@ class MapPreparationService:
                 "visual_context_built",
                 str(visual_context_report.get("status", "failed")),
                 "Visual context analyzer must produce region and scene-candidate artifacts.",
+            ),
+            self._check(
+                "visual_pipeline_registered",
+                self._status_to_check_status(str(visual_pipeline_report.get("status", "failed"))),
+                "Visual pipeline must expose the ordered normalizer stage contract.",
             ),
             self._check(
                 "visual_object_families_built",
@@ -1455,6 +1476,7 @@ class MapPreparationService:
                 "gameplay_zones": len(runtime_map.gameplay_zones),
             },
             "visual_map": visual_summary,
+            "visual_pipeline": visual_pipeline_report,
             "visual_context": visual_context_report,
             "visual_object_families": visual_object_family_report,
             "visual_object_normalization": visual_object_normalization_report,
