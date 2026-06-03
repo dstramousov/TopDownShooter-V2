@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Mapping, Sequence
 
 from topdown_shooter.visual_pipeline.debug.png import Color, RgbCanvas
 from topdown_shooter.visual_pipeline.masks import SemanticMask, SemanticMaskSet
@@ -63,16 +64,57 @@ class SemanticMaskDebugRenderer:
             ValueError: If ``scale`` is not positive.
             OSError: If the file cannot be written.
         """
+        self.render_combined_preview_with_palette(
+            mask_set,
+            path,
+            palette=_COMBINED_COLORS,
+            priority=_COMBINED_PRIORITY,
+            scale=scale,
+        )
+
+    def render_combined_preview_with_palette(
+        self,
+        mask_set: SemanticMaskSet,
+        path: Path,
+        *,
+        palette: Mapping[str, Color],
+        priority: Sequence[str],
+        scale: int = 4,
+        background: Color = (18, 18, 18),
+        fallback: Color = (28, 28, 28),
+    ) -> None:
+        """Render a color-coded mask overview with a custom palette.
+
+        Args:
+            mask_set: Mask set to render.
+            path: Destination PNG path.
+            palette: Colors keyed by mask id.
+            priority: Mask ids from lower to higher draw priority.
+            scale: Pixels per tile in the debug preview.
+            background: Canvas background color.
+            fallback: Color for cells outside all configured masks.
+
+        Raises:
+            ValueError: If ``scale`` is not positive.
+            OSError: If the file cannot be written.
+        """
         if scale <= 0:
-            raise ValueError("Semantic mask preview scale must be positive.")
+            raise ValueError("Mask preview scale must be positive.")
         canvas = RgbCanvas(
             width=mask_set.width_tiles * scale,
             height=mask_set.height_tiles * scale,
-            background=(18, 18, 18),
+            background=background,
         )
         for y in range(mask_set.height_tiles):
             for x in range(mask_set.width_tiles):
-                color = self._resolve_combined_color(mask_set, x=x, y=y)
+                color = self._resolve_combined_color(
+                    mask_set,
+                    x=x,
+                    y=y,
+                    palette=palette,
+                    priority=priority,
+                    fallback=fallback,
+                )
                 canvas.fill_rect(x * scale, y * scale, scale, scale, color)
         canvas.write_png(path)
 
@@ -82,6 +124,9 @@ class SemanticMaskDebugRenderer:
         *,
         x: int,
         y: int,
+        palette: Mapping[str, Color],
+        priority: Sequence[str],
+        fallback: Color,
     ) -> Color:
         """Resolve the color for one combined preview tile.
 
@@ -89,12 +134,15 @@ class SemanticMaskDebugRenderer:
             mask_set: Source mask set.
             x: Tile X coordinate.
             y: Tile Y coordinate.
+            palette: Colors keyed by mask id.
+            priority: Mask ids from lower to higher draw priority.
+            fallback: Color for cells outside all configured masks.
 
         Returns:
             RGB color.
         """
-        for mask_id in _COMBINED_PRIORITY:
+        for mask_id in priority:
             mask = mask_set.masks.get(mask_id)
             if mask is not None and mask.value_at(x=x, y=y):
-                return _COMBINED_COLORS[mask_id]
-        return (28, 28, 28)
+                return palette[mask_id]
+        return fallback

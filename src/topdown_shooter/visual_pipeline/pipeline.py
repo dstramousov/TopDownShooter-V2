@@ -16,6 +16,9 @@ from topdown_shooter.visual_pipeline.reports import PipelineStepReport
 from topdown_shooter.visual_pipeline.steps.base import VisualPipelineStep
 from topdown_shooter.visual_pipeline.steps.ingest_validation import IngestValidationStep
 from topdown_shooter.visual_pipeline.steps.semantic_extraction import SemanticExtractionStep
+from topdown_shooter.visual_pipeline.steps.mask_cleanup_morphology import (
+    MaskCleanupMorphologyStep,
+)
 from topdown_shooter.visual_pipeline.steps.placeholders import PlaceholderStep
 from topdown_shooter.world.runtime_map import RuntimeMap
 
@@ -77,7 +80,7 @@ class VisualPipeline:
         return (
             IngestValidationStep(),
             SemanticExtractionStep(),
-            PlaceholderStep("02_mask_cleanup_morphology"),
+            MaskCleanupMorphologyStep(),
             PlaceholderStep("03_region_analysis"),
             PlaceholderStep("04_terrain_transitions"),
             PlaceholderStep("05_forest_mass_renderer"),

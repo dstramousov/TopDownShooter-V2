@@ -116,9 +116,11 @@ def test_visual_pipeline_writes_report_with_step_io(tmp_path: Path) -> None:
     assert "reports/visual_pipeline_report.json" in result.generated_artifacts
     assert "visual_map/semantic_masks/semantic_masks.json" in result.generated_artifacts
     assert "visual_map/debug/01_semantic_masks.png" in result.generated_artifacts
+    assert "visual_map/visual_masks/visual_masks.json" in result.generated_artifacts
+    assert "visual_map/debug/02_mask_cleanup_morphology.png" in result.generated_artifacts
     assert report["schema_version"] == "visual-pipeline-report-v1"
-    assert report["pipeline"]["implemented_steps"] == 2
-    assert report["pipeline"]["skipped_steps"] == 12
+    assert report["pipeline"]["implemented_steps"] == 3
+    assert report["pipeline"]["skipped_steps"] == 11
     assert report["steps"][0]["step_id"] == "00_ingest_validation"
     assert report["steps"][0]["status"] == "ok"
     assert report["steps"][0]["inputs"] == ["source_package", "runtime_map"]
@@ -127,6 +129,9 @@ def test_visual_pipeline_writes_report_with_step_io(tmp_path: Path) -> None:
     assert report["steps"][1]["status"] == "ok"
     assert report["steps"][1]["inputs"] == ["validated_runtime_map"]
     assert report["steps"][1]["stats"]["open_area_mask_tiles"] == 4
+    assert report["steps"][2]["step_id"] == "02_mask_cleanup_morphology"
+    assert report["steps"][2]["status"] == "ok"
+    assert report["steps"][2]["inputs"] == ["semantic_masks"]
     assert (output_dir / "visual_map/semantic_masks/open_area_mask.png").read_bytes().startswith(
         b"\x89PNG\r\n\x1a\n",
     )
@@ -149,6 +154,9 @@ def test_map_preparation_writes_visual_pipeline_report(tmp_path: Path) -> None:
         "generated_artifacts"
     ]
     assert "visual_map/semantic_masks/semantic_masks.json" in preparation_report["output"][
+        "generated_artifacts"
+    ]
+    assert "visual_map/visual_masks/visual_masks.json" in preparation_report["output"][
         "generated_artifacts"
     ]
     assert pipeline_report["steps"][0]["step_id"] == "00_ingest_validation"
@@ -252,4 +260,119 @@ def test_semantic_extraction_writes_masks_and_debug_pngs(tmp_path: Path) -> None
     assert masks["collision_mask"]["rows"] == ["00010010"]
     assert masks["open_area_mask"]["rows"] == ["11000001"]
     assert (output_dir / "visual_map/semantic_masks/forest_mask.png").is_file()
+    assert combined_debug_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def _write_forest_block_structured_package(package_dir: Path) -> None:
+    """Write a package with a solid forest block for morphology tests."""
+    map_package_dir = package_dir / "map_package"
+    rows = [
+        "S+++G",
+        "+TTT+",
+        "+TTT+",
+        "+TTT+",
+        "+++++",
+    ]
+    _write_json(
+        package_dir / "_manifest.json",
+        {
+            "schema_version": "generation-manifest-v39",
+            "versions": {
+                "generator": "0.0.75",
+                "pipeline": "pipeline-v1",
+                "schemas": {"map_package": "map-package-v1"},
+            },
+            "profile": "dark_forest",
+            "seed": "morphology-test",
+            "resolved_seed": 13579,
+            "dimensions": {"width_tiles": 5, "height_tiles": 5, "tile_size_px": 16},
+            "primary_outputs": [
+                {
+                    "path": "map_package/map.json",
+                    "kind": "map_package:index",
+                    "primary": True,
+                    "debug_only": False,
+                },
+            ],
+        },
+    )
+    _write_json(package_dir / "validation_report.json", {"status": "passed"})
+    _write_json(
+        map_package_dir / "map.json",
+        {
+            "schema_version": "map-package-map-v11",
+            "package_schema_version": "map-package-v1",
+            "dimensions": {"width_tiles": 5, "height_tiles": 5, "tile_size_px": 16},
+            "layers": {
+                "tile_grid": "layers/tile_grid.json",
+                "movement_costs": "layers/movement_costs.json",
+            },
+        },
+    )
+    _write_json(
+        map_package_dir / "layers/tile_grid.json",
+        {
+            "schema_version": "tile-grid-layer-v1",
+            "kind": "tile_grid",
+            "width": 5,
+            "height": 5,
+            "format": "ascii_rows",
+            "rows": rows,
+        },
+    )
+    _write_json(
+        map_package_dir / "layers/movement_costs.json",
+        {
+            "schema_version": "movement-layer-v1",
+            "kind": "movement_costs",
+            "width": 5,
+            "height": 5,
+            "costs_by_tile": {"S": 1, "G": 1, "+": 1},
+        },
+    )
+
+
+def test_mask_cleanup_morphology_writes_visual_masks(tmp_path: Path) -> None:
+    """Mask cleanup should derive visual-only masks without changing collision."""
+    source_dir = tmp_path / "source_morphology"
+    output_dir = tmp_path / "prepared_morphology"
+    _write_forest_block_structured_package(source_dir)
+    package = MapPackageLoader().load(source_dir)
+    runtime_map = RuntimeMapBuilder().build(package)
+
+    result = VisualPipeline().run(
+        package=package,
+        runtime_map=runtime_map,
+        output_dir=output_dir,
+    )
+
+    visual_path = output_dir / "visual_map/visual_masks/visual_masks.json"
+    combined_debug_path = output_dir / "visual_map/debug/02_mask_cleanup_morphology.png"
+    visual = json.loads(visual_path.read_text(encoding="utf-8"))
+    masks = {mask["mask_id"]: mask for mask in visual["masks"]}
+    report = result.report
+
+    assert visual["schema_version"] == "visual-masks-v1"
+    assert visual["source"]["changes_gameplay_collision"] is False
+    assert masks["forest_visual_mask"]["active_tiles"] == 9
+    assert masks["forest_core_mask"]["rows"] == [
+        "00000",
+        "00000",
+        "00100",
+        "00000",
+        "00000",
+    ]
+    assert masks["forest_edge_mask"]["active_tiles"] == 8
+    assert masks["forest_shadow_band_mask"]["rows"] == [
+        "11111",
+        "10001",
+        "10001",
+        "10001",
+        "11111",
+    ]
+    assert masks["collision_lock_mask"]["active_tiles"] == 9
+    assert masks["open_area_visual_mask"]["active_tiles"] == 16
+    assert report["pipeline"]["implemented_steps"] == 3
+    assert report["pipeline"]["skipped_steps"] == 11
+    assert report["steps"][2]["stats"]["changes_gameplay_collision"] is False
     assert combined_debug_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")

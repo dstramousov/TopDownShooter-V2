@@ -1,6 +1,6 @@
 # Visual Pipeline Plan
 
-Статус: MVP-1 semantic extraction встроен в каркас `visual_normalizer_v1`.
+Статус: MVP-2 visual-only mask cleanup/morphology встроен в каркас `visual_normalizer_v1`.
 
 ## Цель
 
@@ -58,6 +58,7 @@ src/topdown_shooter/visual_pipeline/
 ```text
 00_ingest_validation
 01_semantic_extraction
+02_mask_cleanup_morphology
 ```
 
 Остальные шаги зарегистрированы как `skipped`, чтобы порядок ТЗ был уже зафиксирован в отчёте.
@@ -84,15 +85,40 @@ visual_map/debug/01_semantic_masks.png
 
 `collision_mask` строится через `RuntimeMap.is_tile_walkable()`, чтобы использовать gameplay truth: runtime grids, movement rules и runtime object blockers.
 
-## Следующий MVP-2
+## Текущий MVP-2
 
-Следующий patch должен реализовать отдельный шаг:
+В `v0.2.56` реализован:
 
 ```text
 02_mask_cleanup_morphology
 ```
 
-Он должен работать с visual masks и не менять gameplay collision.
+Outputs:
+
+```text
+visual_map/visual_masks/visual_masks.json
+visual_map/visual_masks/forest_visual_mask.png
+visual_map/visual_masks/forest_core_mask.png
+visual_map/visual_masks/forest_edge_mask.png
+visual_map/visual_masks/forest_shadow_band_mask.png
+visual_map/visual_masks/road_visual_mask.png
+visual_map/visual_masks/ruin_visual_mask.png
+visual_map/visual_masks/collision_lock_mask.png
+visual_map/visual_masks/open_area_visual_mask.png
+visual_map/debug/02_mask_cleanup_morphology.png
+```
+
+Шаг работает только с visual-derived masks. Исходные semantic masks и gameplay collision не изменяются.
+
+## Следующий MVP-3
+
+Следующий patch должен реализовать отдельный шаг:
+
+```text
+03_region_analysis
+```
+
+Он должен читать `visual_masks`, находить connected components для forest/road/ruin/open areas и сохранять region JSON + debug overlay.
 
 ## Что пока не удалять
 

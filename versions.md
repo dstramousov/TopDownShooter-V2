@@ -1147,3 +1147,9 @@
 - Implemented `01_semantic_extraction` as the first content-producing visual pipeline step.
 - The visual pipeline now exports forest, road, ruin, collision, and open-area semantic masks plus a combined debug PNG under `visual_map/`.
 - Extended pipeline reports with semantic mask artifacts and counts while keeping generator output, gameplay layers, collision, and runtime rendering unchanged.
+
+## v0.2.55 -> v0.2.56
+
+- Implemented `02_mask_cleanup_morphology` as a visual-only pipeline step after semantic extraction.
+- Added derived visual masks for forest core, forest edge, forest shadow band, preserved road/ruin masks, collision lock, and open-area visual placement data.
+- Exported `visual_masks.json`, individual visual-mask debug PNGs, and `02_mask_cleanup_morphology.png` while keeping gameplay collision unchanged.
